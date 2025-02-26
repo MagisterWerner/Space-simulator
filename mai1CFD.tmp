@@ -22,6 +22,9 @@ script = ExtResource("1_udhbf")
 [node name="Grid" type="Node2D" parent="."]
 script = ExtResource("2_4nrvf")
 cell_size = Vector2(128, 128)
+grid_size = null
+grid_color = null
+font_size = null
 seed_value = 52
 
 [node name="CanvasLayer" type="CanvasLayer" parent="."]

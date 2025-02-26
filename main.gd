@@ -3,7 +3,11 @@ extends Node2D
 @onready var grid = $Grid
 @onready var seed_label = $CanvasLayer/SeedLabel
 @onready var message_label = $CanvasLayer/MessageLabel
-@onready var enemy_spawner = $EnemySpawner  # New reference to enemy spawner
+
+# References to spawners
+@onready var planet_spawner = $PlanetSpawner
+@onready var asteroid_spawner = $AsteroidSpawner
+@onready var enemy_spawner = $EnemySpawner
 
 # Use a direct node reference instead of preloading
 var player = null
@@ -27,10 +31,17 @@ func _ready():
 		message_label.text = "Welcome to the galaxy!"
 		message_timer = MESSAGE_DURATION
 	
+	# Connect to grid signals
+	grid.cell_contents_changed.connect(_on_grid_cell_contents_changed)
+	grid.chunks_updated.connect(_on_grid_chunks_updated)
+	
+	# Connect to planet spawner signals
+	planet_spawner.planet_spawned.connect(_on_planet_spawned)
+	
 	# Ensure grid is fully initialized and ready
 	grid.regenerate()
 	
-	# Wait for frames to ensure grid generation is complete
+	# Wait for frames to ensure initialization is complete
 	await get_tree().process_frame
 	await get_tree().process_frame
 	
@@ -47,16 +58,44 @@ func _process(delta):
 			
 			# Use existing player, just update its position
 			create_player()
-			
-			# Reset enemies after seed change
-			if enemy_spawner:
-				enemy_spawner.reset_enemies()
 	
 	# Handle message timer for auto-hiding
 	if message_timer > 0:
 		message_timer -= delta
 		if message_timer <= 0:
 			hide_message()
+
+# Called when grid cells contents should be generated
+func _on_grid_cell_contents_changed(seed_val):
+	print("Regenerating world with seed: ", seed_val)
+	
+	# Initialize planet spawner
+	if planet_spawner:
+		var success = planet_spawner.initialize(grid, seed_val)
+		print("Planet spawner initialized: ", success)
+	
+	# Initialize asteroid spawner
+	if asteroid_spawner:
+		var success = asteroid_spawner.initialize(grid, seed_val)
+		print("Asteroid spawner initialized: ", success)
+	
+	# Reset enemies after content change
+	if enemy_spawner:
+		enemy_spawner.reset_enemies()
+
+# Called when chunks are updated (visibility changes)
+func _on_grid_chunks_updated(loaded_cells):
+	# Update spawners visibility
+	if planet_spawner:
+		planet_spawner.update_visibility()
+	
+	if asteroid_spawner:
+		asteroid_spawner.update_visibility()
+
+# Called when a planet is spawned
+func _on_planet_spawned(position, grid_x, grid_y):
+	# Update the grid's cell_contents array for collision/pathfinding
+	grid.set_cell_content(grid_x, grid_y, grid.CellContent.PLANET)
 
 func update_seed_label():
 	seed_label.text = "Current Seed: " + str(grid.seed_value)
@@ -112,30 +151,12 @@ func position_message_label():
 		)
 
 func get_planet_positions():
-	var planet_positions = []
+	# Use the planet spawner to get all planets
+	if planet_spawner:
+		return planet_spawner.get_all_planets()
 	
-	# Validate grid initialization
-	if grid.cell_contents.size() == 0:
-		print("ERROR: Grid cell_contents array is empty or not initialized!")
-		return planet_positions
-	
-	# Scan for planets
-	for y in range(int(grid.grid_size.y)):
-		for x in range(int(grid.grid_size.x)):
-			if y < grid.cell_contents.size() and x < grid.cell_contents[y].size():
-				if grid.cell_contents[y][x] == grid.CellContent.PLANET:
-					var world_pos = Vector2(
-						x * grid.cell_size.x + grid.cell_size.x / 2,
-						y * grid.cell_size.y + grid.cell_size.y / 2
-					)
-					planet_positions.append({
-						"position": world_pos,
-						"grid_x": x,
-						"grid_y": y
-					})
-	
-	print("Total planets found: ", planet_positions.size())
-	return planet_positions
+	# Fallback empty list if spawner isn't available
+	return []
 
 func create_player():
 	# If there's already a player, just update its position rather than creating a new one
@@ -181,16 +202,16 @@ func place_player_at_random_planet():
 	# Force grid re-render to ensure it's updated
 	grid.queue_redraw()
 	
-	# Get all planet positions
-	var planet_positions = get_planet_positions()
+	# Get all planet positions from the planet spawner
+	var planets = get_planet_positions()
 	
-	if planet_positions.size() > 0:
+	if planets.size() > 0:
 		# Choose a random planet using the grid's seed
 		var rng = RandomNumberGenerator.new()
 		rng.seed = grid.seed_value
-		var random_index = rng.randi() % planet_positions.size()
+		var random_index = rng.randi() % planets.size()
 		
-		var chosen_planet = planet_positions[random_index]
+		var chosen_planet = planets[random_index]
 		
 		# Set player position directly
 		player.global_position = chosen_planet.position
@@ -216,62 +237,73 @@ func place_player_at_random_planet():
 		print("Player placed at planet " + planet_name + " position: ", chosen_planet.position)
 		print("Starting cell: (", cell_x, ",", cell_y, ")")
 	else:
-		# Fallback to grid center
-		var center = Vector2(
-			grid.grid_size.x * grid.cell_size.x / 2,
-			grid.grid_size.y * grid.cell_size.y / 2
-		)
-		player.global_position = center
-		
-		# Store the initial spawn position for respawning
-		initial_planet_position = center
-		initial_planet_cell_x = int(floor(center.x / grid.cell_size.x))
-		initial_planet_cell_y = int(floor(center.y / grid.cell_size.y))
-		
-		# Initialize the loaded chunks around the player's center position
-		var cell_x = int(floor(center.x / grid.cell_size.x))
-		var cell_y = int(floor(center.y / grid.cell_size.y))
-		grid.current_player_cell_x = cell_x
-		grid.current_player_cell_y = cell_y
-		grid.update_loaded_chunks(cell_x, cell_y)
-		
-		print("WARNING: No planets found. Player placed at grid center: ", center)
-		print("Starting cell: (", cell_x, ",", cell_y, ")")
-		
-		# Emergency: Trigger grid regeneration in case something went wrong
-		grid.regenerate()
-		await get_tree().process_frame
-		await get_tree().process_frame
-		
-		# Try again with newly generated grid
-		var new_planets = get_planet_positions()
-		if new_planets.size() > 0:
-			var rng = RandomNumberGenerator.new()
-			rng.seed = grid.seed_value
-			var random_index = rng.randi() % new_planets.size()
-			var fallback_position = new_planets[random_index].position
-			player.global_position = fallback_position
-			
-			# Update initial position for respawning
-			initial_planet_position = fallback_position
-			initial_planet_cell_x = new_planets[random_index].grid_x
-			initial_planet_cell_y = new_planets[random_index].grid_y
-			
-			# Update loaded chunks for the new position
-			cell_x = int(floor(fallback_position.x / grid.cell_size.x))
-			cell_y = int(floor(fallback_position.y / grid.cell_size.y))
-			grid.current_player_cell_x = cell_x
-			grid.current_player_cell_y = cell_y
-			grid.update_loaded_chunks(cell_x, cell_y)
-			
-			# Generate a planet name for the fallback position
-			var planet_name = generate_planet_name(new_planets[random_index].grid_x, new_planets[random_index].grid_y)
-			
-			# Show welcome message
-			show_message("Welcome to planet " + planet_name + "!")
-			
-			print("Player repositioned at planet " + planet_name + " after emergency regeneration")
-			print("Updated starting cell: (", cell_x, ",", cell_y, ")")
+		handle_no_planets_found()
+
+# Handle the case when no planets are found
+func handle_no_planets_found():
+	# Fallback to grid center
+	var center = Vector2(
+		grid.grid_size.x * grid.cell_size.x / 2,
+		grid.grid_size.y * grid.cell_size.y / 2
+	)
+	player.global_position = center
+	
+	# Store the initial spawn position for respawning
+	initial_planet_position = center
+	initial_planet_cell_x = int(floor(center.x / grid.cell_size.x))
+	initial_planet_cell_y = int(floor(center.y / grid.cell_size.y))
+	
+	# Initialize the loaded chunks around the player's center position
+	var cell_x = int(floor(center.x / grid.cell_size.x))
+	var cell_y = int(floor(center.y / grid.cell_size.y))
+	grid.current_player_cell_x = cell_x
+	grid.current_player_cell_y = cell_y
+	grid.update_loaded_chunks(cell_x, cell_y)
+	
+	print("WARNING: No planets found. Player placed at grid center: ", center)
+	print("Starting cell: (", cell_x, ",", cell_y, ")")
+	
+	# Show an error message
+	show_message("ERROR: No planets found. Placed at grid center.")
+	
+	# Emergency: Trigger grid regeneration in case something went wrong
+	grid.regenerate()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	
+	# Try again with newly generated grid
+	var new_planets = get_planet_positions()
+	if new_planets.size() > 0:
+		emergency_planet_placement(new_planets)
+
+# Handle emergency planet placement
+func emergency_planet_placement(planets):
+	var rng = RandomNumberGenerator.new()
+	rng.seed = grid.seed_value
+	var random_index = rng.randi() % planets.size()
+	var fallback_position = planets[random_index].position
+	player.global_position = fallback_position
+	
+	# Update initial position for respawning
+	initial_planet_position = fallback_position
+	initial_planet_cell_x = planets[random_index].grid_x
+	initial_planet_cell_y = planets[random_index].grid_y
+	
+	# Update loaded chunks for the new position
+	var cell_x = int(floor(fallback_position.x / grid.cell_size.x))
+	var cell_y = int(floor(fallback_position.y / grid.cell_size.y))
+	grid.current_player_cell_x = cell_x
+	grid.current_player_cell_y = cell_y
+	grid.update_loaded_chunks(cell_x, cell_y)
+	
+	# Generate a planet name for the fallback position
+	var planet_name = generate_planet_name(planets[random_index].grid_x, planets[random_index].grid_y)
+	
+	# Show welcome message
+	show_message("Welcome to planet " + planet_name + "!")
+	
+	print("Player repositioned at planet " + planet_name + " after emergency regeneration")
+	print("Updated starting cell: (", cell_x, ",", cell_y, ")")
 
 # Function to generate a planet name based on coordinates
 func generate_planet_name(x, y):

@@ -6,6 +6,10 @@ extends Node
 # Reference to the grid
 var grid = null
 
+# Reference to the needed systems
+var planet_spawner = null
+var asteroid_spawner = null
+
 # Reference to the enemy scene
 var enemy_scene = preload("res://enemy.tscn")
 
@@ -14,10 +18,17 @@ var spawned_enemies = []
 
 # Called when the node enters the scene tree for the first time
 func _ready():
+	# Get references to the grid and spawners
 	grid = get_node_or_null("/root/Main/Grid")
+	planet_spawner = get_node_or_null("/root/Main/PlanetSpawner")
+	asteroid_spawner = get_node_or_null("/root/Main/AsteroidSpawner")
+	
 	if not grid:
 		push_error("ERROR: Grid not found for enemy spawning!")
 		return
+	
+	# Connect to grid signals for visibility updates
+	grid.chunks_updated.connect(_on_grid_chunks_updated)
 	
 	# Wait for a frame to ensure grid is fully initialized
 	await get_tree().process_frame
@@ -26,6 +37,10 @@ func _ready():
 	spawn_enemies()
 	
 	print("Enemy spawner initialized - Total enemies: ", spawned_enemies.size())
+
+# Handle grid chunk updates
+func _on_grid_chunks_updated(loaded_cells):
+	update_enemy_visibility()
 
 # Function to spawn enemies in empty cells
 func spawn_enemies():
@@ -43,8 +58,8 @@ func spawn_enemies():
 			if grid.is_boundary_cell(x, y):
 				continue
 			
-			# Check if the cell is empty
-			if grid.cell_contents[y][x] == grid.CellContent.EMPTY:
+			# Check if the cell is empty (no planets or asteroids)
+			if is_cell_empty(x, y):
 				empty_cells.append(Vector2(x, y))
 	
 	# Determine how many enemies to spawn based on percentage with a minimum
@@ -82,12 +97,42 @@ func spawn_enemies():
 	# Initialize enemy visibility based on loaded chunks
 	initialize_enemy_visibility()
 
+# Helper function to check if a cell is empty
+func is_cell_empty(x, y):
+	# Check if there's a planet at this position
+	if planet_spawner and planet_spawner.planets.has(Vector2(x, y)):
+		return false
+		
+	# Check if there's an asteroid field at this position
+	if asteroid_spawner and asteroid_spawner.get_asteroid_field_at(x, y) != null:
+		return false
+		
+	# Fallback to grid's cell_contents if spawners aren't available
+	if grid.get_cell_content(x, y) != grid.CellContent.EMPTY:
+		return false
+		
+	return true
+
 # Called after enemies are spawned to set initial visibility
 func initialize_enemy_visibility():
 	# No need to get grid again since we already have it as a class variable
 	if not grid:
 		return
 		
+	# Update visibility for each enemy based on whether its cell is loaded
+	for enemy in spawned_enemies:
+		if is_instance_valid(enemy):
+			var enemy_cell_x = int(floor(enemy.global_position.x / grid.cell_size.x))
+			var enemy_cell_y = int(floor(enemy.global_position.y / grid.cell_size.y))
+			
+			# Check if the enemy's cell is currently loaded
+			var is_cell_loaded = grid.loaded_cells.has(Vector2(enemy_cell_x, enemy_cell_y))
+			
+			# Set the enemy's active state
+			enemy.update_active_state(is_cell_loaded)
+
+# Update enemy visibility based on loaded chunks
+func update_enemy_visibility():
 	# Update visibility for each enemy based on whether its cell is loaded
 	for enemy in spawned_enemies:
 		if is_instance_valid(enemy):
