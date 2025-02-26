@@ -11,6 +11,9 @@ signal asteroid_field_spawned(position, grid_x, grid_y, count)
 @export var asteroid_color = Color(0.7, 0.3, 0)
 @export var asteroid_outline_color = Color(0.9, 0.4, 0)
 
+# Debug mode toggle
+var debug_mode: bool = false
+
 # Reference to the grid
 var grid = null
 # Reference to planet spawner to check for conflicts
@@ -19,6 +22,9 @@ var planet_spawner = null
 # Dictionary to store asteroid field data
 # Key: Vector2(x, y) for grid coords, Value: Dictionary with asteroid field properties
 var asteroid_fields = {}
+
+# Tracking for visibility changes
+var previously_visible_cells = {}
 
 # Called when the node enters the scene tree
 func _ready():
@@ -39,16 +45,31 @@ func initialize(target_grid, seed_val):
 	if planet_spawner == null:
 		planet_spawner = get_node_or_null("/root/Main/PlanetSpawner")
 	
+	# Clear existing asteroid fields and visibility tracking
+	asteroid_fields.clear()
+	previously_visible_cells.clear()
+	
 	# Generate asteroid fields
 	generate_asteroid_fields(seed_val)
 	
 	print("Asteroid spawner initialized - Total asteroid fields: ", asteroid_fields.size())
 	return asteroid_fields.size() > 0
 
-# Check if an asteroid field can be placed at the given position
+# Enhanced can_place_asteroid_field function with better conflict detection
 func can_place_asteroid_field(x, y):
+	# Skip if position is invalid
+	if not grid.is_valid_position(x, y):
+		print("Cannot place asteroid field at (", x, ",", y, ") - Invalid position")
+		return false
+		
 	# Check if the specific cell is already occupied
 	if grid.is_cell_occupied(x, y):
+		print("Cannot place asteroid field at (", x, ",", y, ") - Cell already occupied")
+		return false
+	
+	# Skip boundary cells - they must always remain empty
+	if grid.is_boundary_cell(x, y):
+		print("Cannot place asteroid field at (", x, ",", y, ") - Boundary cell")
 		return false
 	
 	# Check all cells within a 1-cell radius for conflicts
@@ -64,10 +85,12 @@ func can_place_asteroid_field(x, y):
 			
 			# Prevent asteroid fields from being too close to each other
 			if asteroid_fields.has(Vector2(adj_x, adj_y)):
+				print("Cannot place asteroid field at (", x, ",", y, ") - Too close to another asteroid field at (", adj_x, ",", adj_y, ")")
 				return false
 			
 			# Prevent asteroid fields near planets
 			if planet_spawner and planet_spawner.get_planet_at(adj_x, adj_y) != null:
+				print("Cannot place asteroid field at (", x, ",", y, ") - Too close to a planet at (", adj_x, ",", adj_y, ")")
 				return false
 	
 	# If no conflicts were found, we can place an asteroid field here
@@ -75,9 +98,6 @@ func can_place_asteroid_field(x, y):
 
 # Main asteroid field generation function
 func generate_asteroid_fields(seed_val):
-	# Clear any existing asteroid fields
-	asteroid_fields.clear()
-	
 	# Create a new random number generator
 	var rng = RandomNumberGenerator.new()
 	rng.seed = seed_val + 12345  # Offset seed for asteroids to be different from planets
@@ -85,10 +105,6 @@ func generate_asteroid_fields(seed_val):
 	# First pass: determine which cells will have asteroid fields
 	for y in range(int(grid.grid_size.y)):
 		for x in range(int(grid.grid_size.x)):
-			# Skip boundary cells - they must always remain empty
-			if grid.is_boundary_cell(x, y):
-				continue
-			
 			var rand_value = rng.randi() % 100
 			
 			if rand_value < asteroid_probability and can_place_asteroid_field(x, y):
@@ -137,14 +153,17 @@ func _force_spawn_fallback_asteroid_field(seed_val):
 		Vector2(4, 4),
 		Vector2(6, 6),
 		Vector2(3, 3),
-		Vector2(7, 7)
+		Vector2(7, 7),
+		Vector2(2, 2),
+		Vector2(8, 8),
+		Vector2(9, 9)
 	]
 	
 	for pos in fallback_positions:
 		var x = int(pos.x)
 		var y = int(pos.y)
 		
-		if grid.is_valid_position(x, y) and not grid.is_boundary_cell(x, y) and can_place_asteroid_field(x, y):
+		if grid.is_valid_position(x, y) and can_place_asteroid_field(x, y):
 			# Generate asteroid count
 			var count_rng = RandomNumberGenerator.new()
 			count_rng.seed = seed_val + y * 1000 + x
@@ -176,6 +195,50 @@ func _force_spawn_fallback_asteroid_field(seed_val):
 			
 			print("Forced asteroid field creation at position: (", x, ",", y, ")")
 			return
+	
+	# If all predetermined positions failed, try emergency placement
+	_emergency_asteroid_placement(seed_val)
+
+# Emergency asteroid placement with less strict rules
+func _emergency_asteroid_placement(seed_val):
+	print("EMERGENCY: Attempting asteroid field placement with reduced restrictions")
+	
+	# Try placing an asteroid field anywhere that's not the boundary and not occupied
+	for y in range(1, int(grid.grid_size.y) - 1):
+		for x in range(1, int(grid.grid_size.x) - 1):
+			if not grid.is_cell_occupied(x, y):
+				# Generate asteroid count
+				var count_rng = RandomNumberGenerator.new()
+				count_rng.seed = seed_val + y * 1000 + x
+				var asteroid_count = 1  # Just one asteroid in emergency mode
+				
+				# Generate positions of individual asteroids within the field
+				var asteroid_positions = generate_asteroid_positions(seed_val, x, y, asteroid_count)
+				
+				# Set up asteroid field data
+				var field_data = {
+					"position": Vector2(
+						x * grid.cell_size.x + grid.cell_size.x / 2,
+						y * grid.cell_size.y + grid.cell_size.y / 2
+					),
+					"count": asteroid_count,
+					"grid_x": x,
+					"grid_y": y,
+					"asteroids": asteroid_positions
+				}
+				
+				# Store asteroid field data in dictionary
+				asteroid_fields[Vector2(x, y)] = field_data
+				
+				# Mark the cell as occupied
+				if not grid.mark_cell_occupied(x, y, grid.CellContent.ASTEROID):
+					push_error("Failed to mark cell as occupied in emergency asteroid placement")
+				
+				# Signal that an asteroid field was spawned
+				emit_signal("asteroid_field_spawned", field_data.position, x, y, asteroid_count)
+				
+				print("EMERGENCY: Forced asteroid field creation at position: (", x, ",", y, ")")
+				return
 
 # Generate positions for individual asteroids within a field
 func generate_asteroid_positions(seed_val, grid_x, grid_y, count):
@@ -276,7 +339,47 @@ func get_asteroid_field_at(grid_x, grid_y):
 		return asteroid_fields[coord]
 	return null
 
-# Draw all asteroids in loaded chunks
+# Enhanced update_visibility function to track visibility changes
+func update_visibility():
+	# Skip if no grid or no asteroid fields
+	if not grid or asteroid_fields.is_empty():
+		queue_redraw()
+		return
+	
+	# Track which cells are now visible
+	var currently_visible_cells = {}
+	
+	# Check which asteroid fields are in loaded chunks
+	for coord in asteroid_fields.keys():
+		if grid.loaded_cells.has(coord):
+			currently_visible_cells[coord] = true
+	
+	# Check if visibility has changed
+	var visibility_changed = false
+	
+	# Check if any asteroid fields became visible
+	for coord in currently_visible_cells.keys():
+		if not previously_visible_cells.has(coord):
+			visibility_changed = true
+			break
+			
+	# Check if any asteroid fields became invisible
+	if not visibility_changed:
+		for coord in previously_visible_cells.keys():
+			if not currently_visible_cells.has(coord):
+				visibility_changed = true
+				break
+	
+	# Update tracking and redraw if needed
+	if visibility_changed:
+		previously_visible_cells = currently_visible_cells.duplicate()
+		print("Asteroid field visibility changed - redrawing")
+		queue_redraw()
+	elif debug_mode:
+		# Always redraw in debug mode to update debug visualization
+		queue_redraw()
+
+# Enhanced draw function with debug visualization
 func _draw():
 	if not grid or asteroid_fields.is_empty():
 		return
@@ -293,7 +396,33 @@ func _draw():
 				
 				# Draw crater
 				draw_circle(asteroid.crater_pos, asteroid.crater_size, asteroid_color.darkened(0.2))
-
-# Call this function when loaded chunks change
-func update_visibility():
-	queue_redraw()
+			
+			# Debug visualization
+			if debug_mode:
+				# Draw grid coordinate
+				var text = "A(%d,%d)" % [field.grid_x, field.grid_y]
+				var text_pos = Vector2(
+					field.position.x - 30,
+					field.position.y + 25  # Offset to not overlap with asteroids
+				)
+				
+				# Draw text with outline for better visibility
+				draw_string_outline(
+					ThemeDB.fallback_font,
+					text_pos,
+					text,
+					HORIZONTAL_ALIGNMENT_LEFT,
+					-1,
+					14,
+					2,
+					Color.BLACK
+				)
+				draw_string(
+					ThemeDB.fallback_font,
+					text_pos,
+					text,
+					HORIZONTAL_ALIGNMENT_LEFT,
+					-1,
+					14,
+					Color.WHITE
+				)

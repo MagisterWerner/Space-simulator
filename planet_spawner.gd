@@ -16,6 +16,9 @@ signal planet_spawned(planet_position, grid_x, grid_y)
 	Color.BLUE
 ]
 
+# Debug mode toggle
+var debug_mode: bool = false
+
 # Reference to the grid
 var grid = null
 # Reference to asteroid spawner to check for conflicts
@@ -24,6 +27,9 @@ var asteroid_spawner = null
 # Dictionary to store planet data
 # Key: Vector2(x, y) for grid coords, Value: Dictionary with planet properties
 var planets = {}
+
+# Tracking for visibility changes
+var previously_visible_cells = {}
 
 # Called when the node enters the scene tree
 func _ready():
@@ -44,16 +50,31 @@ func initialize(target_grid, seed_val):
 	if asteroid_spawner == null:
 		asteroid_spawner = get_node_or_null("/root/Main/AsteroidSpawner")
 	
+	# Clear any existing planets
+	planets.clear()
+	previously_visible_cells.clear()
+	
 	# Generate planets
 	generate_planets(seed_val)
 	
 	print("Planet spawner initialized - Total planets: ", planets.size())
 	return planets.size() > 0
 
-# Check if a planet can be placed at the given position
+# Enhanced can_place_planet function with better conflict detection
 func can_place_planet(x, y):
+	# Skip if position is invalid
+	if not grid.is_valid_position(x, y):
+		print("Cannot place planet at (", x, ",", y, ") - Invalid position")
+		return false
+		
 	# Check if the specific cell is already occupied
 	if grid.is_cell_occupied(x, y):
+		print("Cannot place planet at (", x, ",", y, ") - Cell already occupied")
+		return false
+	
+	# Skip boundary cells - they must always remain empty
+	if grid.is_boundary_cell(x, y):
+		print("Cannot place planet at (", x, ",", y, ") - Boundary cell")
 		return false
 	
 	# Check all cells within a 1-cell radius for conflicts
@@ -69,10 +90,16 @@ func can_place_planet(x, y):
 			
 			# Prevent planets from being too close to each other
 			if planets.has(Vector2(adj_x, adj_y)):
+				print("Cannot place planet at (", x, ",", y, ") - Too close to another planet at (", adj_x, ",", adj_y, ")")
 				return false
 			
+			# Skip asteroid check if spawner isn't available yet
+			if not asteroid_spawner:
+				continue
+				
 			# Prevent planets near asteroid fields
-			if asteroid_spawner and asteroid_spawner.get_asteroid_field_at(adj_x, adj_y) != null:
+			if asteroid_spawner.get_asteroid_field_at(adj_x, adj_y) != null:
+				print("Cannot place planet at (", x, ",", y, ") - Too close to an asteroid field at (", adj_x, ",", adj_y, ")")
 				return false
 	
 	# If no conflicts were found, we can place a planet here
@@ -80,9 +107,6 @@ func can_place_planet(x, y):
 
 # Main planet generation function
 func generate_planets(seed_val):
-	# Clear any existing planets
-	planets.clear()
-	
 	# Create a new random number generator
 	var rng = RandomNumberGenerator.new()
 	rng.seed = seed_val
@@ -90,10 +114,6 @@ func generate_planets(seed_val):
 	# First pass: determine which cells will have planets
 	for y in range(int(grid.grid_size.y)):
 		for x in range(int(grid.grid_size.x)):
-			# Skip boundary cells - they must always remain empty
-			if grid.is_boundary_cell(x, y):
-				continue
-			
 			var rand_value = rng.randi() % 100
 			
 			if rand_value < planet_probability and can_place_planet(x, y):
@@ -128,20 +148,23 @@ func generate_planets(seed_val):
 func _force_spawn_fallback_planet(seed_val):
 	print("No planets generated! Forcing a planet at fallback position")
 	
-	# Try position (5,5) first
+	# Try position (5,5) first and then try alternative positions
 	var fallback_positions = [
 		Vector2(5, 5),
 		Vector2(4, 4),
 		Vector2(6, 6),
 		Vector2(3, 3),
-		Vector2(7, 7)
+		Vector2(7, 7),
+		Vector2(2, 2),
+		Vector2(8, 8),
+		Vector2(10, 10),
 	]
 	
 	for pos in fallback_positions:
 		var x = int(pos.x)
 		var y = int(pos.y)
 		
-		if grid.is_valid_position(x, y) and not grid.is_boundary_cell(x, y) and can_place_planet(x, y):
+		if grid.is_valid_position(x, y) and can_place_planet(x, y):
 			var planet_data = {
 				"position": Vector2(
 					x * grid.cell_size.x + grid.cell_size.x / 2,
@@ -164,6 +187,41 @@ func _force_spawn_fallback_planet(seed_val):
 			
 			print("Forced planet creation at position: (", x, ",", y, ")")
 			return
+	
+	# If we couldn't place a planet anywhere, try emergency placement with looser rules
+	_emergency_planet_placement(seed_val)
+
+# Emergency planet placement with less strict rules
+func _emergency_planet_placement(seed_val):
+	print("EMERGENCY: Attempting planet placement with reduced restrictions")
+	
+	# Try placing a planet anywhere that's not the boundary
+	for y in range(1, int(grid.grid_size.y) - 1):
+		for x in range(1, int(grid.grid_size.x) - 1):
+			if not grid.is_cell_occupied(x, y):
+				var planet_data = {
+					"position": Vector2(
+						x * grid.cell_size.x + grid.cell_size.x / 2,
+						y * grid.cell_size.y + grid.cell_size.y / 2
+					),
+					"size": generate_planet_size(seed_val, x, y),
+					"color": generate_planet_color(seed_val, x, y),
+					"grid_x": x,
+					"grid_y": y
+				}
+				
+				# Store planet data
+				planets[Vector2(x, y)] = planet_data
+				
+				# Mark the cell as occupied
+				if not grid.mark_cell_occupied(x, y, grid.CellContent.PLANET):
+					push_error("Failed to mark cell as occupied in emergency placement")
+				
+				# Signal that a planet was spawned
+				emit_signal("planet_spawned", planet_data.position, x, y)
+				
+				print("EMERGENCY: Forced planet creation at position: (", x, ",", y, ")")
+				return
 
 # Helper function to generate consistent planet size
 func generate_planet_size(seed_val, x, y):
@@ -193,7 +251,47 @@ func get_planet_at(grid_x, grid_y):
 		return planets[coord]
 	return null
 
-# Draw all planets in loaded chunks
+# Enhanced update_visibility function to track visibility changes
+func update_visibility():
+	# Skip if no grid or no planets
+	if not grid or planets.is_empty():
+		queue_redraw()
+		return
+	
+	# Track which cells are now visible
+	var currently_visible_cells = {}
+	
+	# Check which planets are in loaded chunks
+	for coord in planets.keys():
+		if grid.loaded_cells.has(coord):
+			currently_visible_cells[coord] = true
+	
+	# Check if visibility has changed
+	var visibility_changed = false
+	
+	# Check if any planets became visible
+	for coord in currently_visible_cells.keys():
+		if not previously_visible_cells.has(coord):
+			visibility_changed = true
+			break
+			
+	# Check if any planets became invisible
+	if not visibility_changed:
+		for coord in previously_visible_cells.keys():
+			if not currently_visible_cells.has(coord):
+				visibility_changed = true
+				break
+	
+	# Update tracking and redraw if needed
+	if visibility_changed:
+		previously_visible_cells = currently_visible_cells.duplicate()
+		print("Planet visibility changed - redrawing")
+		queue_redraw()
+	elif debug_mode:
+		# Always redraw in debug mode to update debug visualization
+		queue_redraw()
+
+# Enhanced draw function with debug visualization
 func _draw():
 	if not grid or planets.is_empty():
 		return
@@ -215,7 +313,33 @@ func _draw():
 			var ring_radius = shape_size * 0.7
 			draw_arc(cell_center, ring_radius, 0, PI, 16, planet.color.lightened(0.1), 1.5)
 			draw_arc(cell_center, ring_radius, PI, TAU, 16, planet.color.lightened(0.1), 1.5)
-
-# Call this function when loaded chunks change
-func update_visibility():
-	queue_redraw()
+			
+			# Debug visualization
+			if debug_mode:
+				# Draw grid coordinate
+				var text = "P(%d,%d)" % [planet.grid_x, planet.grid_y]
+				var text_pos = Vector2(
+					cell_center.x - 30,
+					cell_center.y + shape_size + 15
+				)
+				
+				# Draw text with outline for better visibility
+				draw_string_outline(
+					ThemeDB.fallback_font,
+					text_pos,
+					text,
+					HORIZONTAL_ALIGNMENT_LEFT,
+					-1,
+					14,
+					2,
+					Color.BLACK
+				)
+				draw_string(
+					ThemeDB.fallback_font,
+					text_pos,
+					text,
+					HORIZONTAL_ALIGNMENT_LEFT,
+					-1,
+					14,
+					Color.WHITE
+				)

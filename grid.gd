@@ -10,6 +10,9 @@ extends Node2D
 # Chunk load radius is fixed at 1 to ensure only 9 cells maximum
 var chunk_load_radius: int = 1  # This is no longer exported to prevent changing it
 
+# Debug mode toggle
+var debug_mode: bool = false
+
 # Enum to track different types of cell contents more precisely
 enum CellContent { 
 	EMPTY, 
@@ -37,6 +40,7 @@ var last_valid_position = Vector2.ZERO
 
 # Dictionary to track which cells are currently loaded
 var loaded_cells = {}
+var previous_loaded_cells = {}
 
 # Signals
 signal cell_contents_changed(seed_value)
@@ -62,7 +66,10 @@ func initialize_cell_contents_array():
 	
 	# Reset loaded chunks and force redraw
 	loaded_cells.clear()
+	previous_loaded_cells.clear()
 	queue_redraw()
+	
+	print("Grid initialized with size: ", grid_size, " and cell size: ", cell_size)
 
 # Check if a position is valid (within bounds)
 func is_valid_position(x, y):
@@ -73,6 +80,9 @@ func mark_cell_occupied(x, y, content_type):
 	if not is_valid_position(x, y):
 		return false
 	
+	# Create Vector2 key once
+	var cell_key = Vector2(x, y)
+	
 	# Get current cell content
 	var current_content = get_cell_content(x, y)
 	
@@ -80,13 +90,14 @@ func mark_cell_occupied(x, y, content_type):
 	if current_content != CellContent.EMPTY:
 		# If trying to add a different type to an already occupied cell
 		if current_content != content_type:
-			print("Warning: Cannot occupy cell (%d,%d) - already occupied" % [x, y])
+			print("Warning: Cannot occupy cell (%d,%d) - already occupied with type %d" % [x, y, current_content])
 			return false
 	
 	# Update cell contents array
 	if y < cell_contents.size() and x < cell_contents[y].size():
 		cell_contents[y][x] = content_type
-		occupied_cells[Vector2(x, y)] = content_type
+		occupied_cells[cell_key] = content_type
+		print("Cell (%d,%d) marked as occupied with content type: %d" % [x, y, content_type])
 		return true
 	
 	return false
@@ -100,11 +111,13 @@ func is_cell_occupied(x, y):
 
 # Clear cell occupancy (useful when regenerating grid)
 func clear_cell_occupancy():
+	print("Clearing all cell occupancy data")
 	occupied_cells.clear()
 	# Reinitialize cell contents array with EMPTY
 	for y in range(int(grid_size.y)):
 		for x in range(int(grid_size.x)):
-			cell_contents[y][x] = CellContent.EMPTY
+			if y < cell_contents.size() and x < cell_contents[y].size():
+				cell_contents[y][x] = CellContent.EMPTY
 
 # Check if a cell is on the boundary (outermost edge)
 func is_boundary_cell(x, y):
@@ -148,29 +161,72 @@ func set_seed(new_seed):
 	# Regenerate the grid with new seed
 	regenerate()
 
-# Update loaded chunks based on player position
+# Enhanced update_loaded_chunks function to better track changes
 func update_loaded_chunks(center_x, center_y):
-	# Clear the currently loaded cells dictionary for a fresh update
+	print("Updating loaded chunks at center: (", center_x, ",", center_y, ")")
+	
+	# Force update even if the center hasn't changed, for initial loading
+	var force_update = (loaded_cells.size() == 0)
+	
+	# Check if center position has changed
+	if not force_update and center_x == current_player_cell_x and center_y == current_player_cell_y:
+		print("Cell center hasn't changed, skipping update")
+		return false  # No need to update
+	
+	# Store current loaded cells to check for changes
+	previous_loaded_cells = loaded_cells.duplicate()
 	loaded_cells.clear()
 	
-	# Fixed radius of 1 - only load the current cell and its 8 neighbors (9 cells total)
-	# Loop through cells within the chunk_load_radius of the player's position
-	for y in range(center_y - 1, center_y + 2):
-		for x in range(center_x - 1, center_x + 2):
+	# Calculate new loaded cells (fixed radius of 1)
+	for y in range(center_y - chunk_load_radius, center_y + chunk_load_radius + 1):
+		for x in range(center_x - chunk_load_radius, center_x + chunk_load_radius + 1):
 			if is_valid_position(x, y):
-				# Mark this cell as loaded
 				loaded_cells[Vector2(x, y)] = true
+				print("Added loaded cell: (", x, ",", y, ")")
 	
-	# Force an immediate visual update
-	queue_redraw()
+	# Update cached player position
+	current_player_cell_x = center_x
+	current_player_cell_y = center_y
 	
-	# Emit signal for other nodes to update visibility
-	emit_signal("chunks_updated", loaded_cells)
+	print("Total loaded cells after update: ", loaded_cells.size())
 	
-	print("Loaded cells updated. Center: (", center_x, ",", center_y, ") - Total loaded: ", loaded_cells.size())
+	# Check if cells have actually changed
+	var has_changes = force_update
+	if not has_changes and previous_loaded_cells.size() != loaded_cells.size():
+		has_changes = true
+	else:
+		for cell in loaded_cells.keys():
+			if not previous_loaded_cells.has(cell):
+				has_changes = true
+				break
+	
+	if has_changes or force_update:
+		# Force an immediate visual update
+		print("Cells changed, updating visualization")
+		queue_redraw()
+		
+		# Emit signal for other nodes to update visibility
+		emit_signal("chunks_updated", loaded_cells)
+		print("Loaded cells updated. Center: (", center_x, ",", center_y, ") - Total loaded: ", loaded_cells.size())
+		return true
+	
+	print("No changes in loaded cells")
+	return false
 
-# Draw grid in loaded chunks
+# Draw grid in loaded chunks with enhanced debug visualization
 func _draw():
+	print("Drawing grid with loaded cells count: ", loaded_cells.size())
+	
+	# Handle the case where there are no loaded cells (should not happen)
+	if loaded_cells.size() == 0:
+		# Emergency: force loading of the center cells
+		print("WARNING: No loaded cells found during drawing! Loading center cells.")
+		for y in range(int(grid_size.y/2) - 1, int(grid_size.y/2) + 2):
+			for x in range(int(grid_size.x/2) - 1, int(grid_size.x/2) + 2):
+				if is_valid_position(x, y):
+					loaded_cells[Vector2(x, y)] = true
+					print("Emergency loaded cell: (", x, ",", y, ")")
+	
 	# Only draw grid lines for the loaded chunks
 	for cell_pos in loaded_cells.keys():
 		var x = cell_pos.x
@@ -229,5 +285,42 @@ func _draw():
 			font_size,
 			Color.WHITE
 		)
-
-# The existing process and other methods remain the same as in the original script
+		
+		# Debug visualization of cell contents when debug mode is enabled
+		if debug_mode:
+			var content = get_cell_content(x, y)
+			
+			# Choose color based on content
+			var fill_color
+			match content:
+				CellContent.EMPTY: fill_color = Color(0, 1, 0, 0.1)  # Green
+				CellContent.PLANET: fill_color = Color(0, 0, 1, 0.2)  # Blue
+				CellContent.ASTEROID: fill_color = Color(1, 0, 0, 0.2)  # Red
+				CellContent.PLANET_AND_ASTEROID: fill_color = Color(1, 0, 1, 0.3)  # Purple
+			
+			# Draw cell overlay
+			draw_rect(Rect2(rect_pos, cell_size), fill_color)
+			
+			# Draw cell content status text
+			var content_text = "Empty"
+			if content == CellContent.PLANET:
+				content_text = "Planet"
+			elif content == CellContent.ASTEROID:
+				content_text = "Asteroid"
+			elif content == CellContent.PLANET_AND_ASTEROID:
+				content_text = "Both"
+			
+			# Draw content text below coordinates
+			var content_pos = Vector2(
+				cell_center.x - 20,
+				cell_center.y + 15
+			)
+			draw_string(
+				ThemeDB.fallback_font,
+				content_pos,
+				content_text,
+				HORIZONTAL_ALIGNMENT_LEFT,
+				-1,
+				font_size - 2,
+				Color.WHITE
+			)

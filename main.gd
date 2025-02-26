@@ -21,6 +21,9 @@ var initial_planet_position = null
 var initial_planet_cell_x = 0
 var initial_planet_cell_y = 0
 
+# Debug mode toggle
+var debug_mode = false
+
 func _ready():
 	# Initialize seed label
 	update_seed_label()
@@ -32,21 +35,58 @@ func _ready():
 		message_timer = MESSAGE_DURATION
 	
 	# Connect to grid signals
-	grid.cell_contents_changed.connect(_on_grid_cell_contents_changed)
-	grid.chunks_updated.connect(_on_grid_chunks_updated)
+	if grid:
+		grid.cell_contents_changed.connect(_on_grid_cell_contents_changed)
+		grid.chunks_updated.connect(_on_grid_chunks_updated)
 	
 	# Connect to planet spawner signals
-	planet_spawner.planet_spawned.connect(_on_planet_spawned)
+	if planet_spawner:
+		planet_spawner.planet_spawned.connect(_on_planet_spawned)
+	
+	# Print important information about system state
+	print("Grid size: ", grid.grid_size if grid else "NULL")
+	print("Cell size: ", grid.cell_size if grid else "NULL")
+	print("Current seed: ", grid.seed_value if grid else "NULL")
 	
 	# Ensure grid is fully initialized and ready
-	grid.regenerate()
+	if grid:
+		grid.regenerate()
 	
 	# Wait for frames to ensure initialization is complete
 	await get_tree().process_frame
 	await get_tree().process_frame
 	
-	# Create player (this handles deferred placement at a planet)
-	create_player()
+	# Create player and set up initial state
+	call_deferred("_deferred_create_player")
+	
+	# After player creation, force chunk update with a significant delay
+	await get_tree().create_timer(0.5).timeout
+	
+	# Final forced chunk update after everything is ready
+	if player and grid:
+		var cell_x = int(floor(player.global_position.x / grid.cell_size.x))
+		var cell_y = int(floor(player.global_position.y / grid.cell_size.y))
+		print("Final forced chunk update at: (", cell_x, ",", cell_y, ")")
+		
+		# Force three chunk updates with frame delays
+		grid.update_loaded_chunks(cell_x, cell_y)
+		await get_tree().process_frame
+		grid.update_loaded_chunks(cell_x, cell_y)
+		await get_tree().process_frame
+		grid.update_loaded_chunks(cell_x, cell_y)
+		
+		# Force redraw all objects
+		grid.queue_redraw()
+		if planet_spawner:
+			planet_spawner.queue_redraw()
+		if asteroid_spawner:
+			asteroid_spawner.queue_redraw()
+			
+		# Ensure player is in normal state (not immobilized)
+		if player.has_method("set_immobilized"):
+			player.set_immobilized(false)
+	
+	print("Main scene initialization complete")
 
 func _process(delta):
 	# Seed control with number keys
@@ -57,7 +97,10 @@ func _process(delta):
 			update_seed_label()
 			
 			# Use existing player, just update its position
-			create_player()
+			if player:
+				call_deferred("force_place_player", true)
+			else:
+				call_deferred("create_player")
 	
 	# Handle message timer for auto-hiding
 	if message_timer > 0:
@@ -65,23 +108,179 @@ func _process(delta):
 		if message_timer <= 0:
 			hide_message()
 
-# Called when grid cells contents should be generated
+func _input(event):
+	# Toggle debug visualization with F1 key
+	if event is InputEventKey and event.pressed and event.keycode == KEY_F1:
+		debug_mode = !debug_mode
+		
+		# Update debug mode for all systems
+		grid.debug_mode = debug_mode
+		if planet_spawner:
+			planet_spawner.debug_mode = debug_mode
+		if asteroid_spawner:
+			asteroid_spawner.debug_mode = debug_mode
+		
+		print("Debug mode: ", debug_mode)
+		
+		# Force redraw
+		grid.queue_redraw()
+		if planet_spawner:
+			planet_spawner.queue_redraw()
+		if asteroid_spawner:
+			asteroid_spawner.queue_redraw()
+			
+	# Force chunk reload with F2 key
+	if event is InputEventKey and event.pressed and event.keycode == KEY_F2:
+		force_reload_chunks()
+		print("Chunks forcibly reloaded")
+
+# Function to force reload chunks around player
+func force_reload_chunks():
+	if player == null:
+		print("ERROR: Cannot reload chunks - player is null")
+		return
+		
+	print("Forcing chunk reload around player")
+	
+	# Calculate current cell coordinates
+	var cell_x = int(floor(player.global_position.x / grid.cell_size.x))
+	var cell_y = int(floor(player.global_position.y / grid.cell_size.y))
+	
+	# Force clear loaded cells
+	grid.loaded_cells.clear()
+	
+	# Force update loaded chunks
+	grid.update_loaded_chunks(cell_x, cell_y)
+	
+	# Force redraw all objects
+	grid.queue_redraw()
+	if planet_spawner:
+		planet_spawner.queue_redraw()
+	if asteroid_spawner:
+		asteroid_spawner.queue_redraw()
+		
+	# Print loaded cells for debugging
+	print("Current player position: ", player.global_position)
+	print("Current player cell: (", cell_x, ",", cell_y, ")")
+	print("Loaded cells count: ", grid.loaded_cells.size())
+	print("Loaded cells: ", grid.loaded_cells.keys())
+
+# Force place player with option to use a specific seed
+func force_place_player(clear_cells = false):
+	if player == null:
+		print("ERROR: Cannot force place player - player is null")
+		return
+	
+	print("Forcing player placement")
+	
+	# Clear loaded cells if requested
+	if clear_cells and grid:
+		grid.loaded_cells.clear()
+		grid.previous_loaded_cells.clear()
+	
+	# Force grid re-render
+	if grid:
+		grid.queue_redraw()
+	
+	# Get planet positions
+	var planets = get_planet_positions()
+	
+	if planets.size() > 0:
+		# Choose a random planet
+		var rng = RandomNumberGenerator.new()
+		rng.seed = grid.seed_value if grid else 0
+		var random_index = rng.randi() % planets.size()
+		
+		var chosen_planet = planets[random_index]
+		
+		# Set player position
+		player.global_position = chosen_planet.position
+		
+		# Store initial position
+		initial_planet_position = chosen_planet.position
+		initial_planet_cell_x = chosen_planet.grid_x
+		initial_planet_cell_y = chosen_planet.grid_y
+		
+		# Calculate cell coordinates
+		var cell_x = chosen_planet.grid_x
+		var cell_y = chosen_planet.grid_y
+		
+		print("FORCED player placement at cell: (", cell_x, ",", cell_y, ")")
+		
+		# Update grid tracking
+		if grid:
+			grid.current_player_cell_x = cell_x
+			grid.current_player_cell_y = cell_y
+		
+		# Update player cell tracking if method exists
+		if player.has_method("update_cell_position"):
+			player.update_cell_position(cell_x, cell_y)
+		else:
+			print("WARNING: Player does not have update_cell_position method")
+			# Fallback: set variables directly
+			if "previous_cell_x" in player:
+				player.previous_cell_x = cell_x
+				player.previous_cell_y = cell_y
+		
+		# Force chunk loading with multiple attempts
+		if grid:
+			print("Forcing chunk loading at: (", cell_x, ",", cell_y, ")")
+			
+			# Multiple load attempts with delays
+			grid.update_loaded_chunks(cell_x, cell_y)
+			await get_tree().process_frame
+			grid.update_loaded_chunks(cell_x, cell_y)
+			await get_tree().process_frame
+			grid.update_loaded_chunks(cell_x, cell_y)
+			
+			# Force redraw everything
+			grid.queue_redraw()
+			if planet_spawner:
+				planet_spawner.queue_redraw()
+			if asteroid_spawner:
+				asteroid_spawner.queue_redraw()
+			
+			# Print loaded cells for debugging
+			print("Loaded cells count: ", grid.loaded_cells.size())
+			print("Loaded cells: ", grid.loaded_cells.keys())
+		
+		# Ensure player is not immobilized
+		if player.has_method("set_immobilized"):
+			player.set_immobilized(false)
+		
+		# Show welcome message
+		var planet_name = generate_planet_name(chosen_planet.grid_x, chosen_planet.grid_y)
+		show_message("Welcome to planet " + planet_name + "!")
+		
+		# Manual visibility update
+		call_deferred("_on_grid_chunks_updated", grid.loaded_cells if grid else {})
+	else:
+		print("ERROR: No planets available for forced placement")
+		handle_no_planets_found()
+
+# Enhanced spawner coordination
 func _on_grid_cell_contents_changed(seed_val):
 	print("Regenerating world with seed: ", seed_val)
 	
-	# Initialize planet spawner
+	# Clear all existing cell occupancy first
+	grid.clear_cell_occupancy()
+	
+	# Initialize planet spawner first (planets take priority)
 	if planet_spawner:
-		var success = planet_spawner.initialize(grid, seed_val)
-		print("Planet spawner initialized: ", success)
+		var planet_success = planet_spawner.initialize(grid, seed_val)
+		print("Planet spawner initialized: ", planet_success)
 	
-	# Initialize asteroid spawner
+	# Initialize asteroid spawner after planets are placed
 	if asteroid_spawner:
-		var success = asteroid_spawner.initialize(grid, seed_val)
-		print("Asteroid spawner initialized: ", success)
+		var asteroid_success = asteroid_spawner.initialize(grid, seed_val)
+		print("Asteroid spawner initialized: ", asteroid_success)
 	
-	# Reset enemies after content change
+	# Reset enemies after content generation is complete
 	if enemy_spawner:
 		enemy_spawner.reset_enemies()
+		
+	# Force grid redraw
+	grid.queue_redraw()
 
 # Called when chunks are updated (visibility changes)
 func _on_grid_chunks_updated(loaded_cells):
@@ -98,7 +297,8 @@ func _on_planet_spawned(position, grid_x, grid_y):
 	grid.set_cell_content(grid_x, grid_y, grid.CellContent.PLANET)
 
 func update_seed_label():
-	seed_label.text = "Current Seed: " + str(grid.seed_value)
+	if seed_label:
+		seed_label.text = "Current Seed: " + str(grid.seed_value if grid else "Unknown")
 
 # Function to show a temporary message
 func show_message(text):
@@ -122,16 +322,21 @@ func respawn_player_at_initial_planet():
 		player.global_position = initial_planet_position
 		
 		# Force grid chunk update
-		grid.current_player_cell_x = initial_planet_cell_x
-		grid.current_player_cell_y = initial_planet_cell_y
-		grid.update_loaded_chunks(initial_planet_cell_x, initial_planet_cell_y)
-		grid.queue_redraw()
+		if grid:
+			grid.current_player_cell_x = initial_planet_cell_x
+			grid.current_player_cell_y = initial_planet_cell_y
+			grid.update_loaded_chunks(initial_planet_cell_x, initial_planet_cell_y)
+			grid.queue_redraw()
 		
 		# Generate a planet name for the respawn
 		var planet_name = generate_planet_name(initial_planet_cell_x, initial_planet_cell_y)
 		
 		# Show respawn message
 		show_message("You have been rescued and returned to planet " + planet_name + ".")
+		
+		# Ensure player is not immobilized
+		if player.has_method("set_immobilized"):
+			player.set_immobilized(false)
 	else:
 		print("ERROR: Cannot respawn player - missing initial planet position!")
 		
@@ -193,6 +398,7 @@ func _deferred_create_player():
 	# Call the placement function after a short delay
 	call_deferred("place_player_at_random_planet")
 
+# Enhanced planet placement with better error handling
 func place_player_at_random_planet():
 	# Verify player exists
 	if player == null:
@@ -200,7 +406,8 @@ func place_player_at_random_planet():
 		return
 	
 	# Force grid re-render to ensure it's updated
-	grid.queue_redraw()
+	if grid:
+		grid.queue_redraw()
 	
 	# Get all planet positions from the planet spawner
 	var planets = get_planet_positions()
@@ -208,7 +415,7 @@ func place_player_at_random_planet():
 	if planets.size() > 0:
 		# Choose a random planet using the grid's seed
 		var rng = RandomNumberGenerator.new()
-		rng.seed = grid.seed_value
+		rng.seed = grid.seed_value if grid else 0
 		var random_index = rng.randi() % planets.size()
 		
 		var chosen_planet = planets[random_index]
@@ -221,12 +428,41 @@ func place_player_at_random_planet():
 		initial_planet_cell_x = chosen_planet.grid_x
 		initial_planet_cell_y = chosen_planet.grid_y
 		
-		# Initialize the loaded chunks around the player's starting position
+		# Calculate cell coordinates from player position
 		var cell_x = int(floor(player.global_position.x / grid.cell_size.x))
 		var cell_y = int(floor(player.global_position.y / grid.cell_size.y))
-		grid.current_player_cell_x = cell_x
-		grid.current_player_cell_y = cell_y
-		grid.update_loaded_chunks(cell_x, cell_y)
+		
+		# Explicitly print the calculated cell coordinates for debugging
+		print("CALCULATED player cell coordinates: (", cell_x, ",", cell_y, ")")
+		
+		# Force update the player cell position in grid
+		if grid:
+			grid.current_player_cell_x = cell_x
+			grid.current_player_cell_y = cell_y
+		
+		# Initialize the player's cell tracking variables
+		if player.has_method("update_cell_position"):
+			player.update_cell_position(cell_x, cell_y)
+		else:
+			# Fallback: set variables directly if method doesn't exist
+			if "previous_cell_x" in player:
+				player.previous_cell_x = cell_x
+				player.previous_cell_y = cell_y
+		
+		# Force update loaded chunks and ensure it's processed
+		var chunks_updated = false
+		if grid:
+			chunks_updated = grid.update_loaded_chunks(cell_x, cell_y)
+			print("Chunks updated successfully: ", chunks_updated)
+			print("Current loaded cells: ", grid.loaded_cells.size())
+		
+		# Additional safety - force redraw all objects
+		if grid:
+			grid.queue_redraw()
+		if planet_spawner:
+			planet_spawner.queue_redraw()
+		if asteroid_spawner:
+			asteroid_spawner.queue_redraw()
 		
 		# Generate a planet name based on coordinates
 		var planet_name = generate_planet_name(chosen_planet.grid_x, chosen_planet.grid_y)
@@ -236,6 +472,18 @@ func place_player_at_random_planet():
 		
 		print("Player placed at planet " + planet_name + " position: ", chosen_planet.position)
 		print("Starting cell: (", cell_x, ",", cell_y, ")")
+		
+		# Ensure player is not immobilized
+		if player.has_method("set_immobilized"):
+			player.set_immobilized(false)
+		
+		# Manually trigger the chunks_updated signal to ensure visibility updates
+		call_deferred("_on_grid_chunks_updated", grid.loaded_cells if grid else {})
+		
+		# Add a one-frame delay and force another chunk update to be safe
+		await get_tree().process_frame
+		if grid:
+			grid.update_loaded_chunks(cell_x, cell_y)
 	else:
 		handle_no_planets_found()
 
@@ -243,22 +491,26 @@ func place_player_at_random_planet():
 func handle_no_planets_found():
 	# Fallback to grid center
 	var center = Vector2(
-		grid.grid_size.x * grid.cell_size.x / 2,
-		grid.grid_size.y * grid.cell_size.y / 2
+		grid.grid_size.x * grid.cell_size.x / 2 if grid else 512,
+		grid.grid_size.y * grid.cell_size.y / 2 if grid else 512
 	)
-	player.global_position = center
+	
+	if player:
+		player.global_position = center
 	
 	# Store the initial spawn position for respawning
 	initial_planet_position = center
-	initial_planet_cell_x = int(floor(center.x / grid.cell_size.x))
-	initial_planet_cell_y = int(floor(center.y / grid.cell_size.y))
+	initial_planet_cell_x = int(floor(center.x / (grid.cell_size.x if grid else 64)))
+	initial_planet_cell_y = int(floor(center.y / (grid.cell_size.y if grid else 64)))
 	
 	# Initialize the loaded chunks around the player's center position
-	var cell_x = int(floor(center.x / grid.cell_size.x))
-	var cell_y = int(floor(center.y / grid.cell_size.y))
-	grid.current_player_cell_x = cell_x
-	grid.current_player_cell_y = cell_y
-	grid.update_loaded_chunks(cell_x, cell_y)
+	var cell_x = initial_planet_cell_x
+	var cell_y = initial_planet_cell_y
+	
+	if grid:
+		grid.current_player_cell_x = cell_x
+		grid.current_player_cell_y = cell_y
+		grid.update_loaded_chunks(cell_x, cell_y)
 	
 	print("WARNING: No planets found. Player placed at grid center: ", center)
 	print("Starting cell: (", cell_x, ",", cell_y, ")")
@@ -267,7 +519,8 @@ func handle_no_planets_found():
 	show_message("ERROR: No planets found. Placed at grid center.")
 	
 	# Emergency: Trigger grid regeneration in case something went wrong
-	grid.regenerate()
+	if grid:
+		grid.regenerate()
 	await get_tree().process_frame
 	await get_tree().process_frame
 	
@@ -279,10 +532,12 @@ func handle_no_planets_found():
 # Handle emergency planet placement
 func emergency_planet_placement(planets):
 	var rng = RandomNumberGenerator.new()
-	rng.seed = grid.seed_value
+	rng.seed = grid.seed_value if grid else 0
 	var random_index = rng.randi() % planets.size()
 	var fallback_position = planets[random_index].position
-	player.global_position = fallback_position
+	
+	if player:
+		player.global_position = fallback_position
 	
 	# Update initial position for respawning
 	initial_planet_position = fallback_position
@@ -290,11 +545,13 @@ func emergency_planet_placement(planets):
 	initial_planet_cell_y = planets[random_index].grid_y
 	
 	# Update loaded chunks for the new position
-	var cell_x = int(floor(fallback_position.x / grid.cell_size.x))
-	var cell_y = int(floor(fallback_position.y / grid.cell_size.y))
-	grid.current_player_cell_x = cell_x
-	grid.current_player_cell_y = cell_y
-	grid.update_loaded_chunks(cell_x, cell_y)
+	var cell_x = initial_planet_cell_x
+	var cell_y = initial_planet_cell_y
+	
+	if grid:
+		grid.current_player_cell_x = cell_x
+		grid.current_player_cell_y = cell_y
+		grid.update_loaded_chunks(cell_x, cell_y)
 	
 	# Generate a planet name for the fallback position
 	var planet_name = generate_planet_name(planets[random_index].grid_x, planets[random_index].grid_y)
@@ -304,6 +561,10 @@ func emergency_planet_placement(planets):
 	
 	print("Player repositioned at planet " + planet_name + " after emergency regeneration")
 	print("Updated starting cell: (", cell_x, ",", cell_y, ")")
+	
+	# Ensure player is not immobilized
+	if player and player.has_method("set_immobilized"):
+		player.set_immobilized(false)
 
 # Function to generate a planet name based on coordinates
 func generate_planet_name(x, y):
@@ -313,7 +574,7 @@ func generate_planet_name(x, y):
 	
 	# Create a deterministic name based on coordinates and seed
 	var rng = RandomNumberGenerator.new()
-	rng.seed = grid.seed_value + (x * 100) + y
+	rng.seed = (grid.seed_value if grid else 0) + (x * 100) + y
 	
 	var planet_name = ""
 
