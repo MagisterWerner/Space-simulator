@@ -3,11 +3,14 @@ extends Node2D
 @onready var grid = $Grid
 @onready var seed_label = $CanvasLayer/SeedLabel
 @onready var message_label = $CanvasLayer/MessageLabel
+<<<<<<< HEAD
 
 # References to spawners
 @onready var planet_spawner = $PlanetSpawner
 @onready var asteroid_spawner = $AsteroidSpawner
 @onready var enemy_spawner = $EnemySpawner
+=======
+>>>>>>> parent of 3cca589 (Huge enemy update)
 
 # Use a direct node reference instead of preloading
 var player = null
@@ -97,10 +100,14 @@ func _process(delta):
 			update_seed_label()
 			
 			# Use existing player, just update its position
+<<<<<<< HEAD
 			if player:
 				call_deferred("force_place_player", true)
 			else:
 				call_deferred("create_player")
+=======
+			create_player()
+>>>>>>> parent of 3cca589 (Huge enemy update)
 	
 	# Handle message timer for auto-hiding
 	if message_timer > 0:
