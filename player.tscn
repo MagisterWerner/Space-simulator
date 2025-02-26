@@ -1,3 +1,20 @@
-[gd_scene format=3 uid="uid://bqf1ewcvnbx7q"]
+[gd_scene load_steps=6 format=3 uid="uid://bqf1ewcvnbx7q"]
+
+[ext_resource type="Script" path="res://player.gd" id="1_pv8nj"]
+[ext_resource type="Script" path="res://player_state_machine.gd" id="2_lkmbh"]
+[ext_resource type="Script" path="res://player_state_normal.gd" id="3_7s3qe"]
+[ext_resource type="Script" path="res://player_state_immobilized.gd" id="4_b30eq"]
 
 [node name="Player" type="Node2D"]
+script = ExtResource("1_pv8nj")
+
+[node name="Camera2D" type="Camera2D" parent="."]
+
+[node name="StateMachine" type="Node" parent="."]
+script = ExtResource("2_lkmbh")
+
+[node name="Normal" type="Node" parent="StateMachine"]
+script = ExtResource("3_7s3qe")
+
+[node name="Immobilized" type="Node" parent="StateMachine"]
+script = ExtResource("4_b30eq")

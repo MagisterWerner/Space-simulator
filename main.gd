@@ -150,7 +150,7 @@ func _deferred_create_player():
 	
 	# Assign script to the player if it doesn't have one already
 	if !player.get_script():
-		var player_script = load("res://player.gd")
+		var player_script = load("res://player_refactored.gd")
 		player.set_script(player_script)
 	
 	# Add to scene tree
@@ -278,24 +278,24 @@ func generate_planet_name(x, y):
 	var rng = RandomNumberGenerator.new()
 	rng.seed = grid.seed_value + (x * 100) + y
 	
-	var name = ""
-	
+	var planet_name = ""
+
 	# First syllable
-	name += consonants[rng.randi() % consonants.size()].to_upper()
-	name += vowels[rng.randi() % vowels.size()]
-	
+	planet_name += consonants[rng.randi() % consonants.size()].to_upper()
+	planet_name += vowels[rng.randi() % vowels.size()]
+
 	# Second syllable
-	name += consonants[rng.randi() % consonants.size()]
-	name += vowels[rng.randi() % vowels.size()]
-	
+	planet_name += consonants[rng.randi() % consonants.size()]
+	planet_name += vowels[rng.randi() % vowels.size()]
+
 	# Add a number or hyphen followed by additional characters based on coordinates
 	if rng.randi() % 2 == 0:
 		# Add hyphen and letters
-		name += "-"
-		name += consonants[rng.randi() % consonants.size()].to_upper()
-		name += vowels[rng.randi() % vowels.size()]
+		planet_name += "-"
+		planet_name += consonants[rng.randi() % consonants.size()].to_upper()
+		planet_name += vowels[rng.randi() % vowels.size()]
 	else:
 		# Add numbers
-		name += " " + str((x + y) % 9 + 1)
-	
-	return name
+		planet_name += " " + str((x + y) % 9 + 1)
+
+	return planet_name

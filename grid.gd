@@ -269,7 +269,6 @@ func _draw():
 		
 		# Draw cell borders
 		var rect_pos = Vector2(x * cell_size.x, y * cell_size.y)
-		var rect_size = cell_size
 		
 		# Use a different color for boundary cells
 		var line_color = grid_color
