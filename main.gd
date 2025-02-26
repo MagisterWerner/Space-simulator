@@ -1,23 +1,24 @@
 extends Node2D
 
+# Node references
 @onready var grid = $Grid
 @onready var seed_label = $CanvasLayer/SeedLabel
 @onready var message_label = $CanvasLayer/MessageLabel
-@onready var enemy_spawner = $EnemySpawner  # Reference to enemy spawner
-@onready var planet_spawner = $PlanetSpawner  # Reference to planet spawner
-@onready var asteroid_spawner = $AsteroidSpawner  # Reference to asteroid spawner
+@onready var enemy_spawner = $EnemySpawner
+@onready var planet_spawner = $PlanetSpawner
+@onready var asteroid_spawner = $AsteroidSpawner
 
-# Message display duration
+# Message display constants
 const MESSAGE_DURATION = 3.0
 var message_timer = 0.0
 
-# Planet tracking
+# Planet and player tracking
 var initial_planet_position = null
 var initial_planet_cell_x = -1
 var initial_planet_cell_y = -1
-
-# Use a direct node reference instead of preloading
 var player = null
+
+# Key state tracking
 var previous_key_states = {}
 
 func _ready():
@@ -35,11 +36,11 @@ func _ready():
 	for i in range(10):
 		previous_key_states[KEY_0 + i] = false
 
-# Coordinate the initialization sequence
+# Coordinate the world initialization sequence
 func initialize_world():
 	print("=== Starting coordinated world initialization ===")
 	
-	# Step 1: Make sure grid is initialized first
+	# Ensure grid is initialized
 	if grid:
 		print("Step 1: Ensuring grid is initialized")
 		grid.regenerate()
@@ -48,7 +49,7 @@ func initialize_world():
 		print("ERROR: Grid not found during initialization!")
 		return
 	
-	# Step 2: Generate planets
+	# Generate planets
 	if planet_spawner:
 		print("Step 2: Initializing planets")
 		planet_spawner.generate_planets()
@@ -57,7 +58,7 @@ func initialize_world():
 		print("ERROR: Planet spawner not found during initialization!")
 		return
 	
-	# Step 3: Generate asteroids (only in empty cells)
+	# Generate asteroids
 	if asteroid_spawner:
 		print("Step 3: Initializing asteroids")
 		asteroid_spawner.generate_asteroids()
@@ -66,12 +67,12 @@ func initialize_world():
 		print("ERROR: Asteroid spawner not found during initialization!")
 		return
 	
-	# Step 4: Create or place player
+	# Create or place player
 	print("Step 4: Creating or placing player")
 	create_player()
 	await get_tree().process_frame
 	
-	# Step 5: Spawn enemies (after planet and asteroid spawning)
+	# Spawn enemies
 	if enemy_spawner:
 		print("Step 5: Spawning enemies")
 		enemy_spawner.spawn_enemies()
@@ -81,12 +82,22 @@ func initialize_world():
 	print("=== World initialization complete ===")
 
 func _process(delta):
-	# Check for numeric key presses (0-9) to set specific seeds
+	# Handle seed changing via numeric keys
+	handle_seed_key_input()
+	
+	# Handle random seed generation via Enter key
+	handle_random_seed_input()
+	
+	# Manage message display timer
+	manage_message_timer(delta)
+
+# Handle numeric key seed inputs
+func handle_seed_key_input():
 	for i in range(10): # 0-9
 		var key_code = KEY_0 + i
 		var key_pressed = Input.is_physical_key_pressed(key_code)
 		
-		# Check if key was just pressed (pressed now but not in previous frame)
+		# Check if key was just pressed
 		if key_pressed and not previous_key_states[key_code]:
 			if grid:
 				print("Setting seed to: ", i)
@@ -98,8 +109,9 @@ func _process(delta):
 		
 		# Update previous key state
 		previous_key_states[key_code] = key_pressed
-	
-	# Check for Enter/Return key to generate random seed
+
+# Handle random seed generation
+func handle_random_seed_input():
 	if Input.is_action_just_pressed("ui_accept"):
 		# Generate a new random seed
 		var rng = RandomNumberGenerator.new()
@@ -111,23 +123,25 @@ func _process(delta):
 			grid.set_seed(new_seed)
 			update_seed_label()
 			
-			# Use existing player, just update its position
+			# Update player position
 			create_player()
 			
-			# Reset enemies after seed change
+			# Reset enemies
 			if enemy_spawner:
 				enemy_spawner.reset_enemies()
-	
-	# Handle message timer for auto-hiding
+
+# Manage message display timer
+func manage_message_timer(delta):
 	if message_timer > 0:
 		message_timer -= delta
 		if message_timer <= 0:
 			hide_message()
 
+# Update seed label display
 func update_seed_label():
 	seed_label.text = "Current Seed: " + str(grid.seed_value)
 
-# Function to show a temporary message
+# Show a temporary message
 func show_message(text):
 	if message_label:
 		message_label.text = text
@@ -135,131 +149,86 @@ func show_message(text):
 		message_timer = MESSAGE_DURATION
 		print(text)  # Also output to console
 
-# Function to hide the message
+# Hide current message
 func hide_message():
 	if message_label:
 		message_label.visible = false
 
-# Function to respawn the player at the initial planet
+# Respawn player at initial planet
 func respawn_player_at_initial_planet():
 	if player and initial_planet_position:
 		print("Respawning player at initial planet: ", initial_planet_position)
 		
-		# Ensure player is not immobilized
+		# Reset player state completely
 		if player.has_method("set_immobilized"):
 			player.set_immobilized(false)
-		else:
-			player.is_immobilized = false
 			player.movement_speed = 300
+			player.is_immobilized = false
+			player.respawn_timer = 0.0
+			player.was_in_boundary_cell = false
+			player.was_outside_grid = false
 		
-		# Reset player's position
+		# Reset player position
 		player.global_position = initial_planet_position
+		player.last_valid_position = initial_planet_position
 		
-		# Force grid chunk update
+		# Update grid chunks
 		grid.current_player_cell_x = initial_planet_cell_x
 		grid.current_player_cell_y = initial_planet_cell_y
 		grid.update_loaded_chunks(initial_planet_cell_x, initial_planet_cell_y)
 		grid.queue_redraw()
 		
-		# Reset all related grid state
+		# Reset grid state
 		grid.player_immobilized = false
 		grid.was_outside_grid = false
 		grid.was_in_boundary_cell = false
+		grid.respawn_timer = 0.0
 		
-		# Get planet name from spawner
+		# Get and display planet name
 		var planet_name = planet_spawner.get_planet_name(initial_planet_cell_x, initial_planet_cell_y)
-		
-		# Show respawn message
 		show_message("You have been rescued and returned to planet " + planet_name + ".")
 	else:
 		print("ERROR: Cannot respawn player - missing initial planet position!")
-		
-		# Emergency fallback - just place at a new random planet
 		place_player_at_random_planet()
 
-# This function has been removed as MessageLabel should be fixed on screen
-
-func get_planet_positions():
-	if planet_spawner:
-		return planet_spawner.get_all_planet_positions()
-	else:
-		print("ERROR: Planet spawner not found!")
-		return []
-
-func create_player():
-	# If there's already a player, just update its position rather than creating a new one
-	if has_node("Player"):
-		player = get_node("Player")
-		print("Using existing player instance")
-		call_deferred("place_player_at_random_planet")
-		return
-	
-	# Only create a new player if one doesn't exist
-	call_deferred("_deferred_create_player")
-
-# Deferred player creation to ensure proper scene tree updates
-func _deferred_create_player():
-	var player_scene = load("res://player.tscn")
-	player = player_scene.instantiate()
-	
-	# Assign script to the player if it doesn't have one already
-	if !player.get_script():
-		var player_script = load("res://player_refactored.gd")
-		player.set_script(player_script)
-	
-	# Add to scene tree
-	add_child(player)
-	
-	# Initialize at a safe default position first
-	player.global_position = Vector2(100, 100)
-	
-	# Make player directly available in the scene tree
-	player.name = "Player"
-	
-	print("Player created at initial position: ", player.global_position)
-	
-	# Call the placement function after a short delay
-	call_deferred("place_player_at_random_planet")
-
+# Place player at a random planet
 func place_player_at_random_planet():
 	# Verify player exists
 	if player == null:
 		print("ERROR: Player is null!")
 		return
 	
-	# Force grid re-render to ensure it's updated
+	# Force grid re-render
 	grid.queue_redraw()
 	
-	# Get all planet positions from the planet spawner
+	# Get planet positions
 	var planet_positions = planet_spawner.get_all_planet_positions()
 	
 	if planet_positions.size() > 0:
-		# Choose a random planet using the grid's seed
+		# Choose a random planet using grid seed
 		var rng = RandomNumberGenerator.new()
 		rng.seed = grid.seed_value
 		var random_index = rng.randi() % planet_positions.size()
 		
 		var chosen_planet = planet_positions[random_index]
 		
-		# Set player position directly
+		# Set player position
 		player.global_position = chosen_planet.position
 		
-		# Store the initial spawn position for respawning
+		# Store initial spawn position
 		initial_planet_position = chosen_planet.position
 		initial_planet_cell_x = chosen_planet.grid_x
 		initial_planet_cell_y = chosen_planet.grid_y
 		
-		# Initialize the loaded chunks around the player's starting position
+		# Initialize loaded chunks
 		var cell_x = int(floor(player.global_position.x / grid.cell_size.x))
 		var cell_y = int(floor(player.global_position.y / grid.cell_size.y))
 		grid.current_player_cell_x = cell_x
 		grid.current_player_cell_y = cell_y
 		grid.update_loaded_chunks(cell_x, cell_y)
 		
-		# Get planet name from the planet spawner
+		# Get and display planet name
 		var planet_name = planet_spawner.get_planet_name(chosen_planet.grid_x, chosen_planet.grid_y)
-		
-		# Show welcome message
 		show_message("Welcome to planet " + planet_name + "!")
 		
 		print("Player placed at planet " + planet_name + " position: ", chosen_planet.position)
@@ -272,12 +241,12 @@ func place_player_at_random_planet():
 		)
 		player.global_position = center
 		
-		# Store the initial spawn position for respawning
+		# Store initial spawn position
 		initial_planet_position = center
 		initial_planet_cell_x = int(floor(center.x / grid.cell_size.x))
 		initial_planet_cell_y = int(floor(center.y / grid.cell_size.y))
 		
-		# Initialize the loaded chunks around the player's center position
+		# Initialize loaded chunks
 		var cell_x = int(floor(center.x / grid.cell_size.x))
 		var cell_y = int(floor(center.y / grid.cell_size.y))
 		grid.current_player_cell_x = cell_x
@@ -286,3 +255,43 @@ func place_player_at_random_planet():
 		
 		print("WARNING: No planets found. Player placed at grid center: ", center)
 		print("Starting cell: (", cell_x, ",", cell_y, ")")
+
+# Create or update player
+func create_player():
+	# Use existing player or create new one
+	if has_node("Player"):
+		player = get_node("Player")
+		print("Using existing player instance")
+		call_deferred("place_player_at_random_planet")
+		return
+	
+	# Create new player instance
+	call_deferred("_deferred_create_player")
+
+# Deferred player creation
+func _deferred_create_player():
+	var player_scene = load("res://player.tscn")
+	player = player_scene.instantiate()
+	
+	# Assign script if needed
+	if !player.get_script():
+		var player_script = load("res://player.gd")
+		player.set_script(player_script)
+	
+	# Add to scene and position
+	add_child(player)
+	player.global_position = Vector2(100, 100)
+	player.name = "Player"
+	
+	print("Player created at initial position: ", player.global_position)
+	
+	# Place player
+	call_deferred("place_player_at_random_planet")
+
+# Get planet positions
+func get_planet_positions():
+	if planet_spawner:
+		return planet_spawner.get_all_planet_positions()
+	else:
+		print("ERROR: Planet spawner not found!")
+		return []

@@ -49,41 +49,37 @@ func _process(delta):
 	queue_redraw()
 
 func handle_movement(delta):
-	# Skip movement if player is immobilized
+	# Prevent movement if immobilized
 	if is_immobilized:
 		respawn_timer -= delta
 		if respawn_timer <= 0:
-			# Respawn at initial planet
 			var main = get_node_or_null("/root/Main")
 			if main and main.has_method("respawn_player_at_initial_planet"):
+				is_immobilized = false
+				movement_speed = 300
 				main.respawn_player_at_initial_planet()
-		else:
-			# Only return if still waiting for respawn
-			return
+		return
 	
-	var direction = Vector2.ZERO
+	# Immediate direction calculation
+	var direction = Vector2(
+		Input.get_axis("ui_left", "ui_right"),
+		Input.get_axis("ui_up", "ui_down")
+	)
 	
-	if Input.is_action_pressed("ui_right"):
-		direction.x += 1
-	if Input.is_action_pressed("ui_left"):
-		direction.x -= 1
-	if Input.is_action_pressed("ui_down"):
-		direction.y += 1
-	if Input.is_action_pressed("ui_up"):
-		direction.y -= 1
-	
+	# Normalize and move in a single frame
 	if direction.length() > 0:
 		direction = direction.normalized()
+		var movement = direction * movement_speed * delta
 		
-		# Store position before moving
+		# Store current position before moving
 		var old_position = global_position
 		
-		# Move the player
-		global_position += direction * movement_speed * delta
+		# Immediate position update
+		global_position += movement
 		
-		# Check for grid boundaries immediately after moving
+		# Strict boundary check after movement
 		if not check_boundaries():
-			# If we can't move here, revert to old position
+			# Revert to previous position if outside grid
 			global_position = old_position
 
 func check_grid_position():
@@ -107,54 +103,77 @@ func check_boundaries():
 	if not grid:
 		return true
 	
-	# Get current cell coordinates
+	# Prevent multiple immobilization attempts
+	if is_immobilized:
+		return false
+	
+	# Precise cell coordinate calculation
 	var cell_x = int(floor(global_position.x / grid.cell_size.x))
 	var cell_y = int(floor(global_position.y / grid.cell_size.y))
 	
-	# Check if player is outside the grid
-	if not grid.is_valid_position(cell_x, cell_y):
-		# Only trigger immobilization if we weren't outside before
-		if not was_outside_grid:
-			print("CRITICAL: Player left the grid at position: ", global_position, 
-				" Cell: (", cell_x, ",", cell_y, ")", 
-				" Grid size: ", grid.grid_size)
-			
-			# Show message
-			var main = get_tree().current_scene
-			if main and main.has_method("show_message"):
-				main.show_message("You abandoned all logic and were lost in space!")
-			
-			# Immobilize player
-			is_immobilized = true
-			respawn_timer = 5.0
-			movement_speed = 0
+	# Precise grid size as integers
+	var grid_width = int(grid.grid_size.x)
+	var grid_height = int(grid.grid_size.y)
+	
+	# Detailed boundary checks
+	var is_left_exit = cell_x < 0
+	var is_right_exit = cell_x >= grid_width
+	var is_top_exit = cell_y < 0
+	var is_bottom_exit = cell_y >= grid_height
+	
+	# Combine all exit conditions
+	var is_outside_grid = is_left_exit or is_right_exit or is_top_exit or is_bottom_exit
+	
+	# If outside grid, always immobilize
+	if is_outside_grid:
+		# Detailed exit direction logging
+		var exit_direction = ""
+		if is_left_exit:
+			exit_direction = "LEFT"
+		elif is_right_exit:
+			exit_direction = "RIGHT"
+		elif is_top_exit:
+			exit_direction = "TOP"
+		elif is_bottom_exit:
+			exit_direction = "BOTTOM"
 		
-		# Always move back to last valid position
-		global_position = last_valid_position
-		was_outside_grid = true
-		return false
-	
-	# If we're in a valid position, store it
-	if not is_immobilized:
-		last_valid_position = global_position
-	
-	# Reset outside grid tracker if we're back inside
-	if was_outside_grid:
-		was_outside_grid = false
-	
-	# Check if player is in a boundary cell
-	var is_in_boundary = grid.is_boundary_cell(cell_x, cell_y)
-	
-	# Show warning message only when first entering a boundary cell
-	if is_in_boundary and not was_in_boundary_cell:
+		print("CRITICAL: Player Attempting Grid Exit")
+		print("  Exit Direction: ", exit_direction)
+		print("  Current Position: ", global_position)
+		print("  Cell Coordinates: (", cell_x, ", ", cell_y, ")")
+		
+		# Show immobilization message
 		var main = get_tree().current_scene
 		if main and main.has_method("show_message"):
-			main.show_message("WARNING: You are leaving known space!")
-		was_in_boundary_cell = true
-	elif not is_in_boundary:
-		was_in_boundary_cell = false
+			main.show_message("You abandoned all logic and were lost in space!")
+		
+		# Ensure immobilization works for ALL exits
+		set_immobilized(true)
+		respawn_timer = 5.0  # Full 5-second wait
+		
+		# Always revert to last valid position
+		global_position = last_valid_position
+		
+		return false
+	
+	# Position tracking only when not immobilized
+	last_valid_position = global_position
 	
 	return true
+
+# Method to completely immobilize the player
+func set_immobilized(value):
+	# Ensure atomic state change
+	if value and not is_immobilized:
+		is_immobilized = true
+		movement_speed = 0
+		respawn_timer = 5.0
+		print("Player immobilized with full 5-second timer")
+	elif not value:
+		is_immobilized = false
+		movement_speed = 300
+		respawn_timer = 0.0
+		print("Player movement restored")
 
 func _draw():
 	# Draw the player as an orange square
@@ -163,21 +182,6 @@ func _draw():
 	
 	# Add a white border
 	draw_rect(rect, Color.WHITE, false, 2.0)
-
-# Method to completely immobilize the player
-func set_immobilized(value):
-	is_immobilized = value
-	
-	if value:
-		movement_speed = 0
-	else:
-		movement_speed = 300
-		# Reset all related values to ensure player is fully mobile
-		respawn_timer = 0.0
-		was_in_boundary_cell = false
-		was_outside_grid = false
-	
-	print("Player immobilized state set to: ", value)
 
 # Method to update cell position (called from main.gd)
 func update_cell_position(cell_x, cell_y):
