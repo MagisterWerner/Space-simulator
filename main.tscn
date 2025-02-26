@@ -1,9 +1,11 @@
-[gd_scene load_steps=6 format=3 uid="uid://dl7etmw31qnof"]
+[gd_scene load_steps=8 format=3 uid="uid://dl7etmw31qnof"]
 
 [ext_resource type="Script" path="res://main.gd" id="1_brldc"]
 [ext_resource type="Script" path="res://grid.gd" id="2_lvljp"]
 [ext_resource type="PackedScene" uid="uid://bqf1ewcvnbx7q" path="res://player.tscn" id="3_4h0bx"]
 [ext_resource type="Script" path="res://enemy_spawner.gd" id="4_bfxvw"]
+[ext_resource type="Script" path="res://planet_spawner.gd" id="5_oha7o"]
+[ext_resource type="Script" path="res://asteroid_spawner.gd" id="6_lenuj"]
 
 [sub_resource type="LabelSettings" id="LabelSettings_tjo1m"]
 font_size = 24
@@ -19,8 +21,7 @@ script = ExtResource("1_brldc")
 
 [node name="Grid" type="Node2D" parent="."]
 script = ExtResource("2_lvljp")
-cell_size = Vector2(128, 128)
-seed_value = 52
+cell_size = Vector2(512, 512)
 
 [node name="CanvasLayer" type="CanvasLayer" parent="."]
 
@@ -50,3 +51,9 @@ vertical_alignment = 1
 
 [node name="EnemySpawner" type="Node" parent="."]
 script = ExtResource("4_bfxvw")
+
+[node name="PlanetSpawner" type="Node" parent="."]
+script = ExtResource("5_oha7o")
+
+[node name="AsteroidSpawner" type="Node" parent="."]
+script = ExtResource("6_lenuj")

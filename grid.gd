@@ -9,6 +9,9 @@ extends Node2D
 # Chunk load radius is fixed at 1 to ensure only 9 cells maximum
 var chunk_load_radius: int = 1  # This is no longer exported to prevent changing it
 
+# Add signal for seed changes
+signal seed_changed(new_seed)
+
 # Cell content types
 enum CellContent { EMPTY, PLANET, ASTEROID }
 
@@ -47,20 +50,28 @@ func _ready():
 func _process(delta):
 	var player = get_node_or_null("/root/Main/Player")
 	if player:
-		# Fix for left/up movement: Use floor division to handle negative coordinates correctly
-		var cell_x = int(floor(player.global_position.x / cell_size.x))
-		var cell_y = int(floor(player.global_position.y / cell_size.y))
+		# Calculate player cell coordinates consistently for all directions
+		var player_pos = player.global_position
+		var cell_x = int(floor(player_pos.x / cell_size.x))
+		var cell_y = int(floor(player_pos.y / cell_size.y))
 		
-		# Check if player is outside the grid
-		var outside_grid = not is_valid_position(cell_x, cell_y)
+		# Get grid size as integers
+		var grid_x = int(grid_size.x)
+		var grid_y = int(grid_size.y)
 		
-		# Store the last valid position when player is inside the grid
+		# Explicitly check all boundaries
+		var outside_grid = cell_x < 0 or cell_x > grid_x - 1 or cell_y < 0 or cell_y > grid_y - 1
+		
+		# Debug - track player position and cell
+		# print("Player at pos: ", player_pos, " Cell: (", cell_x, ", ", cell_y, ") Outside: ", outside_grid)
+		
+		# Store the last valid position when player is inside grid bounds
 		if not outside_grid and not player_immobilized:
 			last_valid_position = player.global_position
 		
 		# Handle player leaving the grid entirely
 		if outside_grid:
-			# Hard stop: don't allow player to move beyond the boundary
+			# Hard stop - force player back to last valid position
 			player.global_position = last_valid_position
 			
 			if not was_outside_grid:
@@ -68,20 +79,19 @@ func _process(delta):
 				if main.has_method("show_message"):
 					main.show_message("You abandoned all logic and were lost in space!")
 				
-				print("CRITICAL: Player left the grid entirely!")
+				print("CRITICAL: Player left the grid at position: ", player_pos, " Cell: (", cell_x, ",", cell_y, ")")
 				player_immobilized = true
 				respawn_timer = 5.0  # 5 seconds until respawn
 				
-				# Find the player's script and disable movement
+				# Disable player movement
 				if player.has_method("set_immobilized"):
 					player.set_immobilized(true)
 				else:
-					# Add to player GDScript
 					player.movement_speed = 0
 		
 		# Handle respawn timer
 		if player_immobilized:
-			# Additional safety check - ensure player cannot move
+			# Force player to stay at last valid position
 			if player.global_position != last_valid_position:
 				player.global_position = last_valid_position
 				
@@ -94,7 +104,6 @@ func _process(delta):
 				if player.has_method("set_immobilized"):
 					player.set_immobilized(false)
 				else:
-					# Reset player speed
 					player.movement_speed = 300
 				
 				# Respawn at initial planet
@@ -119,10 +128,12 @@ func _process(delta):
 		
 		# Show warning message only when first entering a boundary cell
 		if is_in_boundary and not was_in_boundary_cell:
-			# Only show warning message from one place (removed duplicate message)
 			var main = get_tree().current_scene
 			if main.has_method("show_message"):
 				main.show_message("WARNING: You are leaving known space!")
+		
+		# Update boundary tracking
+		was_in_boundary_cell = is_in_boundary
 
 	# Force an immediate visual update
 	queue_redraw()
@@ -215,7 +226,7 @@ func _draw():
 			
 			# Draw text with outline via multiple offset strings
 			var outline_color = Color.BLACK
-			var outline_width = 2
+			var outline_width = 1
 			
 			for dx in range(-outline_width, outline_width + 1):
 				for dy in range(-outline_width, outline_width + 1):
@@ -341,8 +352,10 @@ func set_seed(new_seed):
 	print("Setting new seed: ", new_seed)
 	
 	# Regenerate the grid with new seed
-	# (Player will be handled by main.gd)
 	regenerate()
+	
+	# Notify other systems that the seed has changed
+	emit_signal("seed_changed", new_seed)
 
 # Initialize the cell contents based on the seed
 func generate_cell_contents():
@@ -371,77 +384,10 @@ func generate_cell_contents():
 			planet_sizes[y].append(0.0)
 			planet_colors[y].append(Color.WHITE)
 	
-	# Create a set to track reserved cells (cells that cannot have planets)
-	var reserved_cells = {}
-	
-	# Generate planets (about 10% of non-boundary cells)
-	var non_boundary_count = (grid_size.x - 2) * (grid_size.y - 2)
-	var planet_count = int(non_boundary_count * 0.1)
-	var actual_planet_count = 0
-	
-	for i in range(planet_count * 3):  # Try more times to ensure we get enough planets
-		# Choose a random non-boundary cell
-		var x = rng.randi_range(1, grid_size.x - 2)
-		var y = rng.randi_range(1, grid_size.y - 2)
-		
-		# Skip if this cell or adjacent cells are reserved
-		if reserved_cells.has(Vector2i(x, y)):
-			continue
-		
-		# Set as planet
-		cell_contents[y][x] = CellContent.PLANET
-		actual_planet_count += 1
-		
-		# Generate random size (0.2 to 0.4 of cell size)
-		planet_sizes[y][x] = rng.randf_range(0.25, 0.4)
-		
-		# Choose a random color from the palette
-		var color_index = rng.randi() % planet_color_palette.size()
-		planet_colors[y][x] = planet_color_palette[color_index]
-		
-		# Reserve this cell and all cells within 2 cells distance (including diagonals)
-		for dy in range(-2, 3):  # -2, -1, 0, 1, 2
-			for dx in range(-2, 3):  # -2, -1, 0, 1, 2
-				var nx = x + dx
-				var ny = y + dy
-				
-				# Only reserve valid positions
-				if is_valid_position(nx, ny):
-					reserved_cells[Vector2i(nx, ny)] = true
-		
-		# Stop if we've placed enough planets
-		if actual_planet_count >= planet_count:
-			break
-	
-	# Generate asteroids (about 15% of non-boundary cells)
-	var asteroid_count = int(non_boundary_count * 0.15)
-	var actual_asteroid_count = 0
-	
-	for i in range(asteroid_count * 2):  # Try more times to ensure we get enough asteroids
-		# Choose a random non-boundary cell
-		var x = rng.randi_range(1, grid_size.x - 2)
-		var y = rng.randi_range(1, grid_size.y - 2)
-		
-		# Skip if already occupied
-		if cell_contents[y][x] != CellContent.EMPTY:
-			continue
-		
-		# Set as asteroid field
-		cell_contents[y][x] = CellContent.ASTEROID
-		actual_asteroid_count += 1
-		
-		# Generate random number of asteroids (1 to 5)
-		asteroid_counts[y][x] = rng.randi_range(1, 5)
-		
-		# Stop if we've placed enough asteroids
-		if actual_asteroid_count >= asteroid_count:
-			break
-	
 	# Initialize loaded cells dictionary
 	loaded_cells = {}
 	
-	print("Grid generated: ", grid_size.x, "x", grid_size.y, " cells")
-	print("Planets: ", actual_planet_count, " - Asteroids: ", actual_asteroid_count)
+	print("Grid initialized: ", grid_size.x, "x", grid_size.y, " cells")
 	
 	# Ensure the grid is visually updated
 	queue_redraw()
