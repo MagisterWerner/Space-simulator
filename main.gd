@@ -3,6 +3,7 @@ extends Node2D
 @onready var grid = $Grid
 @onready var seed_label = $CanvasLayer/SeedLabel
 @onready var message_label = $CanvasLayer/MessageLabel
+@onready var enemy_spawner = $EnemySpawner  # New reference to enemy spawner
 
 # Use a direct node reference instead of preloading
 var player = null
@@ -46,6 +47,10 @@ func _process(delta):
 			
 			# Use existing player, just update its position
 			create_player()
+			
+			# Reset enemies after seed change
+			if enemy_spawner:
+				enemy_spawner.reset_enemies()
 	
 	# Handle message timer for auto-hiding
 	if message_timer > 0:

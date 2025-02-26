@@ -119,7 +119,7 @@ func _process(delta):
 		
 		# Show warning message only when first entering a boundary cell
 		if is_in_boundary and not was_in_boundary_cell:
-			print("WARNING: You are leaving known space!")
+			# Only show warning message from one place (removed duplicate message)
 			var main = get_tree().current_scene
 			if main.has_method("show_message"):
 				main.show_message("WARNING: You are leaving known space!")
@@ -259,7 +259,29 @@ func update_loaded_chunks(center_x, center_y):
 	# Force an immediate visual update
 	queue_redraw()
 	
+	# Update enemy visibility based on newly loaded chunks
+	update_enemy_visibility()
+	
 	print("Loaded cells updated. Center: (", center_x, ",", center_y, ") - Total loaded: ", loaded_cells.size())
+
+# Function to update enemy visibility based on loaded chunks
+func update_enemy_visibility():
+	# Get a reference to the enemy spawner
+	var enemy_spawner = get_node_or_null("/root/Main/EnemySpawner")
+	if not enemy_spawner:
+		return
+		
+	# Update visibility for each enemy based on whether its cell is loaded
+	for enemy in enemy_spawner.spawned_enemies:
+		if is_instance_valid(enemy):
+			var enemy_cell_x = int(floor(enemy.global_position.x / cell_size.x))
+			var enemy_cell_y = int(floor(enemy.global_position.y / cell_size.y))
+			
+			# Check if the enemy's cell is currently loaded
+			var is_cell_loaded = loaded_cells.has(Vector2(enemy_cell_x, enemy_cell_y))
+			
+			# Set the enemy's active state
+			enemy.update_active_state(is_cell_loaded)
 
 func _draw():
 	# Only draw grid lines for the loaded chunks
