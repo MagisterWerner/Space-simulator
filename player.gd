@@ -4,15 +4,12 @@ extends Node2D
 @export var player_size = Vector2(32, 32)
 @export var player_color = Color(1.0, 0.5, 0.0, 1.0)  # Orange
 
-# Reference to the state machine
-@onready var state_machine = $StateMachine
-
 # Track previous position for cell change detection
 var previous_cell_x = -1
 var previous_cell_y = -1
 
-# Boundary detection variables (initially disabled)
-var is_immobilized = false  # Start as not immobilized
+# Boundary detection variables
+var is_immobilized = false
 var respawn_timer = 0.0
 var was_in_boundary_cell = false
 var was_outside_grid = false
@@ -40,40 +37,53 @@ func _ready():
 		
 		# Initialize last valid position
 		last_valid_position = global_position
-	
-	# Ensure the player starts in the normal state
-	if state_machine and state_machine.has_method("change_state"):
-		state_machine.change_state("Normal")
-		print("Player state initialized to Normal")
 
 func _process(delta):
-	# When not using the state machine, handle movement directly here
-	if not state_machine:
-		handle_movement(delta)
+	# Handle player movement
+	handle_movement(delta)
 	
-	# Check for grid cell changes regardless of state
+	# Check for grid cell changes
 	check_grid_position()
 	
-	# Handle boundary detection separately from movement
-	check_boundaries(delta)
+	# Keep the player visible by forcing a redraw
+	queue_redraw()
 
 func handle_movement(delta):
-	# This is a fallback if state machine doesn't work
+	# Skip movement if player is immobilized
+	if is_immobilized:
+		respawn_timer -= delta
+		if respawn_timer <= 0:
+			# Reset immobilized state
+			is_immobilized = false
+			
+			# Respawn at initial planet
+			var main = get_node_or_null("/root/Main")
+			if main and main.has_method("respawn_player_at_initial_planet"):
+				main.respawn_player_at_initial_planet()
+		return
+	
 	var direction = Vector2.ZERO
 	
-	if not is_immobilized:
-		if Input.is_action_pressed("ui_right"):
-			direction.x += 1
-		if Input.is_action_pressed("ui_left"):
-			direction.x -= 1
-		if Input.is_action_pressed("ui_down"):
-			direction.y += 1
-		if Input.is_action_pressed("ui_up"):
-			direction.y -= 1
+	if Input.is_action_pressed("ui_right"):
+		direction.x += 1
+	if Input.is_action_pressed("ui_left"):
+		direction.x -= 1
+	if Input.is_action_pressed("ui_down"):
+		direction.y += 1
+	if Input.is_action_pressed("ui_up"):
+		direction.y -= 1
+	
+	if direction.length() > 0:
+		direction = direction.normalized()
 		
-		if direction.length() > 0:
-			direction = direction.normalized()
-			global_position += direction * movement_speed * delta
+		# Store last position before moving
+		var prev_position = global_position
+		
+		# Move the player
+		global_position += direction * movement_speed * delta
+		
+		# Check for grid boundaries
+		check_boundaries()
 
 func check_grid_position():
 	var grid = get_node_or_null("/root/Main/Grid")
@@ -90,63 +100,72 @@ func check_grid_position():
 			previous_cell_x = current_cell_x
 			previous_cell_y = current_cell_y
 
-func check_boundaries(delta):
-	# Only handle boundary checking if not currently immobilized
-	if is_immobilized:
-		respawn_timer -= delta
-		if respawn_timer <= 0:
-			var main = get_node_or_null("/root/Main")
-			if main and main.has_method("respawn_player_at_initial_planet"):
-				print("Respawning player at initial planet")
-				main.respawn_player_at_initial_planet()
-				is_immobilized = false
-				was_in_boundary_cell = false
-				was_outside_grid = false
-				# Ensure the player is in Normal state after respawning
-				if state_machine:
-					state_machine.change_state("Normal")
-		return
-
+func check_boundaries():
 	var grid = get_node_or_null("/root/Main/Grid")
 	if grid:
-		var current_cell_x = int(floor(global_position.x / grid.cell_size.x))
-		var current_cell_y = int(floor(global_position.y / grid.cell_size.y))
+		var cell_x = int(floor(global_position.x / grid.cell_size.x))
+		var cell_y = int(floor(global_position.y / grid.cell_size.y))
 		
-		# Skip boundary checks if position is invalid
-		if not grid.is_valid_position(current_cell_x, current_cell_y):
-			return
-			
-		# Check if player is in a boundary cell
-		var is_boundary = grid.is_boundary_cell(current_cell_x, current_cell_y)
+		# Check if player is outside the grid
+		var outside_grid = not grid.is_valid_position(cell_x, cell_y)
 		
-		# Store last valid position when player is in a non-boundary cell
-		if not is_boundary:
+		# Store the last valid position when player is inside the grid
+		if not outside_grid and not is_immobilized:
 			last_valid_position = global_position
-			was_in_boundary_cell = false
-		elif not was_in_boundary_cell:
-			# Player just entered a boundary cell, show warning
+		
+		# Handle player leaving the grid entirely
+		if outside_grid:
+			# Hard stop: don't allow player to move beyond the boundary
+			global_position = last_valid_position
+			
+			if not was_outside_grid:
+				var main = get_tree().current_scene
+				if main.has_method("show_message"):
+					main.show_message("You abandoned all logic and were lost in space!")
+				
+				print("CRITICAL: Player left the grid entirely!")
+				is_immobilized = true
+				respawn_timer = 5.0  # 5 seconds until respawn
+				
+				# Disable movement
+				movement_speed = 0
+		
+		# Update outside grid tracking
+		was_outside_grid = outside_grid
+		
+		# Skip boundary checks if we're outside the grid
+		if outside_grid:
+			return
+		
+		# Check if player is in a boundary cell
+		var is_in_boundary = grid.is_boundary_cell(cell_x, cell_y)
+		
+		# Show warning message only when first entering a boundary cell
+		if is_in_boundary and not was_in_boundary_cell:
+			var main = get_tree().current_scene
+			if main.has_method("show_message"):
+				main.show_message("WARNING: You are leaving known space!")
+			
 			was_in_boundary_cell = true
-			var main = get_node_or_null("/root/Main")
-			if main and main.has_method("show_message"):
-				main.show_message("WARNING: Approaching boundary of known space!")
+		elif not is_in_boundary:
+			was_in_boundary_cell = false
 
 func _draw():
 	# Draw the player as an orange square
 	var rect = Rect2(-player_size.x/2, -player_size.y/2, player_size.x, player_size.y)
 	draw_rect(rect, player_color)
 	
-	# Add a border
+	# Add a white border
 	draw_rect(rect, Color.WHITE, false, 2.0)
 
 # Method to completely immobilize the player
 func set_immobilized(value):
 	is_immobilized = value
 	
-	if state_machine:
-		if value:
-			state_machine.change_state("Immobilized")
-		else:
-			state_machine.change_state("Normal")
+	if value:
+		movement_speed = 0
+	else:
+		movement_speed = 300
 	
 	print("Player immobilized state set to: ", value)
 

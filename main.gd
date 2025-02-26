@@ -3,10 +3,47 @@ extends Node2D
 @onready var grid = $Grid
 @onready var seed_label = $CanvasLayer/SeedLabel
 @onready var message_label = $CanvasLayer/MessageLabel
-@onready var enemy_spawner = $EnemySpawner  # New reference to enemy spawner
+@onready var enemy_spawner = $EnemySpawner  # Reference to enemy spawner
+
+# Message display duration
+const MESSAGE_DURATION = 3.0
+var message_timer = 0.0
+
+# Planet tracking
+var initial_planet_position = null
+var initial_planet_cell_x = -1
+var initial_planet_cell_y = -1
 
 # Use a direct node reference instead of preloading
 var player = null
+
+func _ready():
+	# Initialize the grid
+	if grid:
+		# Update the seed display
+		update_seed_label()
+		
+		# Create the player
+		create_player()
+	else:
+		print("ERROR: Grid node not found!")
+
+func _process(delta):
+	# Position the message label if needed
+	if message_label and message_label.visible:
+		position_message_label()
+		
+	# Check for seed change
+	if Input.is_action_just_pressed("ui_accept"):
+		# Generate a new random seed
+		var rng = RandomNumberGenerator.new()
+		rng.randomize()
+		var new_seed = rng.randi_range(1, 9999)
+		
+		# Update the grid with the new seed
+		if grid:
+			grid.set_seed(new_seed)
+			update_seed_label()
 			
 			# Use existing player, just update its position
 			create_player()

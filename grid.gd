@@ -129,6 +129,28 @@ func _process(delta):
 	
 	# Update enemy visibility based on newly loaded chunks
 	update_enemy_visibility()
+
+# Function to update loaded chunks based on player position
+func update_loaded_chunks(center_x, center_y):
+	# Update player cell tracking
+	current_player_cell_x = center_x
+	current_player_cell_y = center_y
+	
+	# Update tracking for boundary cells
+	if is_boundary_cell(center_x, center_y):
+		was_in_boundary_cell = true
+	else:
+		was_in_boundary_cell = false
+	
+	# Clear existing loaded cells
+	loaded_cells.clear()
+	
+	# Add cells within the chunk load radius to the loaded cells dictionary
+	for y in range(center_y - chunk_load_radius, center_y + chunk_load_radius + 1):
+		for x in range(center_x - chunk_load_radius, center_x + chunk_load_radius + 1):
+			# Only add valid positions
+			if is_valid_position(x, y):
+				loaded_cells[Vector2(x, y)] = true
 	
 	print("Loaded cells updated. Center: (", center_x, ",", center_y, ") - Total loaded: ", loaded_cells.size())
 
@@ -191,17 +213,24 @@ func _draw():
 			# Center the coordinates
 			var coord_pos = cell_center - Vector2(text_size.x / 2.0, font_size / 2.0 - 5)
 			
-			# Draw coordinate text with outline
-			draw_string_outline(
-				ThemeDB.fallback_font,
-				coord_pos,
-				coord_text,
-				HORIZONTAL_ALIGNMENT_LEFT,
-				-1,
-				font_size,
-				2,
-				Color.BLACK
-			)
+			# Draw text with outline via multiple offset strings
+			var outline_color = Color.BLACK
+			var outline_width = 2
+			
+			for dx in range(-outline_width, outline_width + 1):
+				for dy in range(-outline_width, outline_width + 1):
+					if dx != 0 or dy != 0:  # Skip center position
+						draw_string(
+							ThemeDB.fallback_font,
+							coord_pos + Vector2(dx, dy),
+							coord_text,
+							HORIZONTAL_ALIGNMENT_LEFT,
+							-1,
+							font_size,
+							outline_color
+						)
+			
+			# Draw main text
 			draw_string(
 				ThemeDB.fallback_font,
 				coord_pos,
@@ -314,3 +343,88 @@ func set_seed(new_seed):
 	# Regenerate the grid with new seed
 	# (Player will be handled by main.gd)
 	regenerate()
+
+# Initialize the cell contents based on the seed
+func generate_cell_contents():
+	print("Generating grid with seed: ", seed_value)
+	
+	# Initialize the RNG with the seed
+	var rng = RandomNumberGenerator.new()
+	rng.seed = seed_value
+	
+	# Initialize cell_contents as a 2D array of empty cells
+	cell_contents = []
+	asteroid_counts = []
+	planet_sizes = []
+	planet_colors = []
+	
+	for y in range(int(grid_size.y)):
+		cell_contents.append([])
+		asteroid_counts.append([])
+		planet_sizes.append([])
+		planet_colors.append([])
+		
+		for x in range(int(grid_size.x)):
+			# Default to empty
+			cell_contents[y].append(CellContent.EMPTY)
+			asteroid_counts[y].append(0)
+			planet_sizes[y].append(0.0)
+			planet_colors[y].append(Color.WHITE)
+	
+	# Generate planets (about 10% of non-boundary cells)
+	var non_boundary_count = (grid_size.x - 2) * (grid_size.y - 2)
+	var planet_count = int(non_boundary_count * 0.1)
+	
+	for i in range(planet_count):
+		# Choose a random non-boundary cell
+		var x = rng.randi_range(1, grid_size.x - 2)
+		var y = rng.randi_range(1, grid_size.y - 2)
+		
+		# Skip if already occupied
+		if cell_contents[y][x] != CellContent.EMPTY:
+			continue
+		
+		# Set as planet
+		cell_contents[y][x] = CellContent.PLANET
+		
+		# Generate random size (0.2 to 0.4 of cell size)
+		planet_sizes[y][x] = rng.randf_range(0.25, 0.4)
+		
+		# Choose a random color from the palette
+		var color_index = rng.randi() % planet_color_palette.size()
+		planet_colors[y][x] = planet_color_palette[color_index]
+	
+	# Generate asteroids (about 15% of non-boundary cells)
+	var asteroid_count = int(non_boundary_count * 0.15)
+	
+	for i in range(asteroid_count):
+		# Choose a random non-boundary cell
+		var x = rng.randi_range(1, grid_size.x - 2)
+		var y = rng.randi_range(1, grid_size.y - 2)
+		
+		# Skip if already occupied
+		if cell_contents[y][x] != CellContent.EMPTY:
+			continue
+		
+		# Set as asteroid field
+		cell_contents[y][x] = CellContent.ASTEROID
+		
+		# Generate random number of asteroids (1 to 5)
+		asteroid_counts[y][x] = rng.randi_range(1, 5)
+	
+	# Initialize loaded cells dictionary
+	loaded_cells = {}
+	
+	print("Grid generated: ", grid_size.x, "x", grid_size.y, " cells")
+	print("Planets: ", planet_count, " - Asteroids: ", asteroid_count)
+	
+	# Ensure the grid is visually updated
+	queue_redraw()
+
+# Check if a position is valid (within grid bounds)
+func is_valid_position(x, y):
+	return x >= 0 and x < grid_size.x and y >= 0 and y < grid_size.y
+
+# Check if a cell is at the boundary of the grid
+func is_boundary_cell(x, y):
+	return (x == 0 or x == grid_size.x - 1 or y == 0 or y == grid_size.y - 1) and is_valid_position(x, y)
