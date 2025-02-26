@@ -150,7 +150,7 @@ func update_loaded_chunks(center_x, center_y):
 		for x in range(center_x - chunk_load_radius, center_x + chunk_load_radius + 1):
 			# Only add valid positions
 			if is_valid_position(x, y):
-				loaded_cells[Vector2(x, y)] = true
+				loaded_cells[Vector2i(x, y)] = true
 	
 	print("Loaded cells updated. Center: (", center_x, ",", center_y, ") - Total loaded: ", loaded_cells.size())
 
@@ -168,7 +168,7 @@ func update_enemy_visibility():
 			var enemy_cell_y = int(floor(enemy.global_position.y / cell_size.y))
 			
 			# Check if the enemy's cell is currently loaded
-			var is_cell_loaded = loaded_cells.has(Vector2(enemy_cell_x, enemy_cell_y))
+			var is_cell_loaded = loaded_cells.has(Vector2i(enemy_cell_x, enemy_cell_y))
 			
 			# Set the enemy's active state
 			enemy.update_active_state(is_cell_loaded)
@@ -176,8 +176,8 @@ func update_enemy_visibility():
 func _draw():
 	# Only draw grid lines for the loaded chunks
 	for cell_pos in loaded_cells.keys():
-		var x = cell_pos.x
-		var y = cell_pos.y
+		var x = int(cell_pos.x)
+		var y = int(cell_pos.y)
 		
 		# Draw cell borders
 		var rect_pos = Vector2(x * cell_size.x, y * cell_size.y)
@@ -371,21 +371,26 @@ func generate_cell_contents():
 			planet_sizes[y].append(0.0)
 			planet_colors[y].append(Color.WHITE)
 	
+	# Create a set to track reserved cells (cells that cannot have planets)
+	var reserved_cells = {}
+	
 	# Generate planets (about 10% of non-boundary cells)
 	var non_boundary_count = (grid_size.x - 2) * (grid_size.y - 2)
 	var planet_count = int(non_boundary_count * 0.1)
+	var actual_planet_count = 0
 	
-	for i in range(planet_count):
+	for i in range(planet_count * 3):  # Try more times to ensure we get enough planets
 		# Choose a random non-boundary cell
 		var x = rng.randi_range(1, grid_size.x - 2)
 		var y = rng.randi_range(1, grid_size.y - 2)
 		
-		# Skip if already occupied
-		if cell_contents[y][x] != CellContent.EMPTY:
+		# Skip if this cell or adjacent cells are reserved
+		if reserved_cells.has(Vector2i(x, y)):
 			continue
 		
 		# Set as planet
 		cell_contents[y][x] = CellContent.PLANET
+		actual_planet_count += 1
 		
 		# Generate random size (0.2 to 0.4 of cell size)
 		planet_sizes[y][x] = rng.randf_range(0.25, 0.4)
@@ -393,11 +398,26 @@ func generate_cell_contents():
 		# Choose a random color from the palette
 		var color_index = rng.randi() % planet_color_palette.size()
 		planet_colors[y][x] = planet_color_palette[color_index]
+		
+		# Reserve this cell and all cells within 2 cells distance (including diagonals)
+		for dy in range(-2, 3):  # -2, -1, 0, 1, 2
+			for dx in range(-2, 3):  # -2, -1, 0, 1, 2
+				var nx = x + dx
+				var ny = y + dy
+				
+				# Only reserve valid positions
+				if is_valid_position(nx, ny):
+					reserved_cells[Vector2i(nx, ny)] = true
+		
+		# Stop if we've placed enough planets
+		if actual_planet_count >= planet_count:
+			break
 	
 	# Generate asteroids (about 15% of non-boundary cells)
 	var asteroid_count = int(non_boundary_count * 0.15)
+	var actual_asteroid_count = 0
 	
-	for i in range(asteroid_count):
+	for i in range(asteroid_count * 2):  # Try more times to ensure we get enough asteroids
 		# Choose a random non-boundary cell
 		var x = rng.randi_range(1, grid_size.x - 2)
 		var y = rng.randi_range(1, grid_size.y - 2)
@@ -408,23 +428,30 @@ func generate_cell_contents():
 		
 		# Set as asteroid field
 		cell_contents[y][x] = CellContent.ASTEROID
+		actual_asteroid_count += 1
 		
 		# Generate random number of asteroids (1 to 5)
 		asteroid_counts[y][x] = rng.randi_range(1, 5)
+		
+		# Stop if we've placed enough asteroids
+		if actual_asteroid_count >= asteroid_count:
+			break
 	
 	# Initialize loaded cells dictionary
 	loaded_cells = {}
 	
 	print("Grid generated: ", grid_size.x, "x", grid_size.y, " cells")
-	print("Planets: ", planet_count, " - Asteroids: ", asteroid_count)
+	print("Planets: ", actual_planet_count, " - Asteroids: ", actual_asteroid_count)
 	
 	# Ensure the grid is visually updated
 	queue_redraw()
 
 # Check if a position is valid (within grid bounds)
 func is_valid_position(x, y):
-	return x >= 0 and x < grid_size.x and y >= 0 and y < grid_size.y
+	return x >= 0 and x < int(grid_size.x) and y >= 0 and y < int(grid_size.y)
 
 # Check if a cell is at the boundary of the grid
 func is_boundary_cell(x, y):
-	return (x == 0 or x == grid_size.x - 1 or y == 0 or y == grid_size.y - 1) and is_valid_position(x, y)
+	var grid_x = int(grid_size.x)
+	var grid_y = int(grid_size.y)
+	return (x == 0 or x == grid_x - 1 or y == 0 or y == grid_y - 1) and is_valid_position(x, y)

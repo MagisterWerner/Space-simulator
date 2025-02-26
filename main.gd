@@ -16,6 +16,7 @@ var initial_planet_cell_y = -1
 
 # Use a direct node reference instead of preloading
 var player = null
+var previous_key_states = {}
 
 func _ready():
 	# Initialize the grid
@@ -27,13 +28,31 @@ func _ready():
 		create_player()
 	else:
 		print("ERROR: Grid node not found!")
+	
+	# Initialize key states
+	for i in range(10):
+		previous_key_states[KEY_0 + i] = false
 
 func _process(delta):
-	# Position the message label if needed
-	if message_label and message_label.visible:
-		position_message_label()
+	# Check for numeric key presses (0-9) to set specific seeds
+	for i in range(10): # 0-9
+		var key_code = KEY_0 + i
+		var key_pressed = Input.is_physical_key_pressed(key_code)
 		
-	# Check for seed change
+		# Check if key was just pressed (pressed now but not in previous frame)
+		if key_pressed and not previous_key_states[key_code]:
+			if grid:
+				print("Setting seed to: ", i)
+				grid.set_seed(i)
+				update_seed_label()
+				create_player()
+				if enemy_spawner:
+					enemy_spawner.reset_enemies()
+		
+		# Update previous key state
+		previous_key_states[key_code] = key_pressed
+	
+	# Check for Enter/Return key to generate random seed
 	if Input.is_action_just_pressed("ui_accept"):
 		# Generate a new random seed
 		var rng = RandomNumberGenerator.new()
@@ -79,6 +98,13 @@ func respawn_player_at_initial_planet():
 	if player and initial_planet_position:
 		print("Respawning player at initial planet: ", initial_planet_position)
 		
+		# Ensure player is not immobilized
+		if player.has_method("set_immobilized"):
+			player.set_immobilized(false)
+		else:
+			player.is_immobilized = false
+			player.movement_speed = 300
+		
 		# Reset player's position
 		player.global_position = initial_planet_position
 		
@@ -87,6 +113,11 @@ func respawn_player_at_initial_planet():
 		grid.current_player_cell_y = initial_planet_cell_y
 		grid.update_loaded_chunks(initial_planet_cell_x, initial_planet_cell_y)
 		grid.queue_redraw()
+		
+		# Reset all related grid state
+		grid.player_immobilized = false
+		grid.was_outside_grid = false
+		grid.was_in_boundary_cell = false
 		
 		# Generate a planet name for the respawn
 		var planet_name = generate_planet_name(initial_planet_cell_x, initial_planet_cell_y)
@@ -99,17 +130,7 @@ func respawn_player_at_initial_planet():
 		# Emergency fallback - just place at a new random planet
 		place_player_at_random_planet()
 
-# Function to position the message label relative to player
-func position_message_label():
-	if player and message_label:
-		var viewport_size = get_viewport_rect().size
-		var camera_pos = player.get_node("Camera2D").get_screen_center_position()
-		
-		# Position centered horizontally, and halfway between player and bottom of screen
-		message_label.global_position = Vector2(
-			camera_pos.x,
-			camera_pos.y + viewport_size.y / 4
-		)
+# This function has been removed as MessageLabel should be fixed on screen
 
 func get_planet_positions():
 	var planet_positions = []
