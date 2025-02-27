@@ -1,0 +1,59 @@
+[gd_scene load_steps=9 format=3 uid="uid://pjbui37m2rbp"]
+
+[ext_resource type="Texture2D" uid="uid://dovo1xu3ofj1l" path="res://sprites/planets/planet_1.png" id="2_abcd2"]
+[ext_resource type="Texture2D" uid="uid://y4uhe7hfa0on" path="res://sprites/planets/planet_2.png" id="3_abcd3"]
+[ext_resource type="Texture2D" uid="uid://cfu723xjihn8l" path="res://sprites/planets/planet_3.png" id="4_abcd4"]
+[ext_resource type="Texture2D" uid="uid://c8q7xq8kf6er0" path="res://sprites/planets/planet_4.png" id="5_abcd5"]
+[ext_resource type="Texture2D" uid="uid://ds3qcgm0qqk5q" path="res://sprites/moons/moon_1.png" id="6_abcd6"]
+[ext_resource type="Texture2D" uid="uid://ntcysol2aulg" path="res://sprites/moons/moon_2.png" id="7_abcd7"]
+[ext_resource type="Texture2D" uid="uid://b6f2w0hr52dh7" path="res://sprites/moons/moon_3.png" id="8_abcd8"]
+
+[sub_resource type="GDScript" id="GDScript_7gupj"]
+script/source = "extends Node
+
+# ResourcePreloader for planet and moon sprites
+@onready var planet_preloader = $PlanetPreloader
+@onready var moon_preloader = $MoonPreloader
+
+# Called when the node enters the scene tree for the first time
+func _ready():
+	print(\"Planet resources loaded: \", planet_preloader.get_resource_list())
+	print(\"Moon resources loaded: \", moon_preloader.get_resource_list())
+
+# Get a planet sprite by index
+func get_planet_sprite(index: int) -> Texture2D:
+	var resource_list = planet_preloader.get_resource_list()
+	if index >= 0 and index < resource_list.size():
+		return planet_preloader.get_resource(resource_list[index])
+	return null
+
+# Get a moon sprite by index
+func get_moon_sprite(index: int) -> Texture2D:
+	var resource_list = moon_preloader.get_resource_list()
+	if index >= 0 and index < resource_list.size():
+		return moon_preloader.get_resource(resource_list[index])
+	return null
+
+# Get all planet sprites
+func get_all_planet_sprites() -> Array:
+	var sprites = []
+	for resource_name in planet_preloader.get_resource_list():
+		sprites.append(planet_preloader.get_resource(resource_name))
+	return sprites
+
+# Get all moon sprites
+func get_all_moon_sprites() -> Array:
+	var sprites = []
+	for resource_name in moon_preloader.get_resource_list():
+		sprites.append(moon_preloader.get_resource(resource_name))
+	return sprites
+"
+
+[node name="PlanetResources" type="Node"]
+script = SubResource("GDScript_7gupj")
+
+[node name="PlanetPreloader" type="ResourcePreloader" parent="."]
+resources = [PackedStringArray("planet_1", "planet_2", "planet_3", "planet_4"), [ExtResource("2_abcd2"), ExtResource("3_abcd3"), ExtResource("4_abcd4"), ExtResource("5_abcd5")]]
+
+[node name="MoonPreloader" type="ResourcePreloader" parent="."]
+resources = [PackedStringArray("moon_1", "moon_2", "moon_3"), [ExtResource("6_abcd6"), ExtResource("7_abcd7"), ExtResource("8_abcd8")]]

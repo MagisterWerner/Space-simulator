@@ -8,6 +8,10 @@ extends Node2D
 var previous_cell_x = -1
 var previous_cell_y = -1
 
+# Planet detection variables
+var current_planet_id = -1  # Track which planet we're currently on, if any
+var planet_entered = false  # Flag to track when we've entered a planet
+
 # Boundary detection variables
 var is_immobilized = false
 var respawn_timer = 0.0
@@ -44,6 +48,9 @@ func _process(delta):
 	
 	# Check for grid cell changes
 	check_grid_position()
+	
+	# Check for planet collision
+	check_planet_collision()
 	
 	# Keep the player visible by forcing a redraw
 	queue_redraw()
@@ -96,6 +103,61 @@ func check_grid_position():
 			# Update previous cell position
 			previous_cell_x = current_cell_x
 			previous_cell_y = current_cell_y
+
+# Dedicated function to check for planet collision
+func check_planet_collision():
+	var planet_spawner = get_node_or_null("/root/Main/PlanetSpawner")
+	var main = get_node_or_null("/root/Main")
+	
+	if not planet_spawner or not main:
+		return
+	
+	var planet_positions = planet_spawner.planet_positions
+	var planet_data = planet_spawner.planet_data
+	var sprites = planet_spawner.planet_sprites
+	
+	var player_radius = max(player_size.x, player_size.y) / 2
+	var on_any_planet = false
+	var new_planet_id = -1
+	
+	# Check collision with each planet
+	for i in range(planet_positions.size()):
+		var planet_pos = planet_positions[i].position
+		var planet = planet_data[i]
+		
+		# Skip if planet sprite index is invalid
+		if planet.sprite_idx >= sprites.size():
+			continue
+			
+		# Get the sprite for this planet
+		var sprite = sprites[planet.sprite_idx]
+		if not sprite:
+			continue
+			
+		# Get the radius of the planet (half the width or height, scaled)
+		var sprite_size = sprite.get_size()
+		var planet_radius = max(sprite_size.x, sprite_size.y) * planet.scale / 2
+		
+		# Calculate distance between player and planet centers
+		var distance = global_position.distance_to(planet_pos)
+		
+		# Check if player is within the planet's radius
+		if distance < planet_radius + player_radius * 0.5:  # Using 0.5 to allow deeper entry before detection
+			on_any_planet = true
+			new_planet_id = i
+			break
+	
+	# Handle entering a new planet
+	if new_planet_id != -1 and new_planet_id != current_planet_id:
+		current_planet_id = new_planet_id
+		# Get the planet name and show welcome message
+		var planet_name = planet_data[current_planet_id].name
+		if main.has_method("show_message"):
+			main.show_message("Welcome to planet " + planet_name + "!")
+	
+	# Handle leaving a planet
+	if not on_any_planet and current_planet_id != -1:
+		current_planet_id = -1
 
 # Returns true if the player is in a valid position, false otherwise
 func check_boundaries():

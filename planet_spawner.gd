@@ -3,8 +3,11 @@ extends Node
 # Planet generation parameters
 @export var planet_percentage = 10  # Percentage of grid cells that will contain planets
 @export var minimum_planets = 5     # Minimum number of planets to generate
-@export var min_planet_size = 0.25  # Minimum planet size as fraction of cell size
-@export var max_planet_size = 0.4   # Maximum planet size as fraction of cell size
+@export var moon_chance = 40        # Percentage chance for a planet to have moons
+@export var max_moons = 2           # Maximum number of moons per planet
+@export var planet_rotation_factor = 0.02  # Factor to slow down planet rotation (lower = slower)
+@export var moon_orbit_factor = 0.05      # Factor to slow down moon orbits (lower = slower)
+@export var cell_margin = 0.9       # Percentage of cell to use (allows some margin)
 
 # Reference to the grid
 var grid = null
@@ -13,11 +16,15 @@ var grid = null
 var planet_positions = []
 var planet_data = []  # Stores additional planet data like size, color, etc.
 
-# 2D arrays to store planet sizes and colors (moved from grid)
+# Planet size and color arrays (for fallback)
 var planet_sizes = []
 var planet_colors = []
 
-# Planet color palette
+# Arrays to store planet and moon sprites
+var planet_sprites = []
+var moon_sprites = []
+
+# Planet color palette for fallback drawing
 var planet_color_palette = [
 	Color.WHITE, 
 	Color.GREEN, 
@@ -37,7 +44,71 @@ func _ready():
 	if grid.has_signal("seed_changed"):
 		grid.connect("seed_changed", _on_grid_seed_changed)
 	
+	# Load planet and moon sprites
+	load_sprites()
+	
 	print("Planet spawner initialized")
+
+# Function to load planet and moon sprites
+func load_sprites():
+	# Clear existing sprites
+	planet_sprites.clear()
+	moon_sprites.clear()
+	
+	# Load planet sprites
+	var planet_paths = [
+		"res://sprites/planets/planet_1.png",
+		"res://sprites/planets/planet_2.png",
+		"res://sprites/planets/planet_3.png",
+		"res://sprites/planets/planet_4.png",
+		"res://sprites/planets/planet_5.png"
+	]
+	
+	for path in planet_paths:
+		var texture = load(path)
+		if texture:
+			planet_sprites.append(texture)
+		else:
+			push_warning("Failed to load planet sprite: " + path)
+	
+	# Load moon sprites
+	var moon_paths = [
+		"res://sprites/moons/moon_1.png",
+		"res://sprites/moons/moon_2.png",
+		"res://sprites/moons/moon_3.png"
+	]
+	
+	for path in moon_paths:
+		var texture = load(path)
+		if texture:
+			moon_sprites.append(texture)
+		else:
+			push_warning("Failed to load moon sprite: " + path)
+	
+	print("Loaded " + str(planet_sprites.size()) + " planet sprites and " + str(moon_sprites.size()) + " moon sprites")
+	
+	# Create fallback sprites if none were loaded
+	if planet_sprites.size() == 0:
+		print("No planet sprites found. Creating fallback empty texture.")
+		var image = Image.create(64, 64, false, Image.FORMAT_RGBA8)
+		for x in range(64):
+			for y in range(64):
+				var dist = Vector2(x - 32, y - 32).length()
+				if dist < 30:
+					image.set_pixel(x, y, Color(1, 1, 1, 1))
+		var fallback_texture = ImageTexture.create_from_image(image)
+		planet_sprites.append(fallback_texture)
+	
+	if moon_sprites.size() == 0:
+		print("No moon sprites found. Creating fallback empty texture.")
+		var image = Image.create(32, 32, false, Image.FORMAT_RGBA8)
+		for x in range(32):
+			for y in range(32):
+				var dist = Vector2(x - 16, y - 16).length()
+				if dist < 14:
+					image.set_pixel(x, y, Color(0.9, 0.9, 0.9, 1))
+		var fallback_texture = ImageTexture.create_from_image(image)
+		moon_sprites.append(fallback_texture)
 
 # Function to generate planets in grid cells
 func generate_planets():
@@ -112,14 +183,61 @@ func generate_planets():
 		grid.cell_contents[y][x] = grid.CellContent.PLANET
 		actual_planet_count += 1
 		
-		# Generate random size
-		var planet_size = rng.randf_range(min_planet_size, max_planet_size)
-		planet_sizes[y][x] = planet_size
-		
-		# Choose a random color from the palette
+		# Choose a random color from the palette (for fallback drawing)
 		var color_index = rng.randi() % planet_color_palette.size()
 		var planet_color = planet_color_palette[color_index]
 		planet_colors[y][x] = planet_color
+		
+		# Select a random planet sprite
+		var planet_sprite_idx = rng.randi() % planet_sprites.size() if planet_sprites.size() > 0 else 0
+		
+		# Get planet size from the sprite size
+		var planet_texture = planet_sprites[planet_sprite_idx]
+		var texture_size = planet_texture.get_size()
+		var cell_min_dimension = min(grid.cell_size.x, grid.cell_size.y) * cell_margin
+		var planet_pixel_size = max(texture_size.x, texture_size.y)
+		
+		# Start with 1:1 pixel scale (no scaling)
+		var scale = 1.0
+		
+		# Only scale down if the planet is too large for the cell
+		if planet_pixel_size > cell_min_dimension:
+			scale = cell_min_dimension / planet_pixel_size
+			print("Scaling down planet ", planet_sprite_idx, " from ", planet_pixel_size, " to fit cell (scale: ", scale, ")")
+		else:
+			print("Using original size for planet ", planet_sprite_idx, " (", planet_pixel_size, " pixels)")
+		
+		# Determine if this planet has moons
+		var has_moons = rng.randi() % 100 < moon_chance
+		var num_moons = rng.randi_range(1, max_moons) if has_moons else 0
+		
+		# Generate moon data if applicable
+		var moons = []
+		if has_moons and moon_sprites.size() > 0:
+			for m in range(num_moons):
+				# Generate moon data
+				var moon_sprite_idx = rng.randi() % moon_sprites.size()
+				var moon_texture = moon_sprites[moon_sprite_idx]
+				var moon_texture_size = moon_texture.get_size()
+				
+				# Calculate moon parameters
+				var planet_radius = texture_size.x * scale / 2  # Actual visual radius of planet with scaling
+				var moon_radius = moon_texture_size.x / 2       # Half the moon size (unscaled)
+				var padding = rng.randf_range(10, 30)           # Space between planet edge and moon
+				var moon_orbit_distance = planet_radius + moon_radius + padding
+				
+				var moon_angle = rng.randf_range(0, TAU)
+				
+				# Scaling for the moon - smaller moons look better
+				var moon_scale = scale * rng.randf_range(0.5, 0.7)
+				
+				moons.append({
+					"sprite_idx": moon_sprite_idx,
+					"distance": moon_orbit_distance,
+					"angle": moon_angle,
+					"scale": moon_scale,
+					"orbit_speed": rng.randf_range(0.2, 0.5) * moon_orbit_factor  # Slowed down orbit speed
+				})
 		
 		# Store planet position and data
 		var world_pos = Vector2(
@@ -134,8 +252,12 @@ func generate_planets():
 		})
 		
 		planet_data.append({
-			"size": planet_size,
+			"sprite_idx": planet_sprite_idx,
 			"color": planet_color,
+			"scale": scale,
+			"pixel_size": planet_pixel_size,
+			"moons": moons,
+			"rotation_speed": rng.randf_range(0.02, 0.05) * planet_rotation_factor,  # Very slow rotation
 			"name": generate_planet_name(x, y)
 		})
 		
@@ -158,10 +280,13 @@ func generate_planets():
 	# Force grid redraw
 	grid.queue_redraw()
 
-# New method to draw planets
+# New method to draw planets using sprites in pixel-perfect mode
 func draw_planets(canvas: CanvasItem, loaded_cells: Dictionary):
 	if not grid:
 		return
+	
+	# Get current time for animation
+	var time = Time.get_ticks_msec() / 1000.0
 	
 	# For each loaded cell
 	for cell_pos in loaded_cells.keys():
@@ -175,15 +300,55 @@ func draw_planets(canvas: CanvasItem, loaded_cells: Dictionary):
 				y * grid.cell_size.y + grid.cell_size.y / 2.0
 			)
 			
-			# Draw a circle (planet) with outline
-			var shape_size = min(grid.cell_size.x, grid.cell_size.y) * planet_sizes[y][x]
-			canvas.draw_circle(cell_center, shape_size, planet_colors[y][x])
-			canvas.draw_arc(cell_center, shape_size, 0, TAU, 32, planet_colors[y][x].darkened(0.2), 2.0, true)  # Outline
+			# Find planet data
+			var planet_index = -1
+			for i in range(planet_positions.size()):
+				if planet_positions[i].grid_x == x and planet_positions[i].grid_y == y:
+					planet_index = i
+					break
 			
-			# Add some detail to the planet (rings or surface features)
-			var ring_radius = shape_size * 0.7
-			canvas.draw_arc(cell_center, ring_radius, 0, PI, 16, planet_colors[y][x].lightened(0.1), 1.5)
-			canvas.draw_arc(cell_center, ring_radius, PI, TAU, 16, planet_colors[y][x].lightened(0.1), 1.5)
+			if planet_index != -1:
+				var planet = planet_data[planet_index]
+				var sprite_idx = planet.sprite_idx
+				
+				# Calculate rotation based on time and planet's rotation speed
+				var rotation = time * planet.rotation_speed
+				
+				# Draw the planet sprite if available, otherwise fallback to circle
+				if planet_sprites.size() > 0 and sprite_idx < planet_sprites.size():
+					var texture = planet_sprites[sprite_idx]
+					var texture_size = texture.get_size()
+					var scale = planet.scale
+					
+					# Draw with rotation, ensuring pixel-perfectness by rounding position
+					canvas.draw_set_transform(cell_center, rotation, Vector2(scale, scale))
+					canvas.draw_texture(texture, -texture_size / 2, Color.WHITE)
+					canvas.draw_set_transform(cell_center, 0, Vector2(1, 1))  # Reset transform
+				else:
+					# Fallback to drawing a circle
+					var shape_size = min(grid.cell_size.x, grid.cell_size.y) * 0.3
+					canvas.draw_circle(cell_center, shape_size, planet.color)
+					canvas.draw_arc(cell_center, shape_size, 0, TAU, 32, planet.color.darkened(0.2), 2.0, true)
+				
+				# Draw moons
+				if planet.has("moons") and moon_sprites.size() > 0:
+					for moon in planet.moons:
+						# Update moon angle based on time and orbit speed
+						var moon_angle = moon.angle + time * moon.orbit_speed
+						var moon_pos = cell_center + Vector2(cos(moon_angle), sin(moon_angle)) * moon.distance
+						
+						# Draw the moon sprite
+						if moon.sprite_idx < moon_sprites.size():
+							var moon_texture = moon_sprites[moon.sprite_idx]
+							var moon_texture_size = moon_texture.get_size()
+							
+							canvas.draw_set_transform(moon_pos, 0, Vector2(moon.scale, moon.scale))
+							canvas.draw_texture(moon_texture, -moon_texture_size / 2, Color.WHITE)
+							canvas.draw_set_transform(moon_pos, 0, Vector2(1, 1))  # Reset transform
+						else:
+							# Fallback to drawing a circle for the moon
+							var moon_size = min(grid.cell_size.x, grid.cell_size.y) * 0.1
+							canvas.draw_circle(moon_pos, moon_size, Color(0.9, 0.9, 0.9))
 
 # Function to get all planet positions (used by main.gd)
 func get_all_planet_positions():
