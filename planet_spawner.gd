@@ -8,6 +8,7 @@ extends Node
 @export var planet_rotation_factor = 0.02  # Factor to slow down planet rotation (lower = slower)
 @export var moon_orbit_factor = 0.05      # Factor to slow down moon orbits (lower = slower)
 @export var cell_margin = 0.9       # Percentage of cell to use (allows some margin)
+@export var orbital_tilt = 0.2      # Tilt factor for orbital planes (0-1, 0=no tilt, 1=max tilt)
 
 # Reference to the grid
 var grid = null
@@ -231,12 +232,17 @@ func generate_planets():
 				# Scaling for the moon - smaller moons look better
 				var moon_scale = scale * rng.randf_range(0.5, 0.7)
 				
+				# Add orbital inclination for 3D effect
+				var orbit_tilt = rng.randf_range(-orbital_tilt, orbital_tilt)
+				
 				moons.append({
 					"sprite_idx": moon_sprite_idx,
 					"distance": moon_orbit_distance,
 					"angle": moon_angle,
 					"scale": moon_scale,
-					"orbit_speed": rng.randf_range(0.2, 0.5) * moon_orbit_factor  # Slowed down orbit speed
+					"orbit_speed": rng.randf_range(0.2, 0.5) * moon_orbit_factor,  # Slowed down orbit speed
+					"tilt": orbit_tilt,  # Orbital tilt for 3D effect
+					"phase_offset": rng.randf_range(0, TAU)  # Random phase offset for variety
 				})
 		
 		# Store planet position and data
@@ -280,7 +286,7 @@ func generate_planets():
 	# Force grid redraw
 	grid.queue_redraw()
 
-# New method to draw planets using sprites in pixel-perfect mode
+# Method to draw planets with moons that have depth sorting
 func draw_planets(canvas: CanvasItem, loaded_cells: Dictionary):
 	if not grid:
 		return
@@ -311,44 +317,79 @@ func draw_planets(canvas: CanvasItem, loaded_cells: Dictionary):
 				var planet = planet_data[planet_index]
 				var sprite_idx = planet.sprite_idx
 				
+				# Skip if invalid sprite index
+				if sprite_idx >= planet_sprites.size():
+					continue
+				
+				var texture = planet_sprites[sprite_idx]
+				var texture_size = texture.get_size()
+				
 				# Calculate rotation based on time and planet's rotation speed
 				var rotation = time * planet.rotation_speed
 				
-				# Draw the planet sprite if available, otherwise fallback to circle
-				if planet_sprites.size() > 0 and sprite_idx < planet_sprites.size():
-					var texture = planet_sprites[sprite_idx]
-					var texture_size = texture.get_size()
-					var scale = planet.scale
-					
-					# Draw with rotation, ensuring pixel-perfectness by rounding position
-					canvas.draw_set_transform(cell_center, rotation, Vector2(scale, scale))
-					canvas.draw_texture(texture, -texture_size / 2, Color.WHITE)
-					canvas.draw_set_transform(cell_center, 0, Vector2(1, 1))  # Reset transform
-				else:
-					# Fallback to drawing a circle
-					var shape_size = min(grid.cell_size.x, grid.cell_size.y) * 0.3
-					canvas.draw_circle(cell_center, shape_size, planet.color)
-					canvas.draw_arc(cell_center, shape_size, 0, TAU, 32, planet.color.darkened(0.2), 2.0, true)
-				
-				# Draw moons
+				# First draw moons that should appear BEHIND the planet
 				if planet.has("moons") and moon_sprites.size() > 0:
 					for moon in planet.moons:
 						# Update moon angle based on time and orbit speed
 						var moon_angle = moon.angle + time * moon.orbit_speed
-						var moon_pos = cell_center + Vector2(cos(moon_angle), sin(moon_angle)) * moon.distance
 						
-						# Draw the moon sprite
-						if moon.sprite_idx < moon_sprites.size():
-							var moon_texture = moon_sprites[moon.sprite_idx]
-							var moon_texture_size = moon_texture.get_size()
-							
-							canvas.draw_set_transform(moon_pos, 0, Vector2(moon.scale, moon.scale))
-							canvas.draw_texture(moon_texture, -moon_texture_size / 2, Color.WHITE)
-							canvas.draw_set_transform(moon_pos, 0, Vector2(1, 1))  # Reset transform
-						else:
-							# Fallback to drawing a circle for the moon
-							var moon_size = min(grid.cell_size.x, grid.cell_size.y) * 0.1
-							canvas.draw_circle(moon_pos, moon_size, Color(0.9, 0.9, 0.9))
+						# Add phase offset for orbital variety
+						moon_angle += moon.phase_offset
+						
+						# Calculate moon position with tilt (simulating orbital inclination)
+						var orbit_y_scale = 1.0 - abs(moon.tilt)  # Compress Y axis based on tilt
+						var moon_pos = cell_center + Vector2(
+							cos(moon_angle) * moon.distance,
+							sin(moon_angle) * moon.distance * orbit_y_scale
+						)
+						
+						# Determine if moon is behind the planet based on Y position 
+						# (if moon Y position > cell center Y, it's behind)
+						if sin(moon_angle) > 0:  # Moon is in the "back" half of the orbit
+							draw_moon(canvas, moon, moon_pos, time)
+				
+				# Draw the planet
+				canvas.draw_set_transform(cell_center, rotation, Vector2(planet.scale, planet.scale))
+				canvas.draw_texture(texture, -texture_size / 2, Color.WHITE)
+				canvas.draw_set_transform(cell_center, 0, Vector2(1, 1))  # Reset transform
+				
+				# Now draw moons that should appear IN FRONT of the planet
+				if planet.has("moons") and moon_sprites.size() > 0:
+					for moon in planet.moons:
+						# Update moon angle based on time and orbit speed
+						var moon_angle = moon.angle + time * moon.orbit_speed
+						
+						# Add phase offset for orbital variety
+						moon_angle += moon.phase_offset
+						
+						# Calculate moon position with tilt (simulating orbital inclination)
+						var orbit_y_scale = 1.0 - abs(moon.tilt)  # Compress Y axis based on tilt
+						var moon_pos = cell_center + Vector2(
+							cos(moon_angle) * moon.distance,
+							sin(moon_angle) * moon.distance * orbit_y_scale
+						)
+						
+						# Determine if moon is in front of the planet based on Y position
+						# (if moon Y position <= cell center Y, it's in front)
+						if sin(moon_angle) <= 0:  # Moon is in the "front" half of the orbit
+							draw_moon(canvas, moon, moon_pos, time)
+
+# Helper function to draw a moon at a specific position
+func draw_moon(canvas: CanvasItem, moon, moon_pos: Vector2, time: float):
+	if moon.sprite_idx < moon_sprites.size():
+		var moon_texture = moon_sprites[moon.sprite_idx]
+		var moon_texture_size = moon_texture.get_size()
+		
+		# Add slight moon rotation for extra realism
+		var moon_rotation = time * moon.orbit_speed * 0.5
+		
+		canvas.draw_set_transform(moon_pos, moon_rotation, Vector2(moon.scale, moon.scale))
+		canvas.draw_texture(moon_texture, -moon_texture_size / 2, Color.WHITE)
+		canvas.draw_set_transform(moon_pos, 0, Vector2(1, 1))  # Reset transform
+	else:
+		# Fallback to drawing a circle for the moon
+		var moon_size = 10 * moon.scale
+		canvas.draw_circle(moon_pos, moon_size, Color(0.9, 0.9, 0.9))
 
 # Function to get all planet positions (used by main.gd)
 func get_all_planet_positions():
