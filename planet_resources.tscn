@@ -1,4 +1,4 @@
-[gd_scene load_steps=9 format=3 uid="uid://pjbui37m2rbp"]
+[gd_scene load_steps=9 format=3 uid="uid://ct56gisalf3yd"]
 
 [ext_resource type="Texture2D" uid="uid://dovo1xu3ofj1l" path="res://sprites/planets/planet_1.png" id="2_abcd2"]
 [ext_resource type="Texture2D" uid="uid://y4uhe7hfa0on" path="res://sprites/planets/planet_2.png" id="3_abcd3"]
