@@ -14,6 +14,9 @@ var grid = null
 var asteroid_fields = []  # Stores positions of asteroid fields
 var asteroid_data = []    # Stores additional data like count, sizes, etc.
 
+# 2D array to store number of asteroids per cell (moved from grid)
+var asteroid_counts = []
+
 # Called when the node enters the scene tree for the first time
 func _ready():
 	grid = get_node_or_null("/root/Main/Grid")
@@ -33,10 +36,19 @@ func generate_asteroids():
 	asteroid_fields.clear()
 	asteroid_data.clear()
 	
+	# Initialize asteroid counts array
+	asteroid_counts = []
+	
 	# Make sure grid is ready
 	if grid.cell_contents.size() == 0:
 		print("ERROR: Grid content arrays not initialized yet")
 		return
+	
+	# Initialize the asteroid counts array to match grid size
+	for y in range(int(grid.grid_size.y)):
+		asteroid_counts.append([])
+		for x in range(int(grid.grid_size.x)):
+			asteroid_counts[y].append(0)
 	
 	print("Generating asteroids with seed: ", grid.seed_value)
 	
@@ -88,7 +100,7 @@ func generate_asteroids():
 		
 		# Generate random number of asteroids for this cell
 		var num_asteroids = rng.randi_range(min_asteroids_per_cell, max_asteroids_per_cell)
-		grid.asteroid_counts[y][x] = num_asteroids
+		asteroid_counts[y][x] = num_asteroids
 		
 		# Store asteroid field position and data
 		var world_pos = Vector2(
@@ -148,3 +160,100 @@ func reset_asteroids():
 func _on_grid_seed_changed(new_seed = null):
 	print("Asteroid spawner detected seed change, regenerating asteroid fields")
 	call_deferred("generate_asteroids")
+
+# New method to draw asteroids
+func draw_asteroids(canvas: CanvasItem, loaded_cells: Dictionary):
+	if not grid:
+		return
+	
+	# For each loaded cell
+	for cell_pos in loaded_cells.keys():
+		var x = int(cell_pos.x)
+		var y = int(cell_pos.y)
+		
+		# Only process if this cell contains asteroids
+		if y < grid.cell_contents.size() and x < grid.cell_contents[y].size() and grid.cell_contents[y][x] == grid.CellContent.ASTEROID:
+			var cell_center = Vector2(
+				x * grid.cell_size.x + grid.cell_size.x / 2.0,
+				y * grid.cell_size.y + grid.cell_size.y / 2.0
+			)
+			
+			var num_asteroids = asteroid_counts[y][x]
+			var base_shape_size = min(grid.cell_size.x, grid.cell_size.y) * asteroid_base_size
+			var asteroid_positions = []  # Track positions to avoid overlap
+			
+			# Use deterministic seed for consistent asteroid field rendering
+			var field_rng = RandomNumberGenerator.new()
+			field_rng.seed = grid.seed_value + y * 1000 + x
+			
+			for i in range(num_asteroids):
+				var asteroid_rng = RandomNumberGenerator.new()
+				asteroid_rng.seed = grid.seed_value + y * 1000 + x + i  # Unique seed per asteroid
+				
+				# Random position within the cell, avoiding overlap
+				var pos_offset = Vector2.ZERO
+				var attempts = 0
+				var asteroid_pos = Vector2.ZERO
+				var valid_position = false
+				
+				while attempts < 10 and not valid_position:  # Limit attempts to avoid infinite loops
+					pos_offset = Vector2(
+						asteroid_rng.randf_range(-grid.cell_size.x * 0.25, grid.cell_size.x * 0.25),
+						asteroid_rng.randf_range(-grid.cell_size.y * 0.25, grid.cell_size.y * 0.25)
+					)
+					asteroid_pos = cell_center + pos_offset
+					
+					# Ensure the asteroid stays within the cell bounds
+					var cell_min = Vector2(x * grid.cell_size.x, y * grid.cell_size.y)
+					var cell_max = Vector2((x + 1) * grid.cell_size.x, (y + 1) * grid.cell_size.y)
+					
+					if asteroid_pos.x - base_shape_size < cell_min.x or asteroid_pos.x + base_shape_size > cell_max.x or \
+					   asteroid_pos.y - base_shape_size < cell_min.y or asteroid_pos.y + base_shape_size > cell_max.y:
+						attempts += 1
+						continue
+					
+					# Check for overlap with other asteroids
+					valid_position = true
+					for pos in asteroid_positions:
+						if pos.distance_to(asteroid_pos) < base_shape_size * 2.0:
+							valid_position = false
+							break
+					
+					attempts += 1
+				
+				if not valid_position:
+					# If we couldn't find a valid position after max attempts,
+					# place it at a deterministic offset from center
+					var angle = TAU * i / num_asteroids
+					var distance = grid.cell_size.x * 0.2
+					pos_offset = Vector2(cos(angle) * distance, sin(angle) * distance)
+					asteroid_pos = cell_center + pos_offset
+				
+				asteroid_positions.append(asteroid_pos)
+				
+				# Draw asteroid as an irregular triangle
+				var shape_size = base_shape_size * asteroid_rng.randf_range(0.8, 1.2)  # Size variation
+				var triangle_points = [
+					asteroid_pos + Vector2(0, -shape_size),
+					asteroid_pos + Vector2(-shape_size * 0.866, shape_size * 0.5),
+					asteroid_pos + Vector2(shape_size * 0.866, shape_size * 0.5)
+				]
+				
+				# Perturb points for irregular shape
+				for j in triangle_points.size():
+					triangle_points[j] += Vector2(
+						asteroid_rng.randf_range(-shape_size * 0.2, shape_size * 0.2),
+						asteroid_rng.randf_range(-shape_size * 0.2, shape_size * 0.2)
+					)
+				
+				# Draw asteroid
+				var triangle_color = Color(0.7, 0.3, 0)
+				canvas.draw_colored_polygon(triangle_points, triangle_color)
+				canvas.draw_polyline(triangle_points + [triangle_points[0]], Color(0.9, 0.4, 0), 2.0, true)
+				
+				# Draw crater
+				var crater_pos = asteroid_pos + Vector2(
+					asteroid_rng.randf_range(-shape_size * 0.3, shape_size * 0.3),
+					asteroid_rng.randf_range(-shape_size * 0.2, shape_size * 0.2)
+				)
+				canvas.draw_circle(crater_pos, shape_size * 0.15, Color(0.6, 0.25, 0))

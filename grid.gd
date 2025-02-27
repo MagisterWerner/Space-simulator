@@ -18,16 +18,6 @@ enum CellContent { EMPTY, PLANET, ASTEROID }
 # 2D array to store cell contents
 var cell_contents = []
 
-# 2D array to store number of asteroids per cell
-var asteroid_counts = []
-
-# 2D array to store planet sizes and colors
-var planet_sizes = []
-var planet_colors = []
-
-# Planet colors
-var planet_color_palette = [Color.WHITE, Color.GREEN, Color.RED, Color(0.96, 0.96, 0.86), Color.BLUE]
-
 # Current player cell coordinates
 var current_player_cell_x = -1
 var current_player_cell_y = -1
@@ -45,7 +35,15 @@ var last_valid_position = Vector2.ZERO
 # New property to track if a boundary warning is currently active
 var boundary_warning_active = false
 
+# References to spawners
+var planet_spawner = null
+var asteroid_spawner = null
+
 func _ready():
+	# Get references to spawners
+	planet_spawner = get_node_or_null("/root/Main/PlanetSpawner")
+	asteroid_spawner = get_node_or_null("/root/Main/AsteroidSpawner")
+	
 	# Initialize the cell contents based on the seed
 	generate_cell_contents()
 
@@ -64,9 +62,6 @@ func _process(delta):
 		
 		# Explicitly check all boundaries
 		var outside_grid = cell_x < 0 or cell_x > grid_x - 1 or cell_y < 0 or cell_y > grid_y - 1
-		
-		# Debug - track player position and cell
-		# print("Player at pos: ", player_pos, " Cell: (", cell_x, ", ", cell_y, ") Outside: ", outside_grid)
 		
 		# Store the last valid position when player is inside grid bounds
 		if not outside_grid and not player_immobilized:
@@ -191,7 +186,7 @@ func update_enemy_visibility():
 			enemy.update_active_state(is_cell_loaded)
 
 func _draw():
-	# Only draw grid lines for the loaded chunks
+	# Only draw grid lines and cell coordinates for the loaded chunks
 	for cell_pos in loaded_cells.keys():
 		var x = int(cell_pos.x)
 		var y = int(cell_pos.y)
@@ -214,7 +209,7 @@ func _draw():
 		# Right line
 		draw_line(rect_pos + Vector2(cell_size.x, 0), rect_pos + cell_size, line_color, 2.0 if is_boundary_cell(x, y) else 1.0)
 		
-		# Draw cell content for this loaded cell
+		# Draw cell coordinates
 		if y < cell_contents.size() and x < cell_contents[y].size():
 			var cell_center = Vector2(
 				x * cell_size.x + cell_size.x / 2.0,
@@ -257,90 +252,13 @@ func _draw():
 				font_size,
 				Color.WHITE
 			)
-			
-			# Get the cell content
-			var content = cell_contents[y][x]
-			
-			# Draw cell content if not empty
-			if content != CellContent.EMPTY:
-				if content == CellContent.PLANET:
-					# Draw a circle (planet) with outline
-					var shape_size = min(cell_size.x, cell_size.y) * planet_sizes[y][x]
-					draw_circle(cell_center, shape_size, planet_colors[y][x])
-					draw_arc(cell_center, shape_size, 0, TAU, 32, planet_colors[y][x].darkened(0.2), 2.0, true)  # Outline
-					
-					# Add some detail to the planet (rings or surface features)
-					var ring_radius = shape_size * 0.7
-					draw_arc(cell_center, ring_radius, 0, PI, 16, planet_colors[y][x].lightened(0.1), 1.5)
-					draw_arc(cell_center, ring_radius, PI, TAU, 16, planet_colors[y][x].lightened(0.1), 1.5)
-					
-				elif content == CellContent.ASTEROID:
-					var num_asteroids = asteroid_counts[y][x]
-					var base_shape_size = min(cell_size.x, cell_size.y) * 0.2  # Smaller size for multiple asteroids
-					var asteroid_positions = []  # Track positions to avoid overlap
-					
-					for i in range(num_asteroids):
-						var asteroid_rng = RandomNumberGenerator.new()
-						asteroid_rng.seed = seed_value + y * 1000 + x + i  # Unique seed per asteroid
-						
-						# Random position within the cell, ensuring no overlap and respecting cell borders
-						var pos_offset = Vector2.ZERO
-						var attempts = 0
-						var asteroid_pos = Vector2.ZERO
-						while attempts < 10:  # Limit attempts to avoid infinite loops
-							pos_offset = Vector2(
-								asteroid_rng.randf_range(-cell_size.x * 0.25, cell_size.x * 0.25),
-								asteroid_rng.randf_range(-cell_size.y * 0.25, cell_size.y * 0.25)
-							)
-							asteroid_pos = cell_center + pos_offset
-							
-							# Ensure the asteroid stays within the cell bounds
-							var cell_min = Vector2(x * cell_size.x, y * cell_size.y)
-							var cell_max = Vector2((x + 1) * cell_size.x, (y + 1) * cell_size.y)
-							if asteroid_pos.x - base_shape_size < cell_min.x or asteroid_pos.x + base_shape_size > cell_max.x:
-								continue
-							if asteroid_pos.y - base_shape_size < cell_min.y or asteroid_pos.y + base_shape_size > cell_max.y:
-								continue
-							
-							# Check for overlap with other asteroids in the same cell
-							var overlap = false
-							for pos in asteroid_positions:
-								if pos.distance_to(asteroid_pos) < base_shape_size * 1.5:
-									overlap = true
-									break
-							if not overlap:
-								break
-							attempts += 1
-						
-						asteroid_positions.append(cell_center + pos_offset)
-						asteroid_pos = cell_center + pos_offset
-						
-						# Generate triangle points
-						var shape_size = base_shape_size * asteroid_rng.randf_range(0.8, 1.2)  # Slight size variation
-						var triangle_points = [
-							asteroid_pos + Vector2(0, -shape_size),
-							asteroid_pos + Vector2(-shape_size * 0.866, shape_size * 0.5),
-							asteroid_pos + Vector2(shape_size * 0.866, shape_size * 0.5)
-						]
-						
-						# Perturb points for irregular shape
-						for j in triangle_points.size():
-							triangle_points[j] += Vector2(
-								asteroid_rng.randf_range(-5, 5),
-								asteroid_rng.randf_range(-5, 5)
-							)
-						
-						# Draw asteroid
-						var triangle_color = Color(0.7, 0.3, 0)
-						draw_colored_polygon(triangle_points, triangle_color)
-						draw_polyline(triangle_points + [triangle_points[0]], Color(0.9, 0.4, 0), 2.0, true)
-						
-						# Draw crater
-						var crater_pos = asteroid_pos + Vector2(
-							asteroid_rng.randf_range(-shape_size * 0.3, shape_size * 0.3),
-							asteroid_rng.randf_range(-shape_size * 0.2, shape_size * 0.2)
-						)
-						draw_circle(crater_pos, shape_size * 0.15, Color(0.6, 0.25, 0))
+	
+	# Delegate rendering to specialized spawners
+	if planet_spawner:
+		planet_spawner.draw_planets(self, loaded_cells)
+	
+	if asteroid_spawner:
+		asteroid_spawner.draw_asteroids(self, loaded_cells)
 
 # Regenerate the grid when properties change
 func regenerate():
@@ -367,28 +285,14 @@ func set_seed(new_seed):
 func generate_cell_contents():
 	print("Generating grid with seed: ", seed_value)
 	
-	# Initialize the RNG with the seed
-	var rng = RandomNumberGenerator.new()
-	rng.seed = seed_value
-	
 	# Initialize cell_contents as a 2D array of empty cells
 	cell_contents = []
-	asteroid_counts = []
-	planet_sizes = []
-	planet_colors = []
 	
 	for y in range(int(grid_size.y)):
 		cell_contents.append([])
-		asteroid_counts.append([])
-		planet_sizes.append([])
-		planet_colors.append([])
-		
 		for x in range(int(grid_size.x)):
 			# Default to empty
 			cell_contents[y].append(CellContent.EMPTY)
-			asteroid_counts[y].append(0)
-			planet_sizes[y].append(0.0)
-			planet_colors[y].append(Color.WHITE)
 	
 	# Initialize loaded cells dictionary
 	loaded_cells = {}

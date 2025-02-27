@@ -13,6 +13,10 @@ var grid = null
 var planet_positions = []
 var planet_data = []  # Stores additional planet data like size, color, etc.
 
+# 2D arrays to store planet sizes and colors (moved from grid)
+var planet_sizes = []
+var planet_colors = []
+
 # Planet color palette
 var planet_color_palette = [
 	Color.WHITE, 
@@ -41,10 +45,22 @@ func generate_planets():
 	planet_positions.clear()
 	planet_data.clear()
 	
+	# Initialize planet_sizes and planet_colors arrays
+	planet_sizes = []
+	planet_colors = []
+	
 	# Make sure grid is ready
 	if grid.cell_contents.size() == 0:
 		print("ERROR: Grid content arrays not initialized yet")
 		return
+	
+	# Initialize the planet arrays to match grid size
+	for y in range(int(grid.grid_size.y)):
+		planet_sizes.append([])
+		planet_colors.append([])
+		for x in range(int(grid.grid_size.x)):
+			planet_sizes[y].append(0.0)
+			planet_colors[y].append(Color.WHITE)
 	
 	print("Generating planets with seed: ", grid.seed_value)
 	
@@ -98,12 +114,12 @@ func generate_planets():
 		
 		# Generate random size
 		var planet_size = rng.randf_range(min_planet_size, max_planet_size)
-		grid.planet_sizes[y][x] = planet_size
+		planet_sizes[y][x] = planet_size
 		
 		# Choose a random color from the palette
 		var color_index = rng.randi() % planet_color_palette.size()
 		var planet_color = planet_color_palette[color_index]
-		grid.planet_colors[y][x] = planet_color
+		planet_colors[y][x] = planet_color
 		
 		# Store planet position and data
 		var world_pos = Vector2(
@@ -141,6 +157,33 @@ func generate_planets():
 	
 	# Force grid redraw
 	grid.queue_redraw()
+
+# New method to draw planets
+func draw_planets(canvas: CanvasItem, loaded_cells: Dictionary):
+	if not grid:
+		return
+	
+	# For each loaded cell
+	for cell_pos in loaded_cells.keys():
+		var x = int(cell_pos.x)
+		var y = int(cell_pos.y)
+		
+		# Only process if this cell contains a planet
+		if y < grid.cell_contents.size() and x < grid.cell_contents[y].size() and grid.cell_contents[y][x] == grid.CellContent.PLANET:
+			var cell_center = Vector2(
+				x * grid.cell_size.x + grid.cell_size.x / 2.0,
+				y * grid.cell_size.y + grid.cell_size.y / 2.0
+			)
+			
+			# Draw a circle (planet) with outline
+			var shape_size = min(grid.cell_size.x, grid.cell_size.y) * planet_sizes[y][x]
+			canvas.draw_circle(cell_center, shape_size, planet_colors[y][x])
+			canvas.draw_arc(cell_center, shape_size, 0, TAU, 32, planet_colors[y][x].darkened(0.2), 2.0, true)  # Outline
+			
+			# Add some detail to the planet (rings or surface features)
+			var ring_radius = shape_size * 0.7
+			canvas.draw_arc(cell_center, ring_radius, 0, PI, 16, planet_colors[y][x].lightened(0.1), 1.5)
+			canvas.draw_arc(cell_center, ring_radius, PI, TAU, 16, planet_colors[y][x].lightened(0.1), 1.5)
 
 # Function to get all planet positions (used by main.gd)
 func get_all_planet_positions():
