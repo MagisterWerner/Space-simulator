@@ -153,6 +153,7 @@ func show_message(text):
 func hide_message():
 	if message_label:
 		message_label.visible = false
+		message_timer = 0.0
 
 # Respawn player at initial planet
 func respawn_player_at_initial_planet():

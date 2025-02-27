@@ -42,6 +42,9 @@ var player_immobilized = false
 var respawn_timer = 0.0
 var last_valid_position = Vector2.ZERO
 
+# New property to track if a boundary warning is currently active
+var boundary_warning_active = false
+
 func _ready():
 	# Initialize the cell contents based on the seed
 	generate_cell_contents()
@@ -127,10 +130,19 @@ func _process(delta):
 		var is_in_boundary = is_boundary_cell(cell_x, cell_y)
 		
 		# Show warning message only when first entering a boundary cell
-		if is_in_boundary and not was_in_boundary_cell:
+		# and not already showing a warning
+		if is_in_boundary and not was_in_boundary_cell and not boundary_warning_active:
 			var main = get_tree().current_scene
 			if main.has_method("show_message"):
 				main.show_message("WARNING: You are leaving known space!")
+				boundary_warning_active = true
+		
+		# Hide warning when leaving boundary
+		if not is_in_boundary and was_in_boundary_cell:
+			var main = get_tree().current_scene
+			if main.has_method("hide_message"):
+				main.hide_message()
+				boundary_warning_active = false
 		
 		# Update boundary tracking
 		was_in_boundary_cell = is_in_boundary
@@ -146,12 +158,6 @@ func update_loaded_chunks(center_x, center_y):
 	# Update player cell tracking
 	current_player_cell_x = center_x
 	current_player_cell_y = center_y
-	
-	# Update tracking for boundary cells
-	if is_boundary_cell(center_x, center_y):
-		was_in_boundary_cell = true
-	else:
-		was_in_boundary_cell = false
 	
 	# Clear existing loaded cells
 	loaded_cells.clear()
