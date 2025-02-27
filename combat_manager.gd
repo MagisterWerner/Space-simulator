@@ -1,15 +1,9 @@
+class_name CombatManager
 extends Node
 
-# Called when the node enters the scene tree for the first time
-func _ready():
-	print("Combat manager initialized")
-
-# Called every frame
 func _process(_delta):
-	# Process laser collisions
 	check_all_laser_collisions()
 
-# Check for collisions between lasers and entities
 func check_all_laser_collisions():
 	# Get all lasers in the scene
 	var lasers = get_tree().get_nodes_in_group("lasers")

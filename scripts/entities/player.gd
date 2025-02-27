@@ -1,212 +1,150 @@
-# scripts/entities/player.gd
 extends Node2D
+class_name Player
 
-# Components
-@onready var entity_component = $EntityComponent
-@onready var state_machine = $StateMachine
+# Component references
+var health_component
+var combat_component
+var movement_component
+var state_machine
 
 # Player-specific properties
 var is_immobilized: bool = false
 var respawn_timer: float = 0.0
 var current_planet_id: int = -1
-var cell_x: int = -1
-var cell_y: int = -1
-var last_valid_position: Vector2 = Vector2.ZERO
-var was_in_boundary_cell = false
-var was_outside_grid = false
-
-# --- For direct access by states ---
-var movement_speed: float = 300.0:
-	get: return entity_component.movement_speed if entity_component else 300.0
-	set(value): 
-		if entity_component:
-			entity_component.movement_speed = value
-		
-# Cached nodes
-var grid: Node2D
-var main: Node2D
-
-# Signals - prefixed with underscore to indicate they're used externally
-signal _cell_changed(new_x, new_y)
-signal _health_changed(current, maximum)
+var last_valid_position: Vector2
+var grid = null
+var main = null
 
 func _ready():
-	# Set player-specific properties
-	z_index = 10  # Ensure player is drawn on top
+	# Set basic properties
+	z_index = 10
 	add_to_group("player")
+	
+	# Get component references 
+	health_component = $HealthComponent
+	combat_component = $CombatComponent
+	movement_component = $MovementComponent
+	state_machine = $StateMachine
+	
+	# Store initial position
+	last_valid_position = global_position
 	
 	# Get references to commonly used nodes
 	grid = get_node_or_null("/root/Main/Grid")
 	main = get_node_or_null("/root/Main")
 	
-	# Store initial position as the last valid position
-	last_valid_position = global_position
-	
-	# Calculate initial cell position
-	update_cell_position()
+	# Connect signals
+	if health_component:
+		health_component.connect("died", _on_died)
+		
+	if movement_component:
+		movement_component.connect("position_changed", _on_position_changed)
+		movement_component.connect("cell_changed", _on_cell_changed)
 	
 	# Initialize state machine
 	if state_machine:
-		# Start in normal state unless immobilized
 		if is_immobilized:
 			state_machine.change_state("Immobilized")
 		else:
 			state_machine.change_state("Normal")
-	
-	print("Player initialized at position: ", global_position)
 
 func _process(delta):
-	# Process player-specific logic
-	
-	# Update visual feedback for invulnerability
-	if has_node("Sprite2D") and entity_component:
-		var sprite = get_node("Sprite2D")
-		sprite.modulate.a = 0.5 if entity_component.is_invulnerable else 1.0
-	
-	# Update health bar
-	update_health_bar()
-	
-	# Only check for planet collision if not immobilized
-	if not is_immobilized:
-		check_planet_collision()
-	
 	# Update respawn timer if immobilized
 	if is_immobilized:
 		respawn_timer -= delta
 		if respawn_timer <= 0:
 			set_immobilized(false)
+			
 			# Respawn at initial planet
 			if main and main.has_method("respawn_player_at_initial_planet"):
 				main.respawn_player_at_initial_planet()
-
-func take_damage(amount):
-	if entity_component:
-		entity_component.take_damage(amount)
-		emit_signal("_health_changed", entity_component.current_health, entity_component.max_health)
-
-func on_death():
-	print("Player died")
 	
-	# Reset health
-	if entity_component:
-		entity_component.current_health = entity_component.max_health
-		emit_signal("_health_changed", entity_component.current_health, entity_component.max_health)
-	
-	# Set temporary invulnerability
-	if entity_component:
-		entity_component.is_invulnerable = true
-		entity_component.invulnerability_timer = 3.0
-	
-	# Immobilize the player
-	set_immobilized(true)
-	
-	# Show message about death
-	if main and main.has_method("show_message"):
-		main.show_message("You were destroyed! Respawning...")
+	# Only check for planet collision if not immobilized
+	if not is_immobilized:
+		check_planet_collision()
 
 func shoot():
-	if entity_component and entity_component.current_cooldown <= 0 and not is_immobilized:
-		# Get the current facing direction
-		var facing_direction = Vector2.RIGHT
-		if has_node("Sprite2D"):
-			facing_direction = Vector2.RIGHT.rotated(get_node("Sprite2D").rotation)
+	if combat_component and not is_immobilized:
+		# Get the facing direction either from movement component or sprite
+		var direction = Vector2.RIGHT
+		if movement_component:
+			direction = movement_component.facing_direction
 		
-		# Use the component to shoot
-		entity_component.shoot(global_position, facing_direction, true, 25.0)
+		combat_component.fire(direction)
 
-func set_immobilized(value):
-	# Only change state if it's actually changing
-	if value != is_immobilized:
-		is_immobilized = value
-		
-		if value:
-			# Immobilize
-			respawn_timer = 5.0
-			print("Player immobilized with 5-second timer")
-			
-			# Change state to immobilized if state machine exists
-			if state_machine and state_machine.has_state("Immobilized"):
-				state_machine.change_state("Immobilized")
-		else:
-			# Restore movement
-			respawn_timer = 0.0
-			print("Player movement restored")
-			
-			# Change state to normal if state machine exists
-			if state_machine and state_machine.has_state("Normal"):
-				state_machine.change_state("Normal")
+func take_damage(amount: float) -> bool:
+	if health_component:
+		return health_component.take_damage(amount)
+	return false
 
-func update_cell_position():
-	if grid:
-		var new_cell_x = int(floor(global_position.x / grid.cell_size.x))
-		var new_cell_y = int(floor(global_position.y / grid.cell_size.y))
+func set_immobilized(value: bool):
+	if value == is_immobilized:
+		return
 		
-		if new_cell_x != cell_x or new_cell_y != cell_y:
-			cell_x = new_cell_x
-			cell_y = new_cell_y
-			
-			# Emit signal about cell change
-			emit_signal("_cell_changed", cell_x, cell_y)
-			print("Player moved to new cell: (", cell_x, ",", cell_y, ")")
-			
-			# Update loaded chunks in the grid
-			if grid:
-				grid.update_loaded_chunks(cell_x, cell_y)
-			
-			return true
+	is_immobilized = value
 	
-	return false
-
-func check_laser_hit(laser):
-	if entity_component:
-		return entity_component.check_laser_hit(laser, get_collision_rect(), true)
-	return false
-
-func get_collision_rect():
-	var sprite = get_node_or_null("Sprite2D")
-	if sprite and sprite.texture:
-		var texture_size = sprite.texture.get_size()
-		# Make the collision rect a bit smaller than the sprite for better gameplay
-		var scaled_size = texture_size * 0.7
-		return Rect2(-scaled_size.x/2, -scaled_size.y/2, scaled_size.x, scaled_size.y)
+	if value:
+		# Immobilize
+		respawn_timer = 5.0
+		
+		# Change state to immobilized
+		if state_machine and state_machine.has_state("Immobilized"):
+			state_machine.change_state("Immobilized")
 	else:
-		# Fallback collision rect if no sprite
-		return Rect2(-16, -16, 32, 32)
+		# Restore movement
+		respawn_timer = 0.0
+		
+		# Change state to normal
+		if state_machine and state_machine.has_state("Normal"):
+			state_machine.change_state("Normal")
 
-func check_boundaries():
-	if not grid:
-		return true
-	
-	# Skip if already immobilized
-	if is_immobilized:
+func check_boundaries() -> bool:
+	if not grid or is_immobilized:
 		return false
 	
-	# Convert grid size to integers
-	var grid_width = int(grid.grid_size.x)
-	var grid_height = int(grid.grid_size.y)
-	
-	# Check if outside grid
-	var is_outside_grid = cell_x < 0 or cell_x >= grid_width or cell_y < 0 or cell_y >= grid_height
-	
-	# Handle being outside grid
-	if is_outside_grid:
-		print("CRITICAL: Player attempted to leave grid at: ", global_position)
+	if movement_component:
+		var cell = movement_component.get_current_cell()
 		
-		# Show message
-		if main and main.has_method("show_message"):
-			main.show_message("You abandoned all logic and were lost in space!")
+		# Check if outside grid
+		var is_outside_grid = (
+			cell.x < 0 or 
+			cell.x >= int(grid.grid_size.x) or 
+			cell.y < 0 or 
+			cell.y >= int(grid.grid_size.y)
+		)
 		
-		# Immobilize the player
-		set_immobilized(true)
-		
-		# Revert to last valid position
-		global_position = last_valid_position
-		
-		return false
+		if is_outside_grid:
+			# Show message
+			if main and main.has_method("show_message"):
+				main.show_message("You abandoned all logic and were lost in space!")
+			
+			# Immobilize the player
+			set_immobilized(true)
+			
+			# Revert to last valid position
+			global_position = last_valid_position
+			
+			return false
 	
 	# We're in a valid position
 	last_valid_position = global_position
 	return true
+
+func check_laser_hit(laser) -> bool:
+	if combat_component:
+		return combat_component.check_collision(laser)
+	return false
+
+func get_collision_rect() -> Rect2:
+	var sprite = $Sprite2D
+	if sprite and sprite.texture:
+		var texture_size = sprite.texture.get_size()
+		# Make the collision rect a bit smaller than the sprite
+		var scaled_size = texture_size * 0.7
+		return Rect2(-scaled_size.x/2, -scaled_size.y/2, scaled_size.x, scaled_size.y)
+	else:
+		# Fallback collision rect
+		return Rect2(-16, -16, 32, 32)
 
 func check_planet_collision():
 	var planet_spawner = get_node_or_null("/root/Main/PlanetSpawner")
@@ -218,7 +156,7 @@ func check_planet_collision():
 	var planet_data = planet_spawner.planet_data
 	var sprites = planet_spawner.planet_sprites
 	
-	var player_radius = 16  # Approximate player radius
+	var player_radius = 16
 	var on_any_planet = false
 	var new_planet_id = -1
 	
@@ -261,12 +199,29 @@ func check_planet_collision():
 	if not on_any_planet and current_planet_id != -1:
 		current_planet_id = -1
 
-func update_health_bar():
-	var health_bar = get_node_or_null("HealthBar")
-	if health_bar and entity_component:
-		# Update width based on current health percentage
-		var health_percent = float(entity_component.current_health) / entity_component.max_health
-		health_bar.size.x = 40 * health_percent
-		
-		# Center the health bar
-		health_bar.position.x = -20
+func get_current_cell() -> Vector2i:
+	if movement_component:
+		return Vector2i(movement_component.cell_x, movement_component.cell_y)
+	return Vector2i(-1, -1)
+
+# Signal handlers
+func _on_died():
+	# Reset health
+	if health_component:
+		health_component.current_health = health_component.max_health
+		health_component.set_invulnerable(3.0)
+	
+	# Immobilize the player
+	set_immobilized(true)
+	
+	# Show message about death
+	if main and main.has_method("show_message"):
+		main.show_message("You were destroyed! Respawning...")
+
+func _on_position_changed(_old_position, _new_position):
+	# Check boundaries after position change
+	check_boundaries()
+
+func _on_cell_changed(_cell_x, _cell_y):
+	# Additional logic when player changes cells
+	pass

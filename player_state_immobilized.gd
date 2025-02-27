@@ -1,14 +1,21 @@
-# player_state_immobilized.gd
-class_name PlayerStateImmobilized
 extends State
+class_name PlayerStateImmobilized
+
+var movement_component
 
 func enter() -> void:
 	super.enter()
-	print("Player immobilized")
 	
-	# Ensure player state is consistent
+	# Get reference to movement component
+	movement_component = entity.get_node_or_null("MovementComponent")
+	
+	# Set player state
 	entity.is_immobilized = true
-	entity.movement_speed = 0  # This now uses the property getter
+	
+	# Stop movement
+	if movement_component:
+		movement_component.stop()
+		movement_component.speed = 0
 	
 	# Show a message if not already shown
 	var main = entity.get_node_or_null("/root/Main")
@@ -16,15 +23,5 @@ func enter() -> void:
 		main.show_message("You are immobilized. Respawning in 5 seconds...")
 
 func process(delta: float) -> void:
-	# Update the respawn timer
-	entity.respawn_timer -= delta
-	
-	# Check if we should respawn
-	if entity.respawn_timer <= 0:
-		# Change back to normal state
-		state_machine.change_state("Normal")
-		
-		# Respawn at initial planet
-		var main = entity.get_node_or_null("/root/Main")
-		if main and main.has_method("respawn_player_at_initial_planet"):
-			main.respawn_player_at_initial_planet()
+	# Update the respawn timer is handled in the player script
+	pass

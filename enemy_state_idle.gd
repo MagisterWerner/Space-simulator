@@ -1,15 +1,18 @@
-# enemy_state_idle.gd
-class_name EnemyStateIdle
 extends State
+class_name EnemyStateIdle
 
-var return_speed: float = 0.5  # Slow return to original position
-var check_interval: float = 1.0  # Check for player every second
+var movement_component
+var return_speed: float = 0.5
+var check_interval: float = 1.0
 var check_timer: float = 0.0
-var min_distance: float = 40.0  # Minimum distance to maintain from other enemies
+var min_distance: float = 40.0
 
 func enter() -> void:
 	super.enter()
-	print("Enemy entering idle state")
+	
+	# Get reference to movement component
+	movement_component = entity.get_node_or_null("MovementComponent")
+	
 	check_timer = 0.0
 
 func process(delta: float) -> void:
@@ -26,16 +29,23 @@ func process(delta: float) -> void:
 		var direction = entity.original_position - entity.global_position
 		direction = direction.normalized()
 		
-		# Calculate potential new position
-		var potential_position = entity.global_position + direction * entity.movement_speed * return_speed * delta
-		
-		# Check for collisions with other enemies before moving
-		if not would_collide_with_enemies(potential_position):
-			entity.global_position = potential_position
-	
-	# Update current cell if moved to a different cell
-	if entity.update_cell_position():
-		entity.check_for_player()
+		if movement_component:
+			# Use a reduced speed for returning
+			var original_speed = movement_component.speed
+			movement_component.speed = original_speed * return_speed
+			movement_component.move(direction)
+			movement_component.speed = original_speed
+		else:
+			# Calculate potential new position
+			var potential_position = entity.global_position + direction * 150.0 * return_speed * delta
+			
+			# Check for collisions with other enemies before moving
+			if not would_collide_with_enemies(potential_position):
+				entity.global_position = potential_position
+	else:
+		# Stop movement when at original position
+		if movement_component:
+			movement_component.stop()
 
 # Function to check if a potential position would cause collision with other enemies
 func would_collide_with_enemies(potential_position: Vector2) -> bool:

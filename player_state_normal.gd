@@ -1,17 +1,23 @@
-# player_state_normal.gd
-class_name PlayerStateNormal
 extends State
+class_name PlayerStateNormal
+
+var movement_component
+var combat_component
 
 func enter() -> void:
 	super.enter()
-	print("Player entered Normal state")
+	
+	# Get references to components using the registry helper
+	movement_component = entity.get_node_or_null("MovementComponent")
+	combat_component = entity.get_node_or_null("CombatComponent")
 	
 	# Ensure player is not immobilized
 	entity.is_immobilized = false
-	entity.movement_speed = 300  # This now uses the property getter
+	if movement_component:
+		movement_component.speed = 300
 
 func process(delta: float) -> void:
-	# Skip if player is immobilized (this is a safety check)
+	# Skip if player is immobilized
 	if entity.is_immobilized:
 		return
 	
@@ -27,27 +33,13 @@ func process(delta: float) -> void:
 	if Input.is_action_pressed("ui_up"):
 		direction.y -= 1
 	
-	if direction.length() > 0:
-		# Store previous position (removed since it was unused)
-		# var prev_position = entity.global_position
-		
-		# Move the player
-		direction = direction.normalized()
-		entity.global_position += direction * entity.movement_speed * delta
-		
-		# Update sprite rotation to face movement direction
-		if entity.has_node("Sprite2D"):
-			var angle = direction.angle()
-			entity.get_node("Sprite2D").rotation = angle
-		
-		# Check boundaries
-		if not entity.check_boundaries():
-			# The check_boundaries function will handle returning to last valid position
-			return
-		
-		# Check if cell position changed
-		entity.update_cell_position()
+	# Move the player using the movement component
+	if movement_component:
+		if direction.length() > 0:
+			movement_component.move(direction)
+		else:
+			movement_component.stop()
 	
-	# Handle shooting with Space key (ui_select)
-	if Input.is_action_pressed("ui_select") and entity.entity_component.current_cooldown <= 0:
+	# Handle shooting with Space key
+	if Input.is_action_pressed("ui_select") and combat_component and combat_component.can_fire():
 		entity.shoot()

@@ -1,17 +1,29 @@
-[gd_scene load_steps=7 format=3 uid="uid://bqf1ewcvnbx7q"]
+[gd_scene load_steps=9 format=3 uid="uid://bqf1ewcvnbx7q"]
 
 [ext_resource type="Script" path="res://scripts/entities/player.gd" id="1_pv8nj"]
-[ext_resource type="Script" path="res://scripts/components/entity_component.gd" id="2_gy05w"]
+[ext_resource type="Script" path="res://scripts/components/health_component.gd" id="2_gy05w"]
 [ext_resource type="Texture2D" uid="uid://p0xsi4shtxjd" path="res://sprites/ships_player/player_ship_1.png" id="2_j8p5k"]
+[ext_resource type="Script" path="res://scripts/components/movement_component.gd" id="3_d3f7g"]
 [ext_resource type="Script" path="res://scripts/core/state_machine.gd" id="3_lkmbh"]
+[ext_resource type="Script" path="res://scripts/components/combat_component.gd" id="4_1m3nr"]
 [ext_resource type="Script" path="res://player_state_normal.gd" id="4_7s3qe"]
 [ext_resource type="Script" path="res://player_state_immobilized.gd" id="5_b30eq"]
 
 [node name="Player" type="Node2D"]
 script = ExtResource("1_pv8nj")
 
-[node name="EntityComponent" type="Node" parent="."]
+[node name="HealthComponent" type="Node" parent="."]
 script = ExtResource("2_gy05w")
+invulnerability_time = 1.5
+
+[node name="MovementComponent" type="Node" parent="."]
+script = ExtResource("3_d3f7g")
+
+[node name="CombatComponent" type="Node" parent="."]
+script = ExtResource("4_1m3nr")
+fire_cooldown = 0.3
+damage = 25.0
+is_player_weapon = true
 
 [node name="Sprite2D" type="Sprite2D" parent="."]
 texture = ExtResource("2_j8p5k")
