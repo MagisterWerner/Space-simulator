@@ -57,3 +57,4 @@ script = ExtResource("5_oha7o")
 
 [node name="AsteroidSpawner" type="Node" parent="."]
 script = ExtResource("6_lenuj")
+asteroid_percentage = 30
