@@ -1,6 +1,6 @@
 extends Node2D
 
-@export var speed = 400
+@export var speed = 1000
 @export var damage = 10
 @export var lifetime = 2.0  # Seconds before auto-destruction
 @export var is_player_laser = true  # Whether this is from player (affects collision)
@@ -17,6 +17,10 @@ func _ready():
 	
 	# Add to lasers group for collision detection
 	add_to_group("lasers")
+	
+	# Ensure the sprite is oriented in the direction of travel
+	if has_node("Sprite2D"):
+		get_node("Sprite2D").rotation = 0
 
 func _process(delta):
 	# Move in the current direction

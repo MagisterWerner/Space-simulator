@@ -85,7 +85,7 @@ func _process(delta):
 	# Handle seed changing via numeric keys
 	handle_seed_key_input()
 	
-	# Handle random seed generation via Enter key
+	# Handle random seed generation via Shift key
 	handle_random_seed_input()
 	
 	# Manage message display timer
@@ -111,8 +111,9 @@ func handle_seed_key_input():
 		previous_key_states[key_code] = key_pressed
 
 # Handle random seed generation
+# Handle random seed generation
 func handle_random_seed_input():
-	if Input.is_action_just_pressed("ui_accept"):
+	if Input.is_action_just_pressed("ui_accept"):  # Changed to Enter key
 		# Generate a new random seed
 		var rng = RandomNumberGenerator.new()
 		rng.randomize()
@@ -129,6 +130,9 @@ func handle_random_seed_input():
 			# Reset enemies
 			if enemy_spawner:
 				enemy_spawner.reset_enemies()
+			
+			# Show message about seed change
+			show_message("Generated new random seed: " + str(new_seed))
 
 # Manage message display timer
 func manage_message_timer(delta):

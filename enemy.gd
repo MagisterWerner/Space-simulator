@@ -43,10 +43,25 @@ func _ready():
 		sprite.texture = load("res://sprites/ships_enemy/enemy_ship_1.png")
 		add_child(sprite)
 	
+	# Set up health bar if it doesn't exist
+	if not has_node("HealthBar"):
+		var health_bar = ColorRect.new()
+		health_bar.name = "HealthBar"
+		health_bar.color = Color(1, 0, 0, 1)
+		health_bar.size = Vector2(30, 3)
+		health_bar.position = Vector2(-15, -25)
+		add_child(health_bar)
+	
+	# Get reference to the state machine - handle if null
+	state_machine = get_node_or_null("StateMachine")
+	
 	# Initialize health
 	current_health = max_health
 	
 	print("Enemy ready at position: ", global_position, " in cell: (", cell_x, ",", cell_y, ")")
+	
+	# Initialize the enemy state
+	call_deferred("check_for_player")
 
 func _process(delta):
 	# Update shooting cooldown
@@ -110,13 +125,14 @@ func update_cell_position():
 			return true
 	
 	return false
-
+	
 # Set the state based on player presence
 func check_for_player():
-	if is_player_in_same_cell():
-		state_machine.change_state("Follow")
-	else:
-		state_machine.change_state("Idle")
+	if state_machine:
+		if is_player_in_same_cell():
+			state_machine.change_state("Follow")
+		else:
+			state_machine.change_state("Idle")
 
 # Update enemy and state machine visibility and processing state
 func update_active_state(is_active):

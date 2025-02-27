@@ -92,7 +92,24 @@ func spawn_enemies():
 		# Set up the basic enemy if no state machine exists
 		if not enemy.has_node("StateMachine"):
 			print("WARNING: Enemy missing StateMachine, creating simplified enemy")
-			# The simplified enemy will still work but with reduced functionality
+			
+			# Create a state machine
+			var state_machine = Node.new()
+			state_machine.name = "StateMachine"
+			state_machine.set_script(load("res://enemy_state_machine.gd"))
+			enemy.add_child(state_machine)
+			
+			# Create Idle state
+			var idle_state = Node.new()
+			idle_state.name = "Idle"
+			idle_state.set_script(load("res://enemy_state_idle.gd"))
+			state_machine.add_child(idle_state)
+			
+			# Create Follow state
+			var follow_state = Node.new()
+			follow_state.name = "Follow"
+			follow_state.set_script(load("res://enemy_state_follow.gd"))
+			state_machine.add_child(follow_state)
 		
 		# Add enemy to the scene
 		get_parent().add_child(enemy)

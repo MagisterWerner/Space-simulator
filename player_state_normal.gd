@@ -34,6 +34,11 @@ func process(delta):
 		direction = direction.normalized()
 		player.global_position += direction * player.movement_speed * delta
 		
+		# Update sprite rotation to face movement direction
+		if player.has_node("Sprite2D"):
+			var angle = direction.angle()
+			player.get_node("Sprite2D").rotation = angle
+		
 		# Check if player changed cells and update grid chunks if needed
 		var grid = get_node_or_null("/root/Main/Grid")
 		if grid:
@@ -47,6 +52,18 @@ func process(delta):
 			if prev_cell_x != current_cell_x or prev_cell_y != current_cell_y:
 				print("State Normal: Player moved to new cell: (", current_cell_x, ",", current_cell_y, ")")
 				grid.update_loaded_chunks(current_cell_x, current_cell_y)
+	
+	# Handle shooting with Space key (ui_select)
+	if Input.is_action_pressed("ui_select") and player.current_cooldown <= 0:
+		if player.has_method("shoot"):
+			player.shoot()
+	
+	# Update health bar
+	var health_bar = player.get_node_or_null("HealthBar")
+	if health_bar:
+		var health_percent = float(player.current_health) / player.max_health
+		health_bar.size.x = 40 * health_percent
+		health_bar.position.x = -20
 	
 	# Keep the player visible at all times by forcing a redraw
 	player.queue_redraw()

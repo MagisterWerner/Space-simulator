@@ -74,8 +74,8 @@ func _process(delta):
 	if current_cooldown > 0:
 		current_cooldown -= delta
 	
-	# Handle shooting input
-	if Input.is_action_pressed("ui_accept") and current_cooldown <= 0 and not is_immobilized:
+	# Handle shooting input - changed to ui_select (Space bar)
+	if Input.is_action_pressed("ui_select") and current_cooldown <= 0 and not is_immobilized:
 		shoot()
 	
 	# Update invulnerability timer
@@ -282,12 +282,15 @@ func shoot():
 	# Create the laser instance
 	var laser = laser_scene.instantiate()
 	
+	# Get the current facing direction
+	var facing_direction = Vector2.RIGHT.rotated(get_node("Sprite2D").rotation)
+	
 	# Set position slightly in front of the player's facing direction
-	var spawn_offset = Vector2.RIGHT.rotated(get_node("Sprite2D").rotation) * 30
+	var spawn_offset = facing_direction * 30
 	laser.global_position = global_position + spawn_offset
 	
-	# Set direction based on player's rotation
-	laser.direction = Vector2.RIGHT.rotated(get_node("Sprite2D").rotation)
+	# Set laser direction and rotation to match player's facing direction
+	laser.direction = facing_direction
 	laser.rotation = get_node("Sprite2D").rotation
 	
 	# Configure the laser

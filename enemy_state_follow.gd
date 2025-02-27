@@ -31,10 +31,16 @@ func process(delta):
 	# Calculate distance to player
 	var distance_to_player = enemy.global_position.distance_to(player.global_position)
 	
+	# Update rotation to face player regardless of movement
+	var direction = player.global_position - enemy.global_position
+	var angle = direction.angle()
+	
+	if enemy.has_node("Sprite2D"):
+		enemy.get_node("Sprite2D").rotation = angle
+	
 	# Only follow if within max follow distance and not too close
 	if distance_to_player < max_follow_distance and distance_to_player > min_distance:
 		# Calculate potential new position
-		var direction = player.global_position - enemy.global_position
 		direction = direction.normalized()
 		var potential_position = enemy.global_position + direction * enemy.movement_speed * delta
 		
