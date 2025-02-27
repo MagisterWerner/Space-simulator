@@ -7,13 +7,13 @@ extends Node
 @export var max_moons = 2           # Maximum number of moons per planet
 @export var planet_rotation_factor = 0.02  # Factor to slow down planet rotation (lower = slower)
 @export var moon_orbit_factor = 0.05      # Factor to slow down moon orbits (lower = slower)
-@export var cell_margin = 0.9       # Percentage of cell to use (allows some margin)
+@export var cell_margin = 0.2       # Margin from cell edges (as percentage of cell size)
 @export var orbital_tilt = 0.2      # Tilt factor for orbital planes (0-1, 0=no tilt, 1=max tilt)
 
 # Reference to the grid
 var grid = null
 
-# Array to track spawned planets
+# Arrays to track spawned planets
 var planet_positions = []
 var planet_data = []  # Stores additional planet data like size, color, etc.
 
@@ -113,7 +113,7 @@ func load_sprites():
 
 # Function to generate planets in grid cells
 func generate_planets():
-	# Clear existing planet data from planet_data array
+	# Clear existing planet data
 	planet_positions.clear()
 	planet_data.clear()
 	
@@ -195,7 +195,7 @@ func generate_planets():
 		# Get planet size from the sprite size
 		var planet_texture = planet_sprites[planet_sprite_idx]
 		var texture_size = planet_texture.get_size()
-		var cell_min_dimension = min(grid.cell_size.x, grid.cell_size.y) * cell_margin
+		var cell_min_dimension = min(grid.cell_size.x, grid.cell_size.y) * (1.0 - 2 * cell_margin)
 		var planet_pixel_size = max(texture_size.x, texture_size.y)
 		
 		# Start with 1:1 pixel scale (no scaling)
@@ -208,13 +208,49 @@ func generate_planets():
 		else:
 			print("Using original size for planet ", planet_sprite_idx, " (", planet_pixel_size, " pixels)")
 		
+		# Calculate the visual radius of the planet with scaling
+		var planet_radius = texture_size.x * scale / 2
+		
 		# Determine if this planet has moons
 		var has_moons = rng.randi() % 100 < moon_chance
 		var num_moons = rng.randi_range(1, max_moons) if has_moons else 0
 		
+		# Calculate the safe area within the cell accounting for planet radius
+		var safe_width = grid.cell_size.x * (1.0 - 2 * cell_margin)
+		var safe_height = grid.cell_size.y * (1.0 - 2 * cell_margin)
+		
+		# If planet has moons, we need to account for their orbits in positioning
+		var max_moon_distance = 0
+		
 		# Generate moon data if applicable
 		var moons = []
 		if has_moons and moon_sprites.size() > 0:
+			# First pass to calculate the largest moon orbit radius
+			for m in range(num_moons):
+				var moon_sprite_idx = rng.randi() % moon_sprites.size()
+				var moon_texture = moon_sprites[moon_sprite_idx]
+				var moon_texture_size = moon_texture.get_size()
+				
+				# Calculate moon parameters
+				var moon_radius = moon_texture_size.x / 2
+				var padding = rng.randf_range(10, 30)
+				var moon_orbit_distance = planet_radius + moon_radius + padding
+				
+				if moon_orbit_distance > max_moon_distance:
+					max_moon_distance = moon_orbit_distance
+			
+			# Calculate the effective radius including moons
+			var effective_radius = planet_radius + max_moon_distance
+			
+			# Further restrict safe area to account for moons
+			safe_width -= 2 * effective_radius
+			safe_height -= 2 * effective_radius
+			
+			# Ensure we have some minimum safe area
+			safe_width = max(safe_width, 10)
+			safe_height = max(safe_height, 10)
+			
+			# Generate moon data for each moon
 			for m in range(num_moons):
 				# Generate moon data
 				var moon_sprite_idx = rng.randi() % moon_sprites.size()
@@ -222,9 +258,8 @@ func generate_planets():
 				var moon_texture_size = moon_texture.get_size()
 				
 				# Calculate moon parameters
-				var planet_radius = texture_size.x * scale / 2  # Actual visual radius of planet with scaling
-				var moon_radius = moon_texture_size.x / 2       # Half the moon size (unscaled)
-				var padding = rng.randf_range(10, 30)           # Space between planet edge and moon
+				var moon_radius = moon_texture_size.x / 2
+				var padding = rng.randf_range(10, 30)
 				var moon_orbit_distance = planet_radius + moon_radius + padding
 				
 				var moon_angle = rng.randf_range(0, TAU)
@@ -240,17 +275,28 @@ func generate_planets():
 					"distance": moon_orbit_distance,
 					"angle": moon_angle,
 					"scale": moon_scale,
-					"orbit_speed": rng.randf_range(0.2, 0.5) * moon_orbit_factor,  # Slowed down orbit speed
-					"tilt": orbit_tilt,  # Orbital tilt for 3D effect
-					"phase_offset": rng.randf_range(0, TAU)  # Random phase offset for variety
+					"orbit_speed": rng.randf_range(0.2, 0.5) * moon_orbit_factor,
+					"tilt": orbit_tilt,
+					"phase_offset": rng.randf_range(0, TAU)
 				})
+		else:
+			# No moons, just account for planet radius in safe area
+			safe_width -= 2 * planet_radius
+			safe_height -= 2 * planet_radius
+			safe_width = max(safe_width, 10)
+			safe_height = max(safe_height, 10)
 		
-		# Store planet position and data
+		# Generate random offset within safe area
+		var offset_x = rng.randf_range(-safe_width/2, safe_width/2)
+		var offset_y = rng.randf_range(-safe_height/2, safe_height/2)
+		
+		# Calculate final world position with randomized offset
 		var world_pos = Vector2(
-			x * grid.cell_size.x + grid.cell_size.x / 2,
-			y * grid.cell_size.y + grid.cell_size.y / 2
+			x * grid.cell_size.x + grid.cell_size.x / 2 + offset_x,
+			y * grid.cell_size.y + grid.cell_size.y / 2 + offset_y
 		)
 		
+		# Store planet position and data
 		planet_positions.append({
 			"position": world_pos,
 			"grid_x": x,
@@ -263,7 +309,7 @@ func generate_planets():
 			"scale": scale,
 			"pixel_size": planet_pixel_size,
 			"moons": moons,
-			"rotation_speed": rng.randf_range(0.02, 0.05) * planet_rotation_factor,  # Very slow rotation
+			"rotation_speed": rng.randf_range(0.02, 0.05) * planet_rotation_factor,
 			"name": generate_planet_name(x, y)
 		})
 		
@@ -338,20 +384,20 @@ func draw_planets(canvas: CanvasItem, loaded_cells: Dictionary):
 						
 						# Calculate moon position with tilt (simulating orbital inclination)
 						var orbit_y_scale = 1.0 - abs(moon.tilt)  # Compress Y axis based on tilt
-						var moon_pos = cell_center + Vector2(
+						var moon_pos = planet_positions[planet_index].position + Vector2(
 							cos(moon_angle) * moon.distance,
 							sin(moon_angle) * moon.distance * orbit_y_scale
 						)
 						
 						# Determine if moon is behind the planet based on Y position 
-						# (if moon Y position > cell center Y, it's behind)
+						# (if moon Y position > planet center Y, it's behind)
 						if sin(moon_angle) > 0:  # Moon is in the "back" half of the orbit
 							draw_moon(canvas, moon, moon_pos, time)
 				
-				# Draw the planet
-				canvas.draw_set_transform(cell_center, rotation, Vector2(planet.scale, planet.scale))
+				# Draw the planet at its position (which now includes the random offset)
+				canvas.draw_set_transform(planet_positions[planet_index].position, rotation, Vector2(planet.scale, planet.scale))
 				canvas.draw_texture(texture, -texture_size / 2, Color.WHITE)
-				canvas.draw_set_transform(cell_center, 0, Vector2(1, 1))  # Reset transform
+				canvas.draw_set_transform(planet_positions[planet_index].position, 0, Vector2(1, 1))  # Reset transform
 				
 				# Now draw moons that should appear IN FRONT of the planet
 				if planet.has("moons") and moon_sprites.size() > 0:
@@ -364,13 +410,13 @@ func draw_planets(canvas: CanvasItem, loaded_cells: Dictionary):
 						
 						# Calculate moon position with tilt (simulating orbital inclination)
 						var orbit_y_scale = 1.0 - abs(moon.tilt)  # Compress Y axis based on tilt
-						var moon_pos = cell_center + Vector2(
+						var moon_pos = planet_positions[planet_index].position + Vector2(
 							cos(moon_angle) * moon.distance,
 							sin(moon_angle) * moon.distance * orbit_y_scale
 						)
 						
 						# Determine if moon is in front of the planet based on Y position
-						# (if moon Y position <= cell center Y, it's in front)
+						# (if moon Y position <= planet center Y, it's in front)
 						if sin(moon_angle) <= 0:  # Moon is in the "front" half of the orbit
 							draw_moon(canvas, moon, moon_pos, time)
 
@@ -400,7 +446,7 @@ func reset_planets():
 	call_deferred("generate_planets")
 
 # Handler for grid seed change
-func _on_grid_seed_changed(new_seed = null):
+func _on_grid_seed_changed(_new_seed = null):
 	print("Planet spawner detected seed change, regenerating planets")
 	call_deferred("generate_planets")
 
