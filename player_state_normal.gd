@@ -1,17 +1,17 @@
 class_name PlayerStateNormal
-extends PlayerStateBase
+extends State
 
-func enter():
+func enter() -> void:
 	super.enter()
 	print("Player entered Normal state")
 	
 	# Ensure player is not immobilized
-	if player.has_method("set_immobilized"):
-		player.is_immobilized = false
+	entity.is_immobilized = false
+	entity.movement_speed = 300
 
-func process(delta):
-	# Skip if player is immobilized (belt-and-suspenders approach)
-	if player.has_method("set_immobilized") and player.is_immobilized:
+func process(delta: float) -> void:
+	# Skip if player is immobilized (this is a safety check)
+	if entity.is_immobilized:
 		return
 	
 	# Handle movement
@@ -27,43 +27,26 @@ func process(delta):
 		direction.y -= 1
 	
 	if direction.length() > 0:
-		# Store previous position for cell change check
-		var prev_position = player.global_position
+		# Store previous position
+		var prev_position = entity.global_position
 		
 		# Move the player
 		direction = direction.normalized()
-		player.global_position += direction * player.movement_speed * delta
+		entity.global_position += direction * entity.movement_speed * delta
 		
 		# Update sprite rotation to face movement direction
-		if player.has_node("Sprite2D"):
+		if entity.has_node("Sprite2D"):
 			var angle = direction.angle()
-			player.get_node("Sprite2D").rotation = angle
+			entity.get_node("Sprite2D").rotation = angle
 		
-		# Check if player changed cells and update grid chunks if needed
-		var grid = get_node_or_null("/root/Main/Grid")
-		if grid:
-			var prev_cell_x = int(floor(prev_position.x / grid.cell_size.x))
-			var prev_cell_y = int(floor(prev_position.y / grid.cell_size.y))
-			
-			var current_cell_x = int(floor(player.global_position.x / grid.cell_size.x))
-			var current_cell_y = int(floor(player.global_position.y / grid.cell_size.y))
-			
-			# Update chunks if cell position changed
-			if prev_cell_x != current_cell_x or prev_cell_y != current_cell_y:
-				print("State Normal: Player moved to new cell: (", current_cell_x, ",", current_cell_y, ")")
-				grid.update_loaded_chunks(current_cell_x, current_cell_y)
+		# Check boundaries
+		if not entity.check_boundaries():
+			# The check_boundaries function will handle returning to last valid position
+			return
+		
+		# Check if cell position changed
+		entity.update_cell_position()
 	
 	# Handle shooting with Space key (ui_select)
-	if Input.is_action_pressed("ui_select") and player.current_cooldown <= 0:
-		if player.has_method("shoot"):
-			player.shoot()
-	
-	# Update health bar
-	var health_bar = player.get_node_or_null("HealthBar")
-	if health_bar:
-		var health_percent = float(player.current_health) / player.max_health
-		health_bar.size.x = 40 * health_percent
-		health_bar.position.x = -20
-	
-	# Keep the player visible at all times by forcing a redraw
-	player.queue_redraw()
+	if Input.is_action_pressed("ui_select") and entity.current_cooldown <= 0:
+		entity.shoot()

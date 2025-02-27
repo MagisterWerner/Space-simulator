@@ -1,10 +1,17 @@
-[gd_scene load_steps=3 format=3 uid="uid://cwyqrp0q7whgt"]
+[gd_scene load_steps=7 format=3 uid="uid://cwyqrp0q7whgt"]
 
-[ext_resource type="Script" path="res://enemy.gd" id="1_8iojl"]
+[ext_resource type="Script" path="res://scripts/entities/enemy.gd" id="1_8iojl"]
 [ext_resource type="Texture2D" uid="uid://rfuucfixr2kq" path="res://sprites/ships_enemy/enemy_ship_1.png" id="2_0k3g7"]
+[ext_resource type="Script" path="res://scripts/components/entity_component.gd" id="2_hrryh"]
+[ext_resource type="Script" path="res://enemy_state_machine.gd" id="4_s1ji4"]
+[ext_resource type="Script" path="res://enemy_state_idle.gd" id="5_d48bf"]
+[ext_resource type="Script" path="res://enemy_state_follow.gd" id="6_vh6ub"]
 
 [node name="Enemy" type="Node2D"]
 script = ExtResource("1_8iojl")
+
+[node name="EntityComponent" type="Node" parent="."]
+script = ExtResource("2_hrryh")
 
 [node name="Sprite2D" type="Sprite2D" parent="."]
 texture = ExtResource("2_0k3g7")
@@ -15,3 +22,12 @@ offset_top = -25.0
 offset_right = 15.0
 offset_bottom = -22.0
 color = Color(1, 0, 0, 1)
+
+[node name="StateMachine" type="Node" parent="."]
+script = ExtResource("4_s1ji4")
+
+[node name="Idle" type="Node" parent="StateMachine"]
+script = ExtResource("5_d48bf")
+
+[node name="Follow" type="Node" parent="StateMachine"]
+script = ExtResource("6_vh6ub")

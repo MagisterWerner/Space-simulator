@@ -1,12 +1,13 @@
-[gd_scene load_steps=9 format=3 uid="uid://dl7etmw31qnof"]
+[gd_scene load_steps=10 format=3 uid="uid://dl7etmw31qnof"]
 
 [ext_resource type="Script" path="res://main.gd" id="1_brldc"]
-[ext_resource type="Script" path="res://grid.gd" id="2_lvljp"]
+[ext_resource type="Script" path="res://managers/grid.gd" id="2_lvljp"]
 [ext_resource type="PackedScene" uid="uid://bqf1ewcvnbx7q" path="res://player.tscn" id="3_4h0bx"]
 [ext_resource type="Script" path="res://enemy_spawner.gd" id="4_bfxvw"]
 [ext_resource type="Script" path="res://planet_spawner.gd" id="5_oha7o"]
 [ext_resource type="Script" path="res://asteroid_spawner.gd" id="6_lenuj"]
 [ext_resource type="Script" path="res://combat_manager.gd" id="7_suh4m"]
+[ext_resource type="Script" path="res://managers/resource_manager.gd" id="8_q6wiy"]
 
 [sub_resource type="LabelSettings" id="LabelSettings_tjo1m"]
 font_size = 24
@@ -62,3 +63,6 @@ asteroid_percentage = 30
 
 [node name="CombatManager" type="Node" parent="."]
 script = ExtResource("7_suh4m")
+
+[node name="Node" type="Node" parent="."]
+script = ExtResource("8_q6wiy")
