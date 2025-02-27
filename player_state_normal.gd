@@ -1,3 +1,4 @@
+# player_state_normal.gd
 class_name PlayerStateNormal
 extends State
 
@@ -7,7 +8,7 @@ func enter() -> void:
 	
 	# Ensure player is not immobilized
 	entity.is_immobilized = false
-	entity.movement_speed = 300
+	entity.movement_speed = 300  # This now uses the property getter
 
 func process(delta: float) -> void:
 	# Skip if player is immobilized (this is a safety check)
@@ -27,8 +28,8 @@ func process(delta: float) -> void:
 		direction.y -= 1
 	
 	if direction.length() > 0:
-		# Store previous position
-		var prev_position = entity.global_position
+		# Store previous position (removed since it was unused)
+		# var prev_position = entity.global_position
 		
 		# Move the player
 		direction = direction.normalized()
@@ -48,5 +49,5 @@ func process(delta: float) -> void:
 		entity.update_cell_position()
 	
 	# Handle shooting with Space key (ui_select)
-	if Input.is_action_pressed("ui_select") and entity.current_cooldown <= 0:
+	if Input.is_action_pressed("ui_select") and entity.entity_component.current_cooldown <= 0:
 		entity.shoot()

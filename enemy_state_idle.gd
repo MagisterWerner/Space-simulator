@@ -1,3 +1,4 @@
+# enemy_state_idle.gd
 class_name EnemyStateIdle
 extends State
 

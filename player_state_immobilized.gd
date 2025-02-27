@@ -1,3 +1,4 @@
+# player_state_immobilized.gd
 class_name PlayerStateImmobilized
 extends State
 
@@ -7,7 +8,7 @@ func enter() -> void:
 	
 	# Ensure player state is consistent
 	entity.is_immobilized = true
-	entity.movement_speed = 0
+	entity.movement_speed = 0  # This now uses the property getter
 	
 	# Show a message if not already shown
 	var main = entity.get_node_or_null("/root/Main")

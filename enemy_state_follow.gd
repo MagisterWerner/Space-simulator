@@ -1,3 +1,4 @@
+# enemy_state_follow.gd
 class_name EnemyStateFollow
 extends State
 

@@ -3,9 +3,9 @@
 [ext_resource type="Script" path="res://scripts/entities/player.gd" id="1_pv8nj"]
 [ext_resource type="Script" path="res://scripts/components/entity_component.gd" id="2_gy05w"]
 [ext_resource type="Texture2D" uid="uid://p0xsi4shtxjd" path="res://sprites/ships_player/player_ship_1.png" id="2_j8p5k"]
-[ext_resource type="Script" path="res://player_state_machine.gd" id="2_lkmbh"]
-[ext_resource type="Script" path="res://player_state_normal.gd" id="3_7s3qe"]
-[ext_resource type="Script" path="res://player_state_immobilized.gd" id="4_b30eq"]
+[ext_resource type="Script" path="res://scripts/core/state_machine.gd" id="3_lkmbh"]
+[ext_resource type="Script" path="res://player_state_normal.gd" id="4_7s3qe"]
+[ext_resource type="Script" path="res://player_state_immobilized.gd" id="5_b30eq"]
 
 [node name="Player" type="Node2D"]
 script = ExtResource("1_pv8nj")
@@ -26,10 +26,10 @@ offset_bottom = -26.0
 color = Color(0, 0.8, 0, 1)
 
 [node name="StateMachine" type="Node" parent="."]
-script = ExtResource("2_lkmbh")
+script = ExtResource("3_lkmbh")
 
 [node name="Normal" type="Node" parent="StateMachine"]
-script = ExtResource("3_7s3qe")
+script = ExtResource("4_7s3qe")
 
 [node name="Immobilized" type="Node" parent="StateMachine"]
-script = ExtResource("4_b30eq")
+script = ExtResource("5_b30eq")

@@ -67,26 +67,30 @@ func take_damage(amount: float) -> void:
 	
 	# Check for death
 	if current_health <= 0:
-		die()
+		# Call the owner's on_death method if it exists
+		if owner_entity.has_method("on_death"):
+			owner_entity.on_death()
 	else:
 		# Set temporary invulnerability
 		is_invulnerable = true
 		invulnerability_timer = 1.0  # Default value, can be overridden
 
-# Base die function to be implemented by users
-func die() -> void:
-	# Emit a signal that can be handled by the owner
-	print(owner_entity.name + " died")
-	
-	# Call a die method on the owner if it exists
-	if owner_entity.has_method("on_death"):
-		owner_entity.on_death()
-
 # Shooting helper function
 func shoot(position: Vector2, direction: Vector2, is_player_laser: bool = false, damage: float = 10.0) -> void:
 	# Create the laser instance
-	var laser_scene = load("res://laser.tscn")
-	var laser = laser_scene.instantiate()
+	var resource_manager = owner_entity.get_node_or_null("/root/Main/ResourceManager")
+	var laser = null
+	
+	if resource_manager:
+		laser = resource_manager.create_laser(is_player_laser)
+	else:
+		# Fallback if resource manager not found
+		var laser_scene = load("res://laser.tscn")
+		laser = laser_scene.instantiate()
+	
+	if not laser:
+		push_error("Failed to create laser")
+		return
 	
 	# Set position slightly in front of the entity
 	var spawn_offset = direction * 30
@@ -99,14 +103,6 @@ func shoot(position: Vector2, direction: Vector2, is_player_laser: bool = false,
 	# Configure the laser
 	laser.is_player_laser = is_player_laser
 	laser.damage = damage
-	
-	# Set laser color
-	var sprite = laser.get_node("Sprite2D")
-	if sprite:
-		if is_player_laser:
-			sprite.texture = load("res://sprites/weapons/laser_blue.png")
-		else:
-			sprite.texture = load("res://sprites/weapons/laser_red.png")
 	
 	# Add laser to scene
 	owner_entity.get_tree().current_scene.add_child(laser)

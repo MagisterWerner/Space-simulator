@@ -3,7 +3,7 @@
 [ext_resource type="Script" path="res://scripts/entities/enemy.gd" id="1_8iojl"]
 [ext_resource type="Texture2D" uid="uid://rfuucfixr2kq" path="res://sprites/ships_enemy/enemy_ship_1.png" id="2_0k3g7"]
 [ext_resource type="Script" path="res://scripts/components/entity_component.gd" id="2_hrryh"]
-[ext_resource type="Script" path="res://enemy_state_machine.gd" id="4_s1ji4"]
+[ext_resource type="Script" path="res://scripts/core/state_machine.gd" id="4_s1ji4"]
 [ext_resource type="Script" path="res://enemy_state_idle.gd" id="5_d48bf"]
 [ext_resource type="Script" path="res://enemy_state_follow.gd" id="6_vh6ub"]
 

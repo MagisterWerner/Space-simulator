@@ -88,10 +88,3 @@ func get_current_state_name():
 # Check if a state exists in this state machine
 func has_state(state_name):
 	return states.has(state_name)
-
-# Debug function to print state history
-func print_state_history():
-	print("State History for " + entity.name + ":")
-	for i in range(state_history.size()):
-		var state_name = state_history[i]
-		print("  " + str(i) + ": " + state_name)

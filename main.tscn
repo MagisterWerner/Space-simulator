@@ -64,5 +64,5 @@ asteroid_percentage = 30
 [node name="CombatManager" type="Node" parent="."]
 script = ExtResource("7_suh4m")
 
-[node name="Node" type="Node" parent="."]
+[node name="ResourceManager" type="Node" parent="."]
 script = ExtResource("8_q6wiy")

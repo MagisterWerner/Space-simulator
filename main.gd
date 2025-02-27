@@ -71,13 +71,20 @@ func initialize_world():
 	print("Step 4: Creating or placing player")
 	create_player()
 	await get_tree().process_frame
+	await get_tree().process_frame  # Add an extra frame to ensure player is fully initialized
 	
 	# Spawn enemies
 	if enemy_spawner:
 		print("Step 5: Spawning enemies")
 		enemy_spawner.spawn_enemies()
+		await get_tree().process_frame
 	else:
 		print("WARNING: Enemy spawner not found during initialization!")
+	
+	# Force a grid update to ensure everything is loaded
+	if player and grid:
+		print("Step 6: Forcing grid update to ensure visibility")
+		force_grid_update()
 	
 	print("=== World initialization complete ===")
 
@@ -85,11 +92,18 @@ func _process(delta):
 	# Handle seed changing via numeric keys
 	handle_seed_key_input()
 	
-	# Handle random seed generation via Shift key
+	# Handle random seed generation via Enter key
 	handle_random_seed_input()
 	
 	# Manage message display timer
 	manage_message_timer(delta)
+	
+	# Force redraw to ensure planets and asteroids are visible
+	queue_redraw()
+
+func _draw():
+	# We need this empty _draw function to make sure all renderers get called
+	pass
 
 # Handle numeric key seed inputs
 func handle_seed_key_input():
@@ -111,9 +125,8 @@ func handle_seed_key_input():
 		previous_key_states[key_code] = key_pressed
 
 # Handle random seed generation
-# Handle random seed generation
 func handle_random_seed_input():
-	if Input.is_action_just_pressed("ui_accept"):  # Changed to Enter key
+	if Input.is_action_just_pressed("ui_accept"):  # Enter key
 		# Generate a new random seed
 		var rng = RandomNumberGenerator.new()
 		rng.randomize()
@@ -228,8 +241,10 @@ func place_player_at_random_planet():
 		# Initialize loaded chunks
 		var cell_x = int(floor(player.global_position.x / grid.cell_size.x))
 		var cell_y = int(floor(player.global_position.y / grid.cell_size.y))
-		grid.current_player_cell_x = cell_x
-		grid.current_player_cell_y = cell_y
+		
+		# Force grid to update with this cell as center
+		grid.current_player_cell_x = -1  # Force update by setting to different value
+		grid.current_player_cell_y = -1
 		grid.update_loaded_chunks(cell_x, cell_y)
 		
 		# Get and display planet name
@@ -238,6 +253,10 @@ func place_player_at_random_planet():
 		
 		print("Player placed at planet " + planet_name + " position: ", chosen_planet.position)
 		print("Starting cell: (", cell_x, ",", cell_y, ")")
+		
+		# Force another update after a brief delay
+		await get_tree().create_timer(0.1).timeout
+		force_grid_update()
 	else:
 		# Fallback to grid center
 		var center = Vector2(
@@ -254,12 +273,18 @@ func place_player_at_random_planet():
 		# Initialize loaded chunks
 		var cell_x = int(floor(center.x / grid.cell_size.x))
 		var cell_y = int(floor(center.y / grid.cell_size.y))
-		grid.current_player_cell_x = cell_x
-		grid.current_player_cell_y = cell_y
+		
+		# Force grid to update with this cell as center
+		grid.current_player_cell_x = -1  # Force update by setting to different value
+		grid.current_player_cell_y = -1
 		grid.update_loaded_chunks(cell_x, cell_y)
 		
 		print("WARNING: No planets found. Player placed at grid center: ", center)
 		print("Starting cell: (", cell_x, ",", cell_y, ")")
+		
+		# Force another update after a brief delay
+		await get_tree().create_timer(0.1).timeout
+		force_grid_update()
 
 # Create or update player
 func create_player():
@@ -300,3 +325,20 @@ func get_planet_positions():
 	else:
 		print("ERROR: Planet spawner not found!")
 		return []
+	
+	# Add this new function to main.gd
+func force_grid_update():
+	if player and grid:
+		# Calculate player cell position
+		var cell_x = int(floor(player.global_position.x / grid.cell_size.x))
+		var cell_y = int(floor(player.global_position.y / grid.cell_size.y))
+	 
+		# Force update of loaded chunks
+		grid.current_player_cell_x = -1  # Force update by setting to different value
+		grid.current_player_cell_y = -1
+		grid.update_loaded_chunks(cell_x, cell_y)
+		 
+		# Force a redraw
+		grid.queue_redraw()
+		
+		print("Forced grid update at cell: (", cell_x, ",", cell_y, ")")

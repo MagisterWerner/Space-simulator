@@ -34,7 +34,6 @@ var planet_color_palette = [
 	Color.BLUE
 ]
 
-# Called when the node enters the scene tree for the first time
 func _ready():
 	grid = get_node_or_null("/root/Main/Grid")
 	if not grid:
@@ -42,8 +41,8 @@ func _ready():
 		return
 	
 	# Connect to grid seed change signal if available
-	if grid.has_signal("seed_changed"):
-		grid.connect("seed_changed", _on_grid_seed_changed)
+	if grid.has_signal("_seed_changed"):
+		grid.connect("_seed_changed", _on_grid_seed_changed)
 	
 	# Load planet and moon sprites
 	load_sprites()
@@ -66,11 +65,12 @@ func load_sprites():
 	]
 	
 	for path in planet_paths:
-		var texture = load(path)
-		if texture:
-			planet_sprites.append(texture)
+		if ResourceLoader.exists(path):
+			var texture = load(path)
+			if texture:
+				planet_sprites.append(texture)
 		else:
-			push_warning("Failed to load planet sprite: " + path)
+			print("PlanetSpawner: Planet sprite not found: " + path + ", will create fallback")
 	
 	# Load moon sprites
 	var moon_paths = [
@@ -80,13 +80,14 @@ func load_sprites():
 	]
 	
 	for path in moon_paths:
-		var texture = load(path)
-		if texture:
-			moon_sprites.append(texture)
+		if ResourceLoader.exists(path):
+			var texture = load(path)
+			if texture:
+				moon_sprites.append(texture)
 		else:
-			push_warning("Failed to load moon sprite: " + path)
+			print("PlanetSpawner: Moon sprite not found: " + path + ", will create fallback")
 	
-	print("Loaded " + str(planet_sprites.size()) + " planet sprites and " + str(moon_sprites.size()) + " moon sprites")
+	print("PlanetSpawner: Loaded " + str(planet_sprites.size()) + " planet sprites and " + str(moon_sprites.size()) + " moon sprites")
 	
 	# Create fallback sprites if none were loaded
 	if planet_sprites.size() == 0:
@@ -335,7 +336,10 @@ func generate_planets():
 # Method to draw planets with moons that have depth sorting
 func draw_planets(canvas: CanvasItem, loaded_cells: Dictionary):
 	if not grid:
+		print("DEBUG: draw_planets - grid is null")
 		return
+	
+	print("DEBUG: Drawing planets. Loaded cells: ", loaded_cells.size())
 	
 	# Get current time for animation
 	var time = Time.get_ticks_msec() / 1000.0
@@ -347,10 +351,8 @@ func draw_planets(canvas: CanvasItem, loaded_cells: Dictionary):
 		
 		# Only process if this cell contains a planet
 		if y < grid.cell_contents.size() and x < grid.cell_contents[y].size() and grid.cell_contents[y][x] == grid.CellContent.PLANET:
-			var cell_center = Vector2(
-				x * grid.cell_size.x + grid.cell_size.x / 2.0,
-				y * grid.cell_size.y + grid.cell_size.y / 2.0
-			)
+			print("DEBUG: Found planet at cell: ", x, ", ", y)
+			# No need to calculate cell_center here as it's not used
 			
 			# Find planet data
 			var planet_index = -1

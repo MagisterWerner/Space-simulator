@@ -66,11 +66,12 @@ func load_planet_sprites():
 	]
 	
 	for path in planet_paths:
-		var texture = load(path)
-		if texture:
-			planet_sprites.append(texture)
+		if ResourceLoader.exists(path):
+			var texture = load(path)
+			if texture:
+				planet_sprites.append(texture)
 		else:
-			push_warning("ResourceManager: Failed to load planet sprite: " + path)
+			print("ResourceManager: Planet sprite not found: " + path)
 	
 	print("ResourceManager: Loaded " + str(planet_sprites.size()) + " planet sprites")
 	
@@ -101,11 +102,12 @@ func load_moon_sprites():
 	]
 	
 	for path in moon_paths:
-		var texture = load(path)
-		if texture:
-			moon_sprites.append(texture)
+		if ResourceLoader.exists(path):
+			var texture = load(path)
+			if texture:
+				moon_sprites.append(texture)
 		else:
-			push_warning("ResourceManager: Failed to load moon sprite: " + path)
+			print("ResourceManager: Moon sprite not found: " + path)
 	
 	print("ResourceManager: Loaded " + str(moon_sprites.size()) + " moon sprites")
 	
@@ -135,62 +137,126 @@ func load_asteroid_sprites():
 	# Load large asteroid sprites
 	for i in range(1, 6):  # 1 to 5
 		var path = "res://sprites/asteroids/asteroid_large_" + str(i) + ".png"
-		var texture = load(path)
-		if texture:
-			asteroid_sprites.large.append(texture)
+		if ResourceLoader.exists(path):
+			var texture = load(path)
+			if texture:
+				asteroid_sprites.large.append(texture)
 		else:
-			push_warning("ResourceManager: Failed to load asteroid sprite: " + path)
+			print("ResourceManager: Asteroid sprite not found: " + path)
 	
 	# Load medium asteroid sprites
 	for i in range(1, 6):  # 1 to 5
 		var path = "res://sprites/asteroids/asteroid_medium_" + str(i) + ".png"
-		var texture = load(path)
-		if texture:
-			asteroid_sprites.medium.append(texture)
+		if ResourceLoader.exists(path):
+			var texture = load(path)
+			if texture:
+				asteroid_sprites.medium.append(texture)
 		else:
-			push_warning("ResourceManager: Failed to load asteroid sprite: " + path)
+			print("ResourceManager: Asteroid sprite not found: " + path)
 	
 	# Load small asteroid sprites
 	for i in range(1, 6):  # 1 to 5
 		var path = "res://sprites/asteroids/asteroid_small_" + str(i) + ".png"
-		var texture = load(path)
-		if texture:
-			asteroid_sprites.small.append(texture)
+		if ResourceLoader.exists(path):
+			var texture = load(path)
+			if texture:
+				asteroid_sprites.small.append(texture)
 		else:
-			push_warning("ResourceManager: Failed to load asteroid sprite: " + path)
+			print("ResourceManager: Asteroid sprite not found: " + path)
 	
 	print("ResourceManager: Loaded asteroid sprites: ", 
 		asteroid_sprites.large.size(), " large, ", 
 		asteroid_sprites.medium.size(), " medium, ", 
 		asteroid_sprites.small.size(), " small")
+	
+	# Create fallback if no sprites loaded
+	if asteroid_sprites.large.size() == 0 and asteroid_sprites.medium.size() == 0 and asteroid_sprites.small.size() == 0:
+		create_fallback_asteroid_textures()
+
+# Create fallback asteroid textures
+func create_fallback_asteroid_textures():
+	print("ResourceManager: Creating fallback asteroid textures")
+	
+	# Create large asteroid
+	var large_image = Image.create(48, 48, false, Image.FORMAT_RGBA8)
+	for x in range(48):
+		for y in range(48):
+			var dist = Vector2(x - 24, y - 24).length()
+			if dist < 22:
+				large_image.set_pixel(x, y, Color(0.7, 0.4, 0.2, 1))
+	var large_texture = ImageTexture.create_from_image(large_image)
+	asteroid_sprites.large.append(large_texture)
+	
+	# Create medium asteroid
+	var medium_image = Image.create(32, 32, false, Image.FORMAT_RGBA8)
+	for x in range(32):
+		for y in range(32):
+			var dist = Vector2(x - 16, y - 16).length()
+			if dist < 14:
+				medium_image.set_pixel(x, y, Color(0.7, 0.4, 0.2, 1))
+	var medium_texture = ImageTexture.create_from_image(medium_image)
+	asteroid_sprites.medium.append(medium_texture)
+	
+	# Create small asteroid
+	var small_image = Image.create(16, 16, false, Image.FORMAT_RGBA8)
+	for x in range(16):
+		for y in range(16):
+			var dist = Vector2(x - 8, y - 8).length()
+			if dist < 7:
+				small_image.set_pixel(x, y, Color(0.7, 0.4, 0.2, 1))
+	var small_texture = ImageTexture.create_from_image(small_image)
+	asteroid_sprites.small.append(small_texture)
 
 # Function to load ship sprites
 func load_ship_sprites():
 	# Load player ship sprites
 	player_ship_sprites.clear()
-	for i in range(1, 4):  # Assuming player_ship_1.png, player_ship_2.png, etc.
+	
+	# Try to load player_ship_1.png which we know exists
+	var texture = load("res://sprites/ships_player/player_ship_1.png")
+	if texture:
+		player_ship_sprites.append(texture)
+	
+	# Try to load others, but don't report errors if missing
+	for i in range(2, 4):  # player_ship_2.png to player_ship_3.png
 		var path = "res://sprites/ships_player/player_ship_" + str(i) + ".png"
-		var texture = load(path)
-		if texture:
-			player_ship_sprites.append(texture)
+		if ResourceLoader.exists(path):
+			texture = load(path)
+			if texture:
+				player_ship_sprites.append(texture)
 	
 	print("ResourceManager: Loaded " + str(player_ship_sprites.size()) + " player ship sprites")
 	
 	# Load enemy ship sprites
 	enemy_ship_sprites.clear()
-	for i in range(1, 4):  # Assuming enemy_ship_1.png, enemy_ship_2.png, etc.
+	
+	# Try to load enemy_ship_1.png which we know exists
+	texture = load("res://sprites/ships_enemy/enemy_ship_1.png")
+	if texture:
+		enemy_ship_sprites.append(texture)
+	
+	# Try to load others, but don't report errors if missing
+	for i in range(2, 4):  # enemy_ship_2.png to enemy_ship_3.png
 		var path = "res://sprites/ships_enemy/enemy_ship_" + str(i) + ".png"
-		var texture = load(path)
-		if texture:
-			enemy_ship_sprites.append(texture)
+		if ResourceLoader.exists(path):
+			texture = load(path)
+			if texture:
+				enemy_ship_sprites.append(texture)
 	
 	print("ResourceManager: Loaded " + str(enemy_ship_sprites.size()) + " enemy ship sprites")
 
 # Function to load weapon sprites
 func load_weapon_sprites():
 	# Load laser sprites
-	weapon_sprites.laser_blue = load("res://sprites/weapons/laser_blue.png")
-	weapon_sprites.laser_red = load("res://sprites/weapons/laser_red.png")
+	if ResourceLoader.exists("res://sprites/weapons/laser_blue.png"):
+		weapon_sprites.laser_blue = load("res://sprites/weapons/laser_blue.png")
+	else:
+		print("ResourceManager: Laser blue sprite not found")
+		
+	if ResourceLoader.exists("res://sprites/weapons/laser_red.png"):
+		weapon_sprites.laser_red = load("res://sprites/weapons/laser_red.png")
+	else:
+		print("ResourceManager: Laser red sprite not found")
 	
 	# Count loaded weapon sprites
 	var count = 0
@@ -199,6 +265,28 @@ func load_weapon_sprites():
 			count += 1
 	
 	print("ResourceManager: Loaded " + str(count) + " weapon sprites")
+	
+	# Create fallbacks if needed
+	if weapon_sprites.laser_blue == null:
+		create_fallback_laser_texture("blue")
+	if weapon_sprites.laser_red == null:
+		create_fallback_laser_texture("red")
+
+# Create fallback laser textures
+func create_fallback_laser_texture(color_name: String):
+	print("ResourceManager: Creating fallback " + color_name + " laser texture")
+	var image = Image.create(16, 4, false, Image.FORMAT_RGBA8)
+	var laser_color = Color.BLUE if color_name == "blue" else Color.RED
+	
+	for x in range(16):
+		for y in range(4):
+			image.set_pixel(x, y, laser_color)
+	
+	var texture = ImageTexture.create_from_image(image)
+	if color_name == "blue":
+		weapon_sprites.laser_blue = texture
+	else:
+		weapon_sprites.laser_red = texture
 
 # Get a single planet sprite by index
 func get_planet_sprite(index: int):

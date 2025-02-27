@@ -1,7 +1,7 @@
 # scripts/entities/player.gd
 extends Node2D
 
-# Components will be accessed via onready variables
+# Components
 @onready var entity_component = $EntityComponent
 @onready var state_machine = $StateMachine
 
@@ -12,14 +12,23 @@ var current_planet_id: int = -1
 var cell_x: int = -1
 var cell_y: int = -1
 var last_valid_position: Vector2 = Vector2.ZERO
+var was_in_boundary_cell = false
+var was_outside_grid = false
 
-# --- Cached nodes ---
+# --- For direct access by states ---
+var movement_speed: float = 300.0:
+	get: return entity_component.movement_speed if entity_component else 300.0
+	set(value): 
+		if entity_component:
+			entity_component.movement_speed = value
+		
+# Cached nodes
 var grid: Node2D
 var main: Node2D
 
-# Signals
-signal cell_changed(new_x, new_y)
-signal health_changed(current, maximum)
+# Signals - prefixed with underscore to indicate they're used externally
+signal _cell_changed(new_x, new_y)
+signal _health_changed(current, maximum)
 
 func _ready():
 	# Set player-specific properties
@@ -32,20 +41,6 @@ func _ready():
 	
 	# Store initial position as the last valid position
 	last_valid_position = global_position
-	
-	# Ensure camera exists
-	if not has_node("Camera2D"):
-		var camera = Camera2D.new()
-		camera.name = "Camera2D"
-		camera.current = true
-		add_child(camera)
-	
-	# Ensure sprite exists
-	if not has_node("Sprite2D"):
-		var sprite = Sprite2D.new()
-		sprite.name = "Sprite2D"
-		sprite.texture = load("res://sprites/ships_player/player_ship_1.png")
-		add_child(sprite)
 	
 	# Calculate initial cell position
 	update_cell_position()
@@ -61,7 +56,7 @@ func _ready():
 	print("Player initialized at position: ", global_position)
 
 func _process(delta):
-	# Process player-specific logic (state machine handles movement)
+	# Process player-specific logic
 	
 	# Update visual feedback for invulnerability
 	if has_node("Sprite2D") and entity_component:
@@ -84,25 +79,23 @@ func _process(delta):
 			if main and main.has_method("respawn_player_at_initial_planet"):
 				main.respawn_player_at_initial_planet()
 
-# Public method to take damage (delegates to component)
 func take_damage(amount):
 	if entity_component:
 		entity_component.take_damage(amount)
-		emit_signal("health_changed", entity_component.current_health, entity_component.max_health)
+		emit_signal("_health_changed", entity_component.current_health, entity_component.max_health)
 
-# Callback when entity component dies
 func on_death():
 	print("Player died")
 	
 	# Reset health
 	if entity_component:
 		entity_component.current_health = entity_component.max_health
-		emit_signal("health_changed", entity_component.current_health, entity_component.max_health)
+		emit_signal("_health_changed", entity_component.current_health, entity_component.max_health)
 	
 	# Set temporary invulnerability
 	if entity_component:
 		entity_component.is_invulnerable = true
-		entity_component.invulnerability_timer = 3.0  # 3 seconds of invulnerability after respawn
+		entity_component.invulnerability_timer = 3.0
 	
 	# Immobilize the player
 	set_immobilized(true)
@@ -111,7 +104,6 @@ func on_death():
 	if main and main.has_method("show_message"):
 		main.show_message("You were destroyed! Respawning...")
 
-# Player-specific shooting method 
 func shoot():
 	if entity_component and entity_component.current_cooldown <= 0 and not is_immobilized:
 		# Get the current facing direction
@@ -122,7 +114,6 @@ func shoot():
 		# Use the component to shoot
 		entity_component.shoot(global_position, facing_direction, true, 25.0)
 
-# Method to completely immobilize the player
 func set_immobilized(value):
 	# Only change state if it's actually changing
 	if value != is_immobilized:
@@ -145,7 +136,6 @@ func set_immobilized(value):
 			if state_machine and state_machine.has_state("Normal"):
 				state_machine.change_state("Normal")
 
-# Update the player's cell position and emit signal if changed
 func update_cell_position():
 	if grid:
 		var new_cell_x = int(floor(global_position.x / grid.cell_size.x))
@@ -156,7 +146,7 @@ func update_cell_position():
 			cell_y = new_cell_y
 			
 			# Emit signal about cell change
-			emit_signal("cell_changed", cell_x, cell_y)
+			emit_signal("_cell_changed", cell_x, cell_y)
 			print("Player moved to new cell: (", cell_x, ",", cell_y, ")")
 			
 			# Update loaded chunks in the grid
@@ -167,13 +157,11 @@ func update_cell_position():
 	
 	return false
 
-# Check if a laser has hit this player (delegates to component)
 func check_laser_hit(laser):
 	if entity_component:
 		return entity_component.check_laser_hit(laser, get_collision_rect(), true)
 	return false
 
-# Get collision rectangle for hit detection
 func get_collision_rect():
 	var sprite = get_node_or_null("Sprite2D")
 	if sprite and sprite.texture:
@@ -185,7 +173,6 @@ func get_collision_rect():
 		# Fallback collision rect if no sprite
 		return Rect2(-16, -16, 32, 32)
 
-# Check if the player is in a valid position, returns true if valid
 func check_boundaries():
 	if not grid:
 		return true
@@ -221,7 +208,6 @@ func check_boundaries():
 	last_valid_position = global_position
 	return true
 
-# Check collision with planets
 func check_planet_collision():
 	var planet_spawner = get_node_or_null("/root/Main/PlanetSpawner")
 	
@@ -275,7 +261,6 @@ func check_planet_collision():
 	if not on_any_planet and current_planet_id != -1:
 		current_planet_id = -1
 
-# Update the health bar position and size based on current health
 func update_health_bar():
 	var health_bar = get_node_or_null("HealthBar")
 	if health_bar and entity_component:

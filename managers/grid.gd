@@ -10,12 +10,12 @@ extends Node2D
 @export var seed_value: int = 0  # Seed for randomization, exposed in inspector
 @export var chunk_load_radius: int = 1  # Fixed at 1 for performance
 
-# Signals
-signal seed_changed(new_seed)
-signal cell_loaded(cell_x, cell_y)
-signal cell_unloaded(cell_x, cell_y)
-signal player_entered_boundary(cell_x, cell_y)
-signal player_left_boundary
+# Signals - prefixed with underscore to indicate they're used externally
+signal _seed_changed(new_seed)
+signal _cell_loaded(cell_x, cell_y)
+signal _cell_unloaded(cell_x, cell_y)
+signal _player_entered_boundary(cell_x, cell_y)
+signal _player_left_boundary
 
 # Cell content types
 enum CellContent { EMPTY, PLANET, ASTEROID }
@@ -42,12 +42,21 @@ var boundary_warning_active = false
 
 # References to other systems
 var resource_manager: ResourceManager
+var planet_spawner = null
+var asteroid_spawner = null
 
 func _ready():
-	# Get resource manager
+	# Get resource manager - try multiple paths
 	resource_manager = get_node_or_null("/root/Main/ResourceManager")
 	if not resource_manager:
+		resource_manager = get_node_or_null("/root/Main/Node")  # It might be named "Node" in your scene
+	
+	if not resource_manager:
 		push_error("Grid: ResourceManager not found! Some features may not work correctly.")
+	
+	# Get references to planet and asteroid spawners
+	planet_spawner = get_node_or_null("/root/Main/PlanetSpawner")
+	asteroid_spawner = get_node_or_null("/root/Main/AsteroidSpawner")
 	
 	# Initialize the grid with the current seed
 	generate_cell_contents()
@@ -168,7 +177,7 @@ func handle_boundary_warnings(is_in_boundary):
 			main.show_message("WARNING: You are leaving known space!")
 			boundary_warning_active = true
 		
-		emit_signal("player_entered_boundary", current_player_cell_x, current_player_cell_y)
+		emit_signal("_player_entered_boundary", current_player_cell_x, current_player_cell_y)
 	
 	# Hide warning when leaving boundary
 	if not is_in_boundary and was_in_boundary_cell:
@@ -177,14 +186,10 @@ func handle_boundary_warnings(is_in_boundary):
 			main.hide_message()
 			boundary_warning_active = false
 		
-		emit_signal("player_left_boundary")
+		emit_signal("_player_left_boundary")
 
 # Function to update loaded chunks based on player position
 func update_loaded_chunks(center_x, center_y):
-	# Skip if no change
-	if center_x == current_player_cell_x and center_y == current_player_cell_y:
-		return
-		
 	# Update player cell tracking
 	current_player_cell_x = center_x
 	current_player_cell_y = center_y
@@ -205,14 +210,17 @@ func update_loaded_chunks(center_x, center_y):
 				
 				# If this is a newly loaded cell, emit signal
 				if not previously_loaded.has(cell_pos):
-					emit_signal("cell_loaded", x, y)
+					emit_signal("_cell_loaded", x, y)
 	
 	# Check for unloaded cells
 	for cell_pos in previously_loaded:
 		if not loaded_cells.has(cell_pos):
-			emit_signal("cell_unloaded", cell_pos.x, cell_pos.y)
+			emit_signal("_cell_unloaded", cell_pos.x, cell_pos.y)
 	
 	print("Loaded cells updated. Center: (", center_x, ",", center_y, ") - Total loaded: ", loaded_cells.size())
+	
+	# Force a redraw to ensure everything is visible
+	queue_redraw()
 
 # Function to update enemy visibility based on loaded chunks
 func update_enemy_visibility():
@@ -256,26 +264,23 @@ func _draw():
 		draw_line(rect_pos, rect_pos + Vector2(0, cell_size.y), line_color, line_width)
 		draw_line(rect_pos + Vector2(cell_size.x, 0), rect_pos + cell_size, line_color, line_width)
 		
-		# Draw cell content if it exists
-		draw_cell_content(x, y)
-		
 		# Draw cell coordinates
 		draw_cell_coordinates(x, y)
+	
+	# Draw planets and asteroids
+	if planet_spawner:
+		planet_spawner.draw_planets(self, loaded_cells)
+	
+	if asteroid_spawner:
+		asteroid_spawner.draw_asteroids(self, loaded_cells)
 
 # Draw cell content (helper function)
 func draw_cell_content(x, y):
 	# Skip if out of bounds
 	if y >= cell_contents.size() or x >= cell_contents[y].size():
 		return
-		
-	# Calculate cell center
-	var cell_center = Vector2(
-		x * cell_size.x + cell_size.x / 2.0,
-		y * cell_size.y + cell_size.y / 2.0
-	)
 	
-	# Let specialized spawners handle drawing their content
-	# (This is now delegated to the spawners)
+	# No need to calculate cell_center here as it's not used
 
 # Draw cell coordinates (helper function)
 func draw_cell_coordinates(x, y):
@@ -338,7 +343,7 @@ func set_seed(new_seed):
 	regenerate()
 	
 	# Notify other systems that the seed has changed
-	emit_signal("seed_changed", new_seed)
+	emit_signal("_seed_changed", new_seed)
 
 # Initialize the cell contents based on the seed
 func generate_cell_contents():

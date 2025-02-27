@@ -33,8 +33,8 @@ func _ready():
 		return
 	
 	# Connect to grid seed change signal if available
-	if grid.has_signal("seed_changed"):
-		grid.connect("seed_changed", _on_grid_seed_changed)
+	if grid.has_signal("_seed_changed"):
+		grid.connect("_seed_changed", _on_grid_seed_changed)
 	
 	# Load asteroid sprites
 	load_asteroid_sprites()
@@ -51,34 +51,74 @@ func load_asteroid_sprites():
 	# Load large asteroid sprites
 	for i in range(1, 6):  # 1 to 5
 		var path = "res://sprites/asteroids/asteroid_large_" + str(i) + ".png"
-		var texture = load(path)
-		if texture:
-			large_asteroid_sprites.append(texture)
+		if ResourceLoader.exists(path):
+			var texture = load(path)
+			if texture:
+				large_asteroid_sprites.append(texture)
 		else:
-			push_warning("Failed to load asteroid sprite: " + path)
+			print("AsteroidSpawner: Large asteroid sprite not found: " + path)
 	
 	# Load medium asteroid sprites
 	for i in range(1, 6):  # 1 to 5
 		var path = "res://sprites/asteroids/asteroid_medium_" + str(i) + ".png"
-		var texture = load(path)
-		if texture:
-			medium_asteroid_sprites.append(texture)
+		if ResourceLoader.exists(path):
+			var texture = load(path)
+			if texture:
+				medium_asteroid_sprites.append(texture)
 		else:
-			push_warning("Failed to load asteroid sprite: " + path)
+			print("AsteroidSpawner: Medium asteroid sprite not found: " + path)
 	
 	# Load small asteroid sprites
 	for i in range(1, 6):  # 1 to 5
 		var path = "res://sprites/asteroids/asteroid_small_" + str(i) + ".png"
-		var texture = load(path)
-		if texture:
-			small_asteroid_sprites.append(texture)
+		if ResourceLoader.exists(path):
+			var texture = load(path)
+			if texture:
+				small_asteroid_sprites.append(texture)
 		else:
-			push_warning("Failed to load asteroid sprite: " + path)
+			print("AsteroidSpawner: Small asteroid sprite not found: " + path)
 	
 	print("Loaded asteroid sprites: ", 
 		large_asteroid_sprites.size(), " large, ", 
 		medium_asteroid_sprites.size(), " medium, ", 
 		small_asteroid_sprites.size(), " small")
+	
+	# Create fallbacks if needed
+	if large_asteroid_sprites.size() == 0:
+		create_fallback_asteroid_texture("large")
+	if medium_asteroid_sprites.size() == 0:
+		create_fallback_asteroid_texture("medium")
+	if small_asteroid_sprites.size() == 0:
+		create_fallback_asteroid_texture("small")
+
+# Create fallback asteroid textures
+func create_fallback_asteroid_texture(size_category: String):
+	print("Creating fallback " + size_category + " asteroid texture")
+	
+	var texture_size = 48
+	if size_category == "medium":
+		texture_size = 32
+	elif size_category == "small":
+		texture_size = 16
+	
+	var image = Image.create(texture_size, texture_size, false, Image.FORMAT_RGBA8)
+	var radius = texture_size / 2.0 - 2
+	
+	for x in range(texture_size):
+		for y in range(texture_size):
+			var dist = Vector2(x - texture_size/2, y - texture_size/2).length()
+			if dist < radius:
+				image.set_pixel(x, y, Color(0.7, 0.3, 0, 1))  # Brownish color for asteroids
+	
+	var fallback_texture = ImageTexture.create_from_image(image)
+	
+	# Add to appropriate array
+	if size_category == "large":
+		large_asteroid_sprites.append(fallback_texture)
+	elif size_category == "medium":
+		medium_asteroid_sprites.append(fallback_texture)
+	elif size_category == "small":
+		small_asteroid_sprites.append(fallback_texture)
 
 # Function to generate asteroids in grid cells
 func generate_asteroids():
@@ -119,7 +159,7 @@ func generate_asteroids():
 	
 	# Determine how many asteroid fields to spawn
 	var non_boundary_count = available_cells.size()
-	var asteroid_count = max(minimum_asteroids, int(non_boundary_count * asteroid_percentage / 100.0))
+	var asteroid_count = max(minimum_asteroids, int(non_boundary_count * float(asteroid_percentage) / 100.0))
 	asteroid_count = min(asteroid_count, non_boundary_count)  # Cap at available cells
 	
 	print("Found ", non_boundary_count, " available cells - Spawning ", asteroid_count, " asteroid fields")
@@ -263,8 +303,8 @@ func generate_asteroids():
 					var quadrant_y = asteroid_rng.randi() % 4  # 0-3
 					
 					# Calculate position within the chosen quadrant, respecting margins
-					var quad_width = safe_width / 4
-					var quad_height = safe_height / 4
+					var quad_width = safe_width / 4.0
+					var quad_height = safe_height / 4.0
 					
 					pos_offset = Vector2(
 						margin_x + (quadrant_x * quad_width) + asteroid_rng.randf_range(0, quad_width) - grid.cell_size.x / 2,
@@ -335,7 +375,10 @@ func _on_grid_seed_changed(_new_seed = null):
 # Method to draw asteroids using sprites
 func draw_asteroids(canvas: CanvasItem, loaded_cells: Dictionary):
 	if not grid:
+		print("DEBUG: draw_asteroids - grid is null")
 		return
+	
+	print("DEBUG: Drawing asteroids. Loaded cells: ", loaded_cells.size())
 	
 	# For each loaded cell
 	for cell_pos in loaded_cells.keys():
@@ -344,6 +387,7 @@ func draw_asteroids(canvas: CanvasItem, loaded_cells: Dictionary):
 		
 		# Only process if this cell contains asteroids
 		if y < grid.cell_contents.size() and x < grid.cell_contents[y].size() and grid.cell_contents[y][x] == grid.CellContent.ASTEROID:
+			print("DEBUG: Found asteroid field at cell: ", x, ", ", y)
 			var cell_center = Vector2(
 				x * grid.cell_size.x + grid.cell_size.x / 2.0,
 				y * grid.cell_size.y + grid.cell_size.y / 2.0
@@ -360,6 +404,10 @@ func draw_asteroids(canvas: CanvasItem, loaded_cells: Dictionary):
 			if field_index == -1:
 				continue
 			
+			if field_index >= asteroid_data.size():
+				print("ERROR: asteroid_data index out of range: ", field_index, " >= ", asteroid_data.size())
+				continue
+				
 			var field_data = asteroid_data[field_index]
 			
 			# Draw each asteroid in the field
@@ -376,6 +424,9 @@ func draw_asteroids(canvas: CanvasItem, loaded_cells: Dictionary):
 				
 				# Skip if no sprites available or invalid variant
 				if sprite_array.size() == 0 or asteroid.sprite_variant >= sprite_array.size():
+					# Fallback to drawing shapes
+					var asteroid_position = cell_center + asteroid.offset
+					draw_fallback_asteroid(canvas, asteroid_position, asteroid.size_category, asteroid.scale, asteroid.rotation, asteroid.seed)
 					continue
 				
 				# Get the sprite texture
@@ -383,78 +434,47 @@ func draw_asteroids(canvas: CanvasItem, loaded_cells: Dictionary):
 				var texture_size = texture.get_size()
 				
 				# Calculate asteroid position
-				var asteroid_pos = cell_center + asteroid.offset
+				var asteroid_position = cell_center + asteroid.offset
 				
 				# Draw the asteroid with rotation and scaling
-				canvas.draw_set_transform(asteroid_pos, asteroid.rotation, Vector2(asteroid.scale, asteroid.scale))
+				canvas.draw_set_transform(asteroid_position, asteroid.rotation, Vector2(asteroid.scale, asteroid.scale))
 				canvas.draw_texture(texture, -texture_size / 2, Color.WHITE)
-				canvas.draw_set_transform(asteroid_pos, 0, Vector2(1, 1))  # Reset transform
+				canvas.draw_set_transform(asteroid_position, 0, Vector2(1, 1))  # Reset transform
 
-# Fallback method for drawing asteroids when sprites can't be loaded
-func draw_fallback_asteroids(canvas: CanvasItem, loaded_cells: Dictionary):
-	if not grid:
-		return
+# Fallback method for drawing asteroid when sprite can't be loaded
+func draw_fallback_asteroid(canvas, position, size_category, scale, rotation, seed_value):
+	var base_size = 10.0  # Base size for fallback drawing
 	
-	# For each loaded cell
-	for cell_pos in loaded_cells.keys():
-		var x = int(cell_pos.x)
-		var y = int(cell_pos.y)
-		
-		# Only process if this cell contains asteroids
-		if y < grid.cell_contents.size() and x < grid.cell_contents[y].size() and grid.cell_contents[y][x] == grid.CellContent.ASTEROID:
-			var cell_center = Vector2(
-				x * grid.cell_size.x + grid.cell_size.x / 2.0,
-				y * grid.cell_size.y + grid.cell_size.y / 2.0
-			)
-			
-			# Find the asteroid field data for this cell
-			var field_index = -1
-			for i in range(asteroid_fields.size()):
-				if asteroid_fields[i].grid_x == x and asteroid_fields[i].grid_y == y:
-					field_index = i
-					break
-			
-			# Skip if we can't find the asteroid field data
-			if field_index == -1:
-				continue
-			
-			var field_data = asteroid_data[field_index]
-			
-			# Draw each asteroid in the field as a simple shape
-			for asteroid in field_data.asteroids:
-				var asteroid_pos = cell_center + asteroid.offset
-				var base_size = 10.0  # Base size for fallback drawing
-				
-				match asteroid.size_category:
-					"large":
-						base_size = 20.0
-					"medium":
-						base_size = 15.0
-					"small":
-						base_size = 10.0
-				
-				# Scale the base size
-				var size = base_size * asteroid.scale
-				
-				# Create a simple asteroid shape (polygon)
-				var points = []
-				var sides = 5 + (asteroid.seed % 3)  # 5-7 sides
-				
-				# Create the shape with some irregularity
-				var asteroid_rng = RandomNumberGenerator.new()
-				asteroid_rng.seed = asteroid.seed
-				
-				for i in range(sides):
-					var angle = TAU * i / sides
-					var radius = size * asteroid_rng.randf_range(0.8, 1.2)
-					points.append(Vector2(cos(angle) * radius, sin(angle) * radius))
-				
-				# Draw the asteroid
-				var transformed_points = []
-				for point in points:
-					var rotated_point = point.rotated(asteroid.rotation)
-					transformed_points.append(asteroid_pos + rotated_point)
-				
-				# Fill and outline
-				canvas.draw_colored_polygon(transformed_points, Color(0.7, 0.3, 0))
-				canvas.draw_polyline(transformed_points + [transformed_points[0]], Color(0.9, 0.4, 0), 2.0, true)
+	match size_category:
+		"large":
+			base_size = 20.0
+		"medium":
+			base_size = 15.0
+		"small":
+			base_size = 10.0
+	
+	# Scale the base size
+	var size = base_size * scale
+	
+	# Create a simple asteroid shape (polygon)
+	var points = []
+	var sides = 5 + (seed_value % 3)  # 5-7 sides
+	
+	# Create the shape with some irregularity
+	var asteroid_rng = RandomNumberGenerator.new()
+	asteroid_rng.seed = seed_value
+	
+	for i in range(sides):
+		var angle = TAU * i / sides
+		var radius = size * asteroid_rng.randf_range(0.8, 1.2)
+		points.append(Vector2(cos(angle) * radius, sin(angle) * radius))
+	
+	# Draw the asteroid
+	var transformed_points = []
+	for point in points:
+		var rotated_point = point.rotated(rotation)
+		transformed_points.append(position + rotated_point)
+	
+	# Fill and outline
+	canvas.draw_colored_polygon(transformed_points, Color(0.7, 0.3, 0))
+	canvas.draw_polyline(transformed_points + [transformed_points[0]], Color(0.9, 0.4, 0), 2.0, true)
