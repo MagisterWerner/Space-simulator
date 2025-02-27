@@ -1,8 +1,8 @@
 extends Node2D
 
 @export var movement_speed = 300
-@export var player_size = Vector2(32, 32)
-@export var player_color = Color(1.0, 0.5, 0.0, 1.0)  # Orange
+@export var max_health = 100
+@export var fire_cooldown = 0.5  # Seconds between shots
 
 # Track previous position for cell change detection
 var previous_cell_x = -1
@@ -19,6 +19,13 @@ var was_in_boundary_cell = false
 var was_outside_grid = false
 var last_valid_position = Vector2.ZERO
 
+# Combat variables
+var current_health = max_health
+var current_cooldown = 0.0
+var laser_scene = preload("res://laser.tscn")
+var is_invulnerable = false  # Used for temporary invulnerability after taking damage
+var invulnerability_timer = 0.0  # Timer for invulnerability duration
+
 func _ready():
 	# Set a high z-index to ensure the player is drawn on top of all other objects
 	z_index = 10
@@ -30,6 +37,17 @@ func _ready():
 		camera.current = true
 		add_child(camera)
 		print("Player ready at position: ", global_position)
+	
+	# Set up the sprite if it doesn't exist
+	if not has_node("Sprite2D"):
+		var sprite = Sprite2D.new()
+		sprite.name = "Sprite2D"
+		sprite.texture = load("res://sprites/ships_player/player_ship_1.png")
+		add_child(sprite)
+		print("Added player sprite")
+	
+	# Initialize health
+	current_health = max_health
 	
 	# Initialize previous cell position
 	var grid = get_node_or_null("/root/Main/Grid")
@@ -52,8 +70,24 @@ func _process(delta):
 	# Check for planet collision
 	check_planet_collision()
 	
-	# Keep the player visible by forcing a redraw
-	queue_redraw()
+	# Update shooting cooldown
+	if current_cooldown > 0:
+		current_cooldown -= delta
+	
+	# Handle shooting input
+	if Input.is_action_pressed("ui_accept") and current_cooldown <= 0 and not is_immobilized:
+		shoot()
+	
+	# Update invulnerability timer
+	if is_invulnerable:
+		invulnerability_timer -= delta
+		if invulnerability_timer <= 0:
+			is_invulnerable = false
+	
+	# Visual feedback for invulnerability
+	if has_node("Sprite2D"):
+		var sprite = get_node("Sprite2D")
+		sprite.modulate.a = 0.5 if is_invulnerable else 1.0
 
 func handle_movement(delta):
 	# Prevent movement if immobilized
@@ -88,6 +122,12 @@ func handle_movement(delta):
 		if not check_boundaries():
 			# Revert to previous position if outside grid
 			global_position = old_position
+		
+		# Update sprite rotation to face movement direction
+		if has_node("Sprite2D") and direction.length() > 0:
+			# Calculate the angle in radians, adjust for Godot's coordinate system
+			var angle = direction.angle()
+			get_node("Sprite2D").rotation = angle
 
 func check_grid_position():
 	var grid = get_node_or_null("/root/Main/Grid")
@@ -104,7 +144,7 @@ func check_grid_position():
 			previous_cell_x = current_cell_x
 			previous_cell_y = current_cell_y
 
-# Dedicated function to check for planet collision
+# Check collision with planets
 func check_planet_collision():
 	var planet_spawner = get_node_or_null("/root/Main/PlanetSpawner")
 	var main = get_node_or_null("/root/Main")
@@ -116,7 +156,7 @@ func check_planet_collision():
 	var planet_data = planet_spawner.planet_data
 	var sprites = planet_spawner.planet_sprites
 	
-	var player_radius = max(player_size.x, player_size.y) / 2
+	var player_radius = 16  # Approximate player radius
 	var on_any_planet = false
 	var new_planet_id = -1
 	
@@ -142,7 +182,7 @@ func check_planet_collision():
 		var distance = global_position.distance_to(planet_pos)
 		
 		# Check if player is within the planet's radius
-		if distance < planet_radius + player_radius * 0.5:  # Using 0.5 to allow deeper entry before detection
+		if distance < planet_radius + player_radius * 0.5:
 			on_any_planet = true
 			new_planet_id = i
 			break
@@ -237,13 +277,81 @@ func set_immobilized(value):
 		respawn_timer = 0.0
 		print("Player movement restored")
 
-func _draw():
-	# Draw the player as an orange square
-	var rect = Rect2(-player_size.x/2, -player_size.y/2, player_size.x, player_size.y)
-	draw_rect(rect, player_color)
+# Shooting function
+func shoot():
+	# Create the laser instance
+	var laser = laser_scene.instantiate()
 	
-	# Add a white border
-	draw_rect(rect, Color.WHITE, false, 2.0)
+	# Set position slightly in front of the player's facing direction
+	var spawn_offset = Vector2.RIGHT.rotated(get_node("Sprite2D").rotation) * 30
+	laser.global_position = global_position + spawn_offset
+	
+	# Set direction based on player's rotation
+	laser.direction = Vector2.RIGHT.rotated(get_node("Sprite2D").rotation)
+	laser.rotation = get_node("Sprite2D").rotation
+	
+	# Configure the laser
+	laser.is_player_laser = true
+	laser.damage = 25
+	
+	# Change laser color for player
+	var sprite = laser.get_node("Sprite2D")
+	if sprite:
+		sprite.texture = load("res://sprites/weapons/laser_blue.png")
+	
+	# Add laser to scene
+	get_tree().current_scene.add_child(laser)
+	
+	# Reset cooldown
+	current_cooldown = fire_cooldown
+	
+	print("Player fired laser")
+
+# Take damage from enemy or other source
+func take_damage(amount):
+	# No damage if invulnerable
+	if is_invulnerable:
+		return
+	
+	# Apply damage
+	current_health -= amount
+	print("Player took", amount, "damage. Health:", current_health)
+	
+	# Check for death
+	if current_health <= 0:
+		die()
+	else:
+		# Set temporary invulnerability
+		is_invulnerable = true
+		invulnerability_timer = 1.0  # 1 second of invulnerability
+		
+		# Visual feedback
+		if has_node("Sprite2D"):
+			var sprite = get_node("Sprite2D")
+			var tween = create_tween()
+			tween.tween_property(sprite, "modulate", Color.RED, 0.1)
+			tween.tween_property(sprite, "modulate", Color.WHITE, 0.1)
+
+# Death function
+func die():
+	print("Player died")
+	
+	# Reset health
+	current_health = max_health
+	
+	# Set temporary invulnerability
+	is_invulnerable = true
+	invulnerability_timer = 3.0  # 3 seconds of invulnerability after respawn
+	
+	# Immobilize the player
+	set_immobilized(true)
+	
+	# Show message about death
+	var main = get_tree().current_scene
+	if main and main.has_method("show_message"):
+		main.show_message("You were destroyed! Respawning...")
+	
+	# Respawn will be handled by the normal respawn timer
 
 # Method to update cell position (called from main.gd)
 func update_cell_position(cell_x, cell_y):
@@ -255,3 +363,46 @@ func update_cell_position(cell_x, cell_y):
 	var grid = get_node_or_null("/root/Main/Grid")
 	if grid:
 		grid.update_loaded_chunks(cell_x, cell_y)
+
+# Check if a laser has hit this player
+func check_laser_hit(laser):
+	# Skip if player is invulnerable
+	if is_invulnerable:
+		return false
+	
+	# Only enemy lasers can hit the player
+	if laser.is_player_laser:
+		return false
+	
+	# Get collision shapes
+	var player_rect = get_collision_rect()
+	var laser_rect = laser.get_collision_rect()
+	
+	# Offset to global coordinates
+	player_rect.position += global_position
+	laser_rect.position += laser.global_position
+	
+	# Check for intersection
+	return player_rect.intersects(laser_rect)
+
+# Get player collision rectangle for hit detection
+func get_collision_rect():
+	var sprite = get_node_or_null("Sprite2D")
+	if sprite and sprite.texture:
+		var texture_size = sprite.texture.get_size()
+		# Make the collision rect a bit smaller than the sprite for better gameplay
+		var scaled_size = texture_size * 0.7
+		return Rect2(-scaled_size.x/2, -scaled_size.y/2, scaled_size.x, scaled_size.y)
+	else:
+		# Fallback collision rect if no sprite
+		return Rect2(-16, -16, 32, 32)
+
+func _draw():
+	# Only draw if the sprite is missing
+	if not has_node("Sprite2D"):
+		# Draw the player as an orange square (fallback)
+		var rect = Rect2(-16, -16, 32, 32)
+		draw_rect(rect, Color(1.0, 0.5, 0.0, 1.0))
+		
+		# Add a white border
+		draw_rect(rect, Color.WHITE, false, 2.0)

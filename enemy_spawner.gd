@@ -6,8 +6,8 @@ extends Node
 # Reference to the grid
 var grid = null
 
-# Reference to the enemy scene
-var enemy_scene = preload("res://enemy.tscn")
+# Path to the enemy scene
+var enemy_scene_path = "res://enemy.tscn"
 
 # Array to track spawned enemies
 var spawned_enemies = []
@@ -34,6 +34,11 @@ func spawn_enemies():
 		if is_instance_valid(enemy):
 			enemy.queue_free()
 	spawned_enemies.clear()
+	
+	# Check if the enemy scene exists
+	if not ResourceLoader.exists(enemy_scene_path):
+		push_error("ERROR: Enemy scene not found at: " + enemy_scene_path)
+		return
 	
 	# Get all empty cells (not boundary, not containing planets or asteroids)
 	var empty_cells = []
@@ -63,15 +68,31 @@ func spawn_enemies():
 		selected_cells.append(empty_cells[index])
 		empty_cells.remove_at(index)
 	
+	# Load the enemy scene
+	var enemy_resource = load(enemy_scene_path)
+	if not enemy_resource:
+		push_error("ERROR: Failed to load enemy scene!")
+		return
+	
 	# Spawn enemies at the selected cells
 	for cell_pos in selected_cells:
-		var enemy = enemy_scene.instantiate()
+		var enemy = enemy_resource.instantiate()
+		
+		# Safety check
+		if not enemy:
+			push_error("ERROR: Failed to instantiate enemy!")
+			continue
 		
 		# Set position centered in the cell
 		enemy.global_position = Vector2(
 			cell_pos.x * grid.cell_size.x + grid.cell_size.x / 2,
 			cell_pos.y * grid.cell_size.y + grid.cell_size.y / 2
 		)
+		
+		# Set up the basic enemy if no state machine exists
+		if not enemy.has_node("StateMachine"):
+			print("WARNING: Enemy missing StateMachine, creating simplified enemy")
+			# The simplified enemy will still work but with reduced functionality
 		
 		# Add enemy to the scene
 		get_parent().add_child(enemy)
@@ -98,7 +119,12 @@ func initialize_enemy_visibility():
 			var is_cell_loaded = grid.loaded_cells.has(Vector2(enemy_cell_x, enemy_cell_y))
 			
 			# Set the enemy's active state
-			enemy.update_active_state(is_cell_loaded)
+			if enemy.has_method("update_active_state"):
+				enemy.update_active_state(is_cell_loaded)
+			else:
+				# Fallback if method not found
+				enemy.visible = is_cell_loaded
+				enemy.process_mode = Node.PROCESS_MODE_INHERIT if is_cell_loaded else Node.PROCESS_MODE_DISABLED
 
 # Reset and respawn enemies (useful for when grid seed changes)
 func reset_enemies():

@@ -1,12 +1,16 @@
-[gd_scene load_steps=6 format=3 uid="uid://bqf1ewcvnbx7q"]
+[gd_scene load_steps=7 format=3 uid="uid://bqf1ewcvnbx7q"]
 
 [ext_resource type="Script" path="res://player.gd" id="1_pv8nj"]
+[ext_resource type="Texture2D" uid="uid://p0xsi4shtxjd" path="res://sprites/ships_player/player_ship_1.png" id="2_j8p5k"]
 [ext_resource type="Script" path="res://player_state_machine.gd" id="2_lkmbh"]
 [ext_resource type="Script" path="res://player_state_normal.gd" id="3_7s3qe"]
 [ext_resource type="Script" path="res://player_state_immobilized.gd" id="4_b30eq"]
 
 [node name="Player" type="Node2D"]
 script = ExtResource("1_pv8nj")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+texture = ExtResource("2_j8p5k")
 
 [node name="Camera2D" type="Camera2D" parent="."]
 
@@ -18,3 +22,10 @@ script = ExtResource("3_7s3qe")
 
 [node name="Immobilized" type="Node" parent="StateMachine"]
 script = ExtResource("4_b30eq")
+
+[node name="HealthBar" type="ColorRect" parent="."]
+offset_left = -20.0
+offset_top = -30.0
+offset_right = 20.0
+offset_bottom = -26.0
+color = Color(0, 0.8, 0, 1)
