@@ -1,4 +1,5 @@
 extends Node
+class_name AsteroidSpawner
 
 # Asteroid generation parameters
 @export var asteroid_percentage = 15  # Percentage of grid cells that will contain asteroids
@@ -25,7 +26,9 @@ var large_asteroid_sprites = []
 var medium_asteroid_sprites = []
 var small_asteroid_sprites = []
 
-# Called when the node enters the scene tree for the first time
+# Asteroid scene reference
+var asteroid_scene_path = "res://scenes/asteroid.tscn"
+
 func _ready():
 	grid = get_node_or_null("/root/Main/Grid")
 	if not grid:
@@ -38,8 +41,6 @@ func _ready():
 	
 	# Load asteroid sprites
 	load_asteroid_sprites()
-	
-	print("Asteroid spawner initialized")
 
 # Function to load asteroid sprites
 func load_asteroid_sprites():
@@ -55,8 +56,6 @@ func load_asteroid_sprites():
 			var texture = load(path)
 			if texture:
 				large_asteroid_sprites.append(texture)
-		else:
-			print("AsteroidSpawner: Large asteroid sprite not found: " + path)
 	
 	# Load medium asteroid sprites
 	for i in range(1, 6):  # 1 to 5
@@ -65,8 +64,6 @@ func load_asteroid_sprites():
 			var texture = load(path)
 			if texture:
 				medium_asteroid_sprites.append(texture)
-		else:
-			print("AsteroidSpawner: Medium asteroid sprite not found: " + path)
 	
 	# Load small asteroid sprites
 	for i in range(1, 6):  # 1 to 5
@@ -75,13 +72,6 @@ func load_asteroid_sprites():
 			var texture = load(path)
 			if texture:
 				small_asteroid_sprites.append(texture)
-		else:
-			print("AsteroidSpawner: Small asteroid sprite not found: " + path)
-	
-	print("Loaded asteroid sprites: ", 
-		large_asteroid_sprites.size(), " large, ", 
-		medium_asteroid_sprites.size(), " medium, ", 
-		small_asteroid_sprites.size(), " small")
 	
 	# Create fallbacks if needed
 	if large_asteroid_sprites.size() == 0:
@@ -93,8 +83,6 @@ func load_asteroid_sprites():
 
 # Create fallback asteroid textures
 func create_fallback_asteroid_texture(size_category: String):
-	print("Creating fallback " + size_category + " asteroid texture")
-	
 	var texture_size = 48
 	if size_category == "medium":
 		texture_size = 32
@@ -131,7 +119,6 @@ func generate_asteroids():
 	
 	# Make sure grid is ready
 	if grid.cell_contents.size() == 0:
-		print("ERROR: Grid content arrays not initialized yet")
 		return
 	
 	# Initialize the asteroid counts array to match grid size
@@ -139,8 +126,6 @@ func generate_asteroids():
 		asteroid_counts.append([])
 		for x in range(int(grid.grid_size.x)):
 			asteroid_counts[y].append(0)
-	
-	print("Generating asteroids with seed: ", grid.seed_value)
 	
 	# Get a list of non-boundary cells that don't already contain planets
 	var available_cells = []
@@ -162,15 +147,13 @@ func generate_asteroids():
 	var asteroid_count = max(minimum_asteroids, int(non_boundary_count * float(asteroid_percentage) / 100.0))
 	asteroid_count = min(asteroid_count, non_boundary_count)  # Cap at available cells
 	
-	print("Found ", non_boundary_count, " available cells - Spawning ", asteroid_count, " asteroid fields")
-	
 	# Setup RNG with the grid's seed
 	var rng = RandomNumberGenerator.new()
 	rng.seed = grid.seed_value + 1000  # Add offset to get different pattern from planets
 	
 	var actual_asteroid_count = 0
 	
-	# Try multiple times to ensure we get enough asteroid fields
+	# Generate asteroid fields
 	for i in range(asteroid_count * 2):
 		if available_cells.size() == 0:
 			break  # No more available cells
@@ -257,6 +240,9 @@ func generate_asteroids():
 			
 			# Random rotation angle
 			var rotation = asteroid_rng.randf_range(0, TAU)  # 0 to 2π
+			
+			# Random rotation speed
+			var rotation_speed = asteroid_rng.randf_range(-0.5, 0.5)
 			
 			# Estimate collision radius for this asteroid
 			var collision_radius = 0
@@ -346,6 +332,7 @@ func generate_asteroids():
 				"scale": base_scale,
 				"offset": pos_offset,
 				"rotation": rotation,
+				"rotation_speed": rotation_speed,
 				"seed": asteroid_seed
 			})
 		
@@ -358,8 +345,6 @@ func generate_asteroids():
 		if actual_asteroid_count >= asteroid_count:
 			break
 	
-	print("Asteroid generation complete - Total asteroid fields: ", actual_asteroid_count)
-	
 	# Force grid redraw
 	grid.queue_redraw()
 
@@ -369,16 +354,15 @@ func reset_asteroids():
 
 # Handler for grid seed change
 func _on_grid_seed_changed(_new_seed = null):
-	print("Asteroid spawner detected seed change, regenerating asteroid fields")
 	call_deferred("generate_asteroids")
 
-# Method to draw asteroids using sprites
+# Method to draw asteroids using sprites and instantiating actual asteroid entities
 func draw_asteroids(canvas: CanvasItem, loaded_cells: Dictionary):
 	if not grid:
-		print("DEBUG: draw_asteroids - grid is null")
 		return
 	
-	print("DEBUG: Drawing asteroids. Loaded cells: ", loaded_cells.size())
+	# Clear existing asteroid instances if we're redrawing
+	clear_asteroid_instances()
 	
 	# For each loaded cell
 	for cell_pos in loaded_cells.keys():
@@ -387,7 +371,6 @@ func draw_asteroids(canvas: CanvasItem, loaded_cells: Dictionary):
 		
 		# Only process if this cell contains asteroids
 		if y < grid.cell_contents.size() and x < grid.cell_contents[y].size() and grid.cell_contents[y][x] == grid.CellContent.ASTEROID:
-			print("DEBUG: Found asteroid field at cell: ", x, ", ", y)
 			var cell_center = Vector2(
 				x * grid.cell_size.x + grid.cell_size.x / 2.0,
 				y * grid.cell_size.y + grid.cell_size.y / 2.0
@@ -401,20 +384,16 @@ func draw_asteroids(canvas: CanvasItem, loaded_cells: Dictionary):
 					break
 			
 			# Skip if we can't find the asteroid field data
-			if field_index == -1:
-				continue
-			
-			if field_index >= asteroid_data.size():
-				print("ERROR: asteroid_data index out of range: ", field_index, " >= ", asteroid_data.size())
+			if field_index == -1 or field_index >= asteroid_data.size():
 				continue
 				
 			var field_data = asteroid_data[field_index]
 			
 			# Draw each asteroid in the field
-			for asteroid in field_data.asteroids:
+			for asteroid_data in field_data.asteroids:
 				# Get the appropriate sprite array based on size category
 				var sprite_array = []
-				match asteroid.size_category:
+				match asteroid_data.size_category:
 					"large":
 						sprite_array = large_asteroid_sprites
 					"medium":
@@ -423,35 +402,62 @@ func draw_asteroids(canvas: CanvasItem, loaded_cells: Dictionary):
 						sprite_array = small_asteroid_sprites
 				
 				# Skip if no sprites available or invalid variant
-				if sprite_array.size() == 0 or asteroid.sprite_variant >= sprite_array.size():
-					# Fallback to drawing shapes
-					var asteroid_position = cell_center + asteroid.offset
-					draw_fallback_asteroid(canvas, asteroid_position, asteroid.size_category, asteroid.scale, asteroid.rotation, asteroid.seed)
+				if sprite_array.size() == 0 or asteroid_data.sprite_variant >= sprite_array.size():
 					continue
 				
 				# Get the sprite texture
-				var texture = sprite_array[asteroid.sprite_variant]
-				var texture_size = texture.get_size()
+				var texture = sprite_array[asteroid_data.sprite_variant]
 				
-				# Calculate asteroid position
-				var asteroid_position = cell_center + asteroid.offset
-				
-				# Draw the asteroid with rotation and scaling
-				canvas.draw_set_transform(asteroid_position, asteroid.rotation, Vector2(asteroid.scale, asteroid.scale))
-				canvas.draw_texture(texture, -texture_size / 2, Color.WHITE)
-				canvas.draw_set_transform(asteroid_position, 0, Vector2(1, 1))  # Reset transform
+				# Instead of drawing directly, instantiate an actual asteroid entity
+				spawn_asteroid_entity(
+					cell_center + asteroid_data.offset,  # position
+					asteroid_data.size_category,         # size category
+					asteroid_data.sprite_variant,        # sprite variant
+					asteroid_data.scale,                 # scale
+					asteroid_data.rotation_speed,        # rotation speed
+					texture                              # texture
+				)
 
-# Fallback method for drawing asteroid when sprite can't be loaded
+# Method to spawn an actual asteroid entity
+func spawn_asteroid_entity(position, size_category, sprite_variant, scale_value, rotation_speed, texture):
+	# Check if asteroid scene exists
+	if not ResourceLoader.exists(asteroid_scene_path):
+		return
+		
+	# Create asteroid instance
+	var asteroid_instance = load(asteroid_scene_path).instantiate()
+	
+	# Set position and other properties
+	asteroid_instance.global_position = position
+	asteroid_instance.setup(size_category, sprite_variant, scale_value, rotation_speed)
+	
+	# Get or create sprite
+	var sprite = asteroid_instance.get_node_or_null("Sprite2D")
+	if not sprite:
+		sprite = Sprite2D.new()
+		sprite.name = "Sprite2D"
+		asteroid_instance.add_child(sprite)
+	
+	# Set sprite texture and rotation
+	sprite.texture = texture
+	
+	# Add to the scene
+	get_tree().current_scene.add_child(asteroid_instance)
+
+# Clear existing asteroid instances when redrawing
+func clear_asteroid_instances():
+	var existing_asteroids = get_tree().get_nodes_in_group("asteroids")
+	for asteroid in existing_asteroids:
+		asteroid.queue_free()
+
+# Draw fallback method for asteroids when needed
 func draw_fallback_asteroid(canvas, position, size_category, scale, rotation, seed_value):
-	var base_size = 10.0  # Base size for fallback drawing
+	var base_size = 10.0
 	
 	match size_category:
-		"large":
-			base_size = 20.0
-		"medium":
-			base_size = 15.0
-		"small":
-			base_size = 10.0
+		"large": base_size = 20.0
+		"medium": base_size = 15.0
+		"small": base_size = 10.0
 	
 	# Scale the base size
 	var size = base_size * scale

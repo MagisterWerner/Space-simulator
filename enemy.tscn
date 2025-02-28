@@ -22,9 +22,6 @@ speed = 150.0
 
 [node name="CombatComponent" type="Node" parent="."]
 script = ExtResource("4_f3xcd")
-fire_cooldown = 1.0
-damage = 15.0
-range = 250.0
 
 [node name="Sprite2D" type="Sprite2D" parent="."]
 texture = ExtResource("2_0k3g7")

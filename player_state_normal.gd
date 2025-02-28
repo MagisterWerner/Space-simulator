@@ -7,7 +7,7 @@ var combat_component
 func enter() -> void:
 	super.enter()
 	
-	# Get references to components using the registry helper
+	# Get references to components
 	movement_component = entity.get_node_or_null("MovementComponent")
 	combat_component = entity.get_node_or_null("CombatComponent")
 	
@@ -39,7 +39,3 @@ func process(delta: float) -> void:
 			movement_component.move(direction)
 		else:
 			movement_component.stop()
-	
-	# Handle shooting with Space key
-	if Input.is_action_pressed("ui_select") and combat_component and combat_component.can_fire():
-		entity.shoot()

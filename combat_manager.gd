@@ -21,7 +21,10 @@ func check_all_laser_collisions():
 			if is_instance_valid(enemy) and enemy.visible:
 				enemies.append(enemy)
 	
-	# Check player lasers against enemies
+	# Get all asteroids
+	var asteroids = get_tree().get_nodes_in_group("asteroids")
+	
+	# Check player lasers against enemies and asteroids
 	for laser in lasers:
 		if not is_instance_valid(laser):
 			continue
@@ -37,6 +40,17 @@ func check_all_laser_collisions():
 					# Destroy the laser
 					laser.hit_target()
 					break
+			
+			# Check against all asteroids if laser still exists
+			if is_instance_valid(laser):
+				for asteroid in asteroids:
+					if asteroid.check_laser_hit(laser):
+						# Apply damage to asteroid
+						asteroid.take_damage(laser.damage)
+						
+						# Destroy the laser
+						laser.hit_target()
+						break
 		else:
 			# This is an enemy laser - check against player
 			if player and player.check_laser_hit(laser):
@@ -45,3 +59,14 @@ func check_all_laser_collisions():
 				
 				# Destroy the laser
 				laser.hit_target()
+				
+			# Check against all asteroids if laser still exists
+			elif is_instance_valid(laser):
+				for asteroid in asteroids:
+					if asteroid.check_laser_hit(laser):
+						# Apply damage to asteroid
+						asteroid.take_damage(laser.damage)
+						
+						# Destroy the laser
+						laser.hit_target()
+						break

@@ -5,6 +5,7 @@ class_name Player
 var health_component
 var combat_component
 var movement_component
+var resource_component
 var state_machine
 
 # Player-specific properties
@@ -14,6 +15,11 @@ var current_planet_id: int = -1
 var last_valid_position: Vector2
 var grid = null
 var main = null
+var current_charge: float = 0.0
+
+# Weapon handling properties
+var is_charging_weapon: bool = false
+var weapon_swap_index: int = 0  # For cycling through weapons
 
 func _ready():
 	# Set basic properties
@@ -24,6 +30,7 @@ func _ready():
 	health_component = $HealthComponent
 	combat_component = $CombatComponent
 	movement_component = $MovementComponent
+	resource_component = $ResourceComponent
 	state_machine = $StateMachine
 	
 	# Store initial position
@@ -40,6 +47,14 @@ func _ready():
 	if movement_component:
 		movement_component.connect("position_changed", _on_position_changed)
 		movement_component.connect("cell_changed", _on_cell_changed)
+	
+	if combat_component:
+		combat_component.connect("weapon_changed", _on_weapon_changed)
+	
+	# Initialize resource component if available
+	if resource_component:
+		# Add energy resource
+		resource_component.add_resource("energy", 100.0, 10.0)  # 100 max, 10 regen per second
 	
 	# Initialize state machine
 	if state_machine:
@@ -62,6 +77,45 @@ func _process(delta):
 	# Only check for planet collision if not immobilized
 	if not is_immobilized:
 		check_planet_collision()
+	
+	# Handle weapon charging if button is held
+	if is_charging_weapon and combat_component:
+		current_charge = combat_component.update_charge(delta)
+
+func _unhandled_input(event):
+	# Skip if immobilized
+	if is_immobilized:
+		return
+	
+	# Weapon firing controls
+	if event is InputEvent:
+		# Fire weapon on primary fire button pressed
+		if event.is_action_pressed("ui_accept") or event.is_action_pressed("primary_fire"):
+			if combat_component:
+				# Start charging if this is a chargeable weapon
+				var current_weapon = combat_component.get_current_weapon_name()
+				if current_weapon == "ChargeBeam":
+					is_charging_weapon = combat_component.start_charging()
+				else:
+					shoot()
+		
+		# Release charged weapon when button released
+		elif event.is_action_released("ui_accept") or event.is_action_released("primary_fire"):
+			if is_charging_weapon and combat_component:
+				combat_component.release_charge()
+				is_charging_weapon = false
+				current_charge = 0.0
+		
+		# Cycle through weapons with number keys or weapon switch key
+		elif event.is_action_pressed("weapon_next") or event.is_action_pressed("ui_page_down"):
+			cycle_weapon(1)
+		elif event.is_action_pressed("weapon_prev") or event.is_action_pressed("ui_page_up"):
+			cycle_weapon(-1)
+		
+		# Direct weapon selection with number keys
+		for i in range(1, 10):
+			if event.is_action_pressed("weapon_" + str(i)):
+				select_weapon_by_index(i - 1)
 
 func shoot():
 	if combat_component and not is_immobilized:
@@ -71,6 +125,25 @@ func shoot():
 			direction = movement_component.facing_direction
 		
 		combat_component.fire(direction)
+
+func cycle_weapon(direction: int):
+	if combat_component:
+		var weapons = combat_component.get_available_weapons()
+		if weapons.size() <= 1:
+			return
+			
+		weapon_swap_index = (weapon_swap_index + direction) % weapons.size()
+		if weapon_swap_index < 0:
+			weapon_swap_index = weapons.size() - 1
+			
+		combat_component.set_weapon(weapons[weapon_swap_index])
+
+func select_weapon_by_index(index: int):
+	if combat_component:
+		var weapons = combat_component.get_available_weapons()
+		if index >= 0 and index < weapons.size():
+			weapon_swap_index = index
+			combat_component.set_weapon(weapons[index])
 
 func take_damage(amount: float) -> bool:
 	if health_component:
@@ -225,3 +298,19 @@ func _on_position_changed(_old_position, _new_position):
 func _on_cell_changed(_cell_x, _cell_y):
 	# Additional logic when player changes cells
 	pass
+
+func _on_weapon_changed(new_weapon):
+	# Stop charging if weapon changed
+	is_charging_weapon = false
+	current_charge = 0.0
+	
+	# Update weapon swap index to match new weapon
+	if combat_component:
+		var weapons = combat_component.get_available_weapons()
+		var index = weapons.find(new_weapon.weapon_name)
+		if index >= 0:
+			weapon_swap_index = index
+	
+	# Show message about new weapon
+	if main and main.has_method("show_message"):
+		main.show_message("Weapon switched to: " + new_weapon.weapon_name)
