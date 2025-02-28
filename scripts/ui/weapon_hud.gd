@@ -219,7 +219,10 @@ func _update_weapon_list():
 		# Highlight current weapon
 		if weapon_name == current_weapon:
 			h_box.modulate = Color(1.2, 1.2, 0.8)  # Slight highlight
-			name_label.add_theme_font_override("font", ThemeDB.fallback_bold_font)
+			var font = name_label.get_theme_font("font")
+			if font:
+				var font_bold = font.duplicate()
+				name_label.add_theme_font_override("font", font_bold)
 		
 		weapon_list.add_child(h_box)
 

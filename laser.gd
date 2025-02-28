@@ -23,6 +23,10 @@ func _process(delta):
 	life_timer -= delta
 	if life_timer <= 0:
 		queue_free()
+	
+	# If we don't have a sprite, redraw
+	if not has_node("Sprite2D"):
+		queue_redraw()
 
 func _draw():
 	# This is a fallback in case the Sprite2D child isn't present

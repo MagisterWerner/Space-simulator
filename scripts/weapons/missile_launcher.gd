@@ -11,7 +11,7 @@ extends WeaponStrategy
 var missile_scene_path = "res://scenes/missile.tscn"
 
 func _init():
-	weapon_name = "Missile Launcher"
+	weapon_name = "MissileLauncher"
 	cooldown = 1.2
 	damage = 25.0
 	energy_cost = 20.0
@@ -21,11 +21,7 @@ func _init():
 func fire(entity, spawn_position: Vector2, direction: Vector2) -> Array:
 	var projectiles = []
 	
-	# Check if missile scene exists
-	if not ResourceLoader.exists(missile_scene_path):
-		# Fallback to creating a missile directly
-		return _create_fallback_missiles(entity, spawn_position, direction)
-	
+	# Create our own missiles instead of loading scenes
 	# Calculate start angle for the spread (if multiple missiles)
 	var start_angle = direction.angle() - (spread_angle * (missile_count - 1) / 2)
 	
@@ -34,28 +30,24 @@ func fire(entity, spawn_position: Vector2, direction: Vector2) -> Array:
 		var angle = start_angle + (spread_angle * i)
 		var missile_dir = Vector2(cos(angle), sin(angle))
 		
-		# Create missile instance
-		var missile = load(missile_scene_path).instantiate()
+		# Create missile using Laser as base (fallback method)
+		var missile = Laser.new()
 		
 		# Set position
 		var spawn_offset = missile_dir * 40  # Spawn further away
 		missile.global_position = spawn_position + spawn_offset
 		
-		# Configure the missile
+		# Configure the missile-like laser
 		missile.direction = missile_dir
 		missile.rotation = angle
-		missile.is_player_missile = entity.is_in_group("player")
+		missile.is_player_laser = entity.is_in_group("player")
 		missile.damage = damage
-		missile.speed = projectile_speed
-		missile.tracking_strength = tracking_strength
-		missile.turn_speed = turn_speed
-		missile.explosion_radius = explosion_radius
-		missile.range = range
+		missile.speed = projectile_speed / 2  # Slower than regular lasers
 		
-		# Set target if the entity has a targeting component
-		var targeting = entity.get_node_or_null("TargetingComponent")
-		if targeting and targeting.current_target:
-			missile.target = targeting.current_target
+		# Add a sprite for the missile
+		var sprite = Sprite2D.new()
+		sprite.scale = Vector2(1.5, 0.8)  # Make it wider
+		missile.add_child(sprite)
 		
 		# Add to scene
 		entity.get_tree().current_scene.add_child(missile)
@@ -63,42 +55,19 @@ func fire(entity, spawn_position: Vector2, direction: Vector2) -> Array:
 	
 	return projectiles
 
-# Fallback method to create missiles if the scene doesn't exist
-func _create_fallback_missiles(entity, spawn_position: Vector2, direction: Vector2) -> Array:
-	var projectiles = []
+# Helper function to find a target for the missile
+func _find_closest_target(entity, is_player_missile: bool) -> Node2D:
+	var target_group = "enemies" if is_player_missile else "player"
+	var targets = entity.get_tree().get_nodes_in_group(target_group)
 	
-	# Calculate start angle for the spread (if multiple missiles)
-	var start_angle = direction.angle() - (spread_angle * (missile_count - 1) / 2)
+	var closest_target = null
+	var closest_distance = INF
 	
-	# Create missiles using laser scene as a base
-	var laser_scene = load("res://laser.tscn")
+	for target in targets:
+		if is_instance_valid(target) and target.visible:
+			var distance = entity.global_position.distance_to(target.global_position)
+			if distance < closest_distance:
+				closest_target = target
+				closest_distance = distance
 	
-	for i in range(missile_count):
-		var angle = start_angle + (spread_angle * i)
-		var missile_dir = Vector2(cos(angle), sin(angle))
-		
-		# Create laser instance (as missile fallback)
-		var missile = laser_scene.instantiate()
-		
-		# Set position
-		var spawn_offset = missile_dir * 40
-		missile.global_position = spawn_position + spawn_offset
-		
-		# Configure as a missile-like projectile
-		missile.direction = missile_dir
-		missile.rotation = angle
-		missile.is_player_laser = entity.is_in_group("player")
-		missile.damage = damage
-		missile.speed = projectile_speed
-		
-		# Make it look more like a missile
-		if missile.has_node("Sprite2D"):
-			var sprite = missile.get_node("Sprite2D")
-			sprite.modulate = Color(1.0, 0.6, 0.2)  # Orange
-			sprite.scale = Vector2(1.5, 0.8)  # Make it wider
-		
-		# Add to scene
-		entity.get_tree().current_scene.add_child(missile)
-		projectiles.append(missile)
-	
-	return projectiles
+	return closest_target

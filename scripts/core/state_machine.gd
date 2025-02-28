@@ -1,4 +1,3 @@
-# scripts/core/state_machine.gd
 class_name StateMachine
 extends Node
 
@@ -33,8 +32,6 @@ func _ready():
 				child.state_machine = self
 			if "entity" in child:
 				child.entity = entity
-	
-	print("State machine initialized with " + str(states.size()) + " states")
 
 func _process(delta):
 	if current_state and current_state.has_method("process"):
@@ -67,7 +64,6 @@ func change_state(state_name):
 	
 	# Change to new state
 	current_state = states[state_name]
-	print(entity.name + " changing state to: " + state_name)
 	
 	# Enter the new state
 	current_state.enter()

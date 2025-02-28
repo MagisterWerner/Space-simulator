@@ -13,8 +13,10 @@ func enter() -> void:
 	
 	# Ensure player is not immobilized
 	entity.is_immobilized = false
+	
+	# Set speed through the component
 	if movement_component:
-		movement_component.speed = 300
+		movement_component.set_speed(300)
 
 func process(delta: float) -> void:
 	# Skip if player is immobilized
@@ -39,3 +41,13 @@ func process(delta: float) -> void:
 			movement_component.move(direction)
 		else:
 			movement_component.stop()
+	
+	# Handle shooting if primary fire is pressed
+	if Input.is_action_pressed("primary_fire") and combat_component:
+		if entity.is_charging_weapon:
+			# Update charge value if charging
+			entity.current_charge = combat_component.update_charge(delta)
+		else:
+			# Try to shoot if not charging and cooldown is ready
+			if combat_component.can_fire():
+				entity.shoot()

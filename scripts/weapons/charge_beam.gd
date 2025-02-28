@@ -14,7 +14,7 @@ var is_charging: bool = false
 var charge_visual: Node2D = null
 
 func _init():
-	weapon_name = "Charge Beam"
+	weapon_name = "ChargeBeam"
 	cooldown = 0.2
 	damage = min_damage
 	energy_cost = 15.0
@@ -52,9 +52,8 @@ func fire(entity, spawn_position: Vector2, direction: Vector2) -> Array:
 	var actual_damage = lerp(min_damage, max_damage, charge_percent)
 	var beam_width = lerp(min_width, max_width, charge_percent)
 	
-	# Create custom laser projectile
-	var laser_scene = load("res://laser.tscn")
-	var laser = laser_scene.instantiate()
+	# Create beam laser directly
+	var laser = Laser.new()
 	
 	# Set position
 	var spawn_offset = direction * 30
@@ -67,14 +66,12 @@ func fire(entity, spawn_position: Vector2, direction: Vector2) -> Array:
 	laser.damage = actual_damage
 	laser.speed = projectile_speed
 	
-	# Customize appearance for charge beam
-	if laser.has_node("Sprite2D"):
-		var sprite = laser.get_node("Sprite2D")
-		sprite.modulate = beam_color
-		
-		# Scale the width but maintain length proportions
-		var original_scale = sprite.scale
-		sprite.scale.y = beam_width / 4.0  # Assuming default width is 4
+	# Make beam thicker for charged shots
+	if beam_width > min_width:
+		# Add a sprite for the beam
+		var sprite = Sprite2D.new()
+		sprite.scale = Vector2(4.0, beam_width / 4.0)
+		laser.add_child(sprite)
 	
 	# Add to scene
 	entity.get_tree().current_scene.add_child(laser)

@@ -54,6 +54,9 @@ func move(direction: Vector2):
 func stop():
 	velocity = Vector2.ZERO
 
+func set_speed(new_speed: float):
+	speed = new_speed
+
 func set_facing_direction(direction: Vector2):
 	if direction.length() > 0:
 		facing_direction = direction.normalized()

@@ -5,7 +5,7 @@ extends WeaponStrategy
 @export var laser_color: Color = Color.BLUE
 
 func _init():
-	weapon_name = "Standard Laser"
+	weapon_name = "StandardLaser"
 	cooldown = 0.3
 	damage = 10.0
 	energy_cost = 5.0
@@ -13,9 +13,8 @@ func _init():
 	range = 800.0
 
 func fire(entity, spawn_position: Vector2, direction: Vector2) -> Array:
-	# Create laser instance
-	var laser_scene = load("res://laser.tscn")
-	var laser = laser_scene.instantiate()
+	# Create the laser directly without using a scene
+	var laser = Laser.new()
 	
 	# Set position
 	var spawn_offset = direction * 30
@@ -27,13 +26,6 @@ func fire(entity, spawn_position: Vector2, direction: Vector2) -> Array:
 	laser.is_player_laser = entity.is_in_group("player")
 	laser.damage = damage
 	laser.speed = projectile_speed
-	
-	# Set laser color based on who's firing
-	if laser.has_node("Sprite2D"):
-		if laser.is_player_laser:
-			laser.get_node("Sprite2D").modulate = laser_color
-		else:
-			laser.get_node("Sprite2D").modulate = Color.RED
 	
 	# Add to scene
 	entity.get_tree().current_scene.add_child(laser)

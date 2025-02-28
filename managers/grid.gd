@@ -60,8 +60,6 @@ func _ready():
 	
 	# Initialize the grid with the current seed
 	generate_cell_contents()
-	
-	print("Grid initialized with seed: ", seed_value)
 
 func _process(delta):
 	# Get player reference
@@ -131,15 +129,12 @@ func handle_player_outside_grid(player):
 		if main.has_method("show_message"):
 			main.show_message("You abandoned all logic and were lost in space!")
 		
-		print("CRITICAL: Player left the grid at position: ", player.global_position)
 		player_immobilized = true
 		respawn_timer = 5.0  # 5 seconds until respawn
 		
-		# Disable player movement
+		# Disable player movement via proper method
 		if player.has_method("set_immobilized"):
 			player.set_immobilized(true)
-		else:
-			player.movement_speed = 0
 
 # Handle immobilized player state and respawning
 func handle_player_immobilized(player, delta):
@@ -152,13 +147,11 @@ func handle_player_immobilized(player, delta):
 		player_immobilized = false
 		respawn_timer = 0.0
 		
-		# Re-enable player movement
+		# Re-enable player movement using proper method
 		if player.has_method("set_immobilized"):
 			player.set_immobilized(false)
-		else:
-			player.movement_speed = 300
 		
-		# Respawn at initial planet
+		# Respawn at initial planet through main scene
 		var main = get_tree().current_scene
 		if main.has_method("respawn_player_at_initial_planet"):
 			main.respawn_player_at_initial_planet()
@@ -190,6 +183,10 @@ func handle_boundary_warnings(is_in_boundary):
 
 # Function to update loaded chunks based on player position
 func update_loaded_chunks(center_x, center_y):
+	# Skip if no change
+	if center_x == current_player_cell_x and center_y == current_player_cell_y:
+		return
+		
 	# Update player cell tracking
 	current_player_cell_x = center_x
 	current_player_cell_y = center_y
@@ -216,8 +213,6 @@ func update_loaded_chunks(center_x, center_y):
 	for cell_pos in previously_loaded:
 		if not loaded_cells.has(cell_pos):
 			emit_signal("_cell_unloaded", cell_pos.x, cell_pos.y)
-	
-	print("Loaded cells updated. Center: (", center_x, ",", center_y, ") - Total loaded: ", loaded_cells.size())
 	
 	# Force a redraw to ensure everything is visible
 	queue_redraw()
@@ -337,7 +332,6 @@ func set_seed(new_seed):
 		return  # No change, skip regeneration
 		
 	seed_value = new_seed
-	print("Setting new seed: ", new_seed)
 	
 	# Regenerate the grid with new seed
 	regenerate()
@@ -347,8 +341,6 @@ func set_seed(new_seed):
 
 # Initialize the cell contents based on the seed
 func generate_cell_contents():
-	print("Generating grid with seed: ", seed_value)
-	
 	# Initialize cell_contents as a 2D array of empty cells
 	cell_contents = []
 	
@@ -360,8 +352,6 @@ func generate_cell_contents():
 	
 	# Initialize loaded cells dictionary
 	loaded_cells = {}
-	
-	print("Grid initialized: ", grid_size.x, "x", grid_size.y, " cells")
 	
 	# Ensure the grid is visually updated
 	queue_redraw()

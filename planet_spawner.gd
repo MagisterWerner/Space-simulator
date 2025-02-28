@@ -46,8 +46,6 @@ func _ready():
 	
 	# Load planet and moon sprites
 	load_sprites()
-	
-	print("Planet spawner initialized")
 
 # Function to load planet and moon sprites
 func load_sprites():
@@ -69,8 +67,6 @@ func load_sprites():
 			var texture = load(path)
 			if texture:
 				planet_sprites.append(texture)
-		else:
-			print("PlanetSpawner: Planet sprite not found: " + path + ", will create fallback")
 	
 	# Load moon sprites
 	var moon_paths = [
@@ -84,14 +80,9 @@ func load_sprites():
 			var texture = load(path)
 			if texture:
 				moon_sprites.append(texture)
-		else:
-			print("PlanetSpawner: Moon sprite not found: " + path + ", will create fallback")
-	
-	print("PlanetSpawner: Loaded " + str(planet_sprites.size()) + " planet sprites and " + str(moon_sprites.size()) + " moon sprites")
 	
 	# Create fallback sprites if none were loaded
 	if planet_sprites.size() == 0:
-		print("No planet sprites found. Creating fallback empty texture.")
 		var image = Image.create(64, 64, false, Image.FORMAT_RGBA8)
 		for x in range(64):
 			for y in range(64):
@@ -102,7 +93,6 @@ func load_sprites():
 		planet_sprites.append(fallback_texture)
 	
 	if moon_sprites.size() == 0:
-		print("No moon sprites found. Creating fallback empty texture.")
 		var image = Image.create(32, 32, false, Image.FORMAT_RGBA8)
 		for x in range(32):
 			for y in range(32):
@@ -124,7 +114,6 @@ func generate_planets():
 	
 	# Make sure grid is ready
 	if grid.cell_contents.size() == 0:
-		print("ERROR: Grid content arrays not initialized yet")
 		return
 	
 	# Initialize the planet arrays to match grid size
@@ -134,8 +123,6 @@ func generate_planets():
 		for x in range(int(grid.grid_size.x)):
 			planet_sizes[y].append(0.0)
 			planet_colors[y].append(Color.WHITE)
-	
-	print("Generating planets with seed: ", grid.seed_value)
 	
 	# Get a list of non-boundary cells for placing planets
 	var available_cells = []
@@ -155,8 +142,6 @@ func generate_planets():
 	var non_boundary_count = available_cells.size()
 	var planet_count = max(minimum_planets, int(non_boundary_count * planet_percentage / 100.0))
 	planet_count = min(planet_count, non_boundary_count)  # Cap at available cells
-	
-	print("Found ", non_boundary_count, " available cells - Spawning ", planet_count, " planets")
 	
 	# Setup RNG with the grid's seed
 	var rng = RandomNumberGenerator.new()
@@ -205,9 +190,6 @@ func generate_planets():
 		# Only scale down if the planet is too large for the cell
 		if planet_pixel_size > cell_min_dimension:
 			scale = cell_min_dimension / planet_pixel_size
-			print("Scaling down planet ", planet_sprite_idx, " from ", planet_pixel_size, " to fit cell (scale: ", scale, ")")
-		else:
-			print("Using original size for planet ", planet_sprite_idx, " (", planet_pixel_size, " pixels)")
 		
 		# Calculate the visual radius of the planet with scaling
 		var planet_radius = texture_size.x * scale / 2
@@ -328,18 +310,13 @@ func generate_planets():
 		if actual_planet_count >= planet_count:
 			break
 	
-	print("Planet generation complete - Total planets: ", actual_planet_count)
-	
 	# Force grid redraw
 	grid.queue_redraw()
 
 # Method to draw planets with moons that have depth sorting
 func draw_planets(canvas: CanvasItem, loaded_cells: Dictionary):
 	if not grid:
-		print("DEBUG: draw_planets - grid is null")
 		return
-	
-	print("DEBUG: Drawing planets. Loaded cells: ", loaded_cells.size())
 	
 	# Get current time for animation
 	var time = Time.get_ticks_msec() / 1000.0
@@ -351,9 +328,6 @@ func draw_planets(canvas: CanvasItem, loaded_cells: Dictionary):
 		
 		# Only process if this cell contains a planet
 		if y < grid.cell_contents.size() and x < grid.cell_contents[y].size() and grid.cell_contents[y][x] == grid.CellContent.PLANET:
-			print("DEBUG: Found planet at cell: ", x, ", ", y)
-			# No need to calculate cell_center here as it's not used
-			
 			# Find planet data
 			var planet_index = -1
 			for i in range(planet_positions.size()):
@@ -449,7 +423,6 @@ func reset_planets():
 
 # Handler for grid seed change
 func _on_grid_seed_changed(_new_seed = null):
-	print("Planet spawner detected seed change, regenerating planets")
 	call_deferred("generate_planets")
 
 # Function to generate a planet name based on coordinates

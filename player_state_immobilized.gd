@@ -12,10 +12,10 @@ func enter() -> void:
 	# Set player state
 	entity.is_immobilized = true
 	
-	# Stop movement
+	# Stop movement through the component
 	if movement_component:
 		movement_component.stop()
-		movement_component.speed = 0
+		movement_component.set_speed(0)
 	
 	# Show a message if not already shown
 	var main = entity.get_node_or_null("/root/Main")

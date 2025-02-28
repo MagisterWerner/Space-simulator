@@ -40,13 +40,15 @@ func _create_visual_effects():
 	pickup_particles.lifetime = 1.0
 	pickup_particles.explosiveness = 0.0
 	pickup_particles.local_coords = false
-	pickup_particles.emission_shape = CPUParticles2D.EMISSION_SHAPE_CIRCLE
+	pickup_particles.emission_shape = 1  # EMISSION_SHAPE_SPHERE
 	pickup_particles.emission_sphere_radius = 20.0
 	pickup_particles.direction = Vector2(0, -1)
 	pickup_particles.spread = 180.0
 	pickup_particles.gravity = Vector2(0, -20)
-	pickup_particles.initial_velocity = 10.0
-	pickup_particles.scale_amount = 2.0
+	pickup_particles.initial_velocity_min = 10.0
+	pickup_particles.initial_velocity_max = 10.0
+	pickup_particles.scale_amount_min = 2.0
+	pickup_particles.scale_amount_max = 2.0
 	
 	# Set particle color based on weapon type
 	match weapon_type:
@@ -117,8 +119,10 @@ func _create_pickup_effect():
 	flash.direction = Vector2(0, 0)
 	flash.spread = 180.0
 	flash.gravity = Vector2(0, 0)
-	flash.initial_velocity = 100.0
-	flash.scale_amount = 3.0
+	flash.initial_velocity_min = 100.0
+	flash.initial_velocity_max = 100.0
+	flash.scale_amount_min = 3.0
+	flash.scale_amount_max = 3.0
 	
 	# Set color based on weapon type
 	match weapon_type:

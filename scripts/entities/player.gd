@@ -56,6 +56,9 @@ func _ready():
 		# Add energy resource
 		resource_component.add_resource("energy", 100.0, 10.0)  # 100 max, 10 regen per second
 	
+	# Initialize weapons
+	initialize_weapons()
+	
 	# Initialize state machine
 	if state_machine:
 		if is_immobilized:
@@ -106,10 +109,10 @@ func _unhandled_input(event):
 				is_charging_weapon = false
 				current_charge = 0.0
 		
-		# Cycle through weapons with number keys or weapon switch key
-		elif event.is_action_pressed("weapon_next") or event.is_action_pressed("ui_page_down"):
+		# Cycle through weapons with Z and X keys
+		elif event.is_action_pressed("weapon_next"):
 			cycle_weapon(1)
-		elif event.is_action_pressed("weapon_prev") or event.is_action_pressed("ui_page_up"):
+		elif event.is_action_pressed("weapon_prev"):
 			cycle_weapon(-1)
 		
 		# Direct weapon selection with number keys
@@ -117,12 +120,28 @@ func _unhandled_input(event):
 			if event.is_action_pressed("weapon_" + str(i)):
 				select_weapon_by_index(i - 1)
 
+func initialize_weapons():
+	if combat_component:
+		# Add all available weapon types
+		combat_component.add_weapon("StandardLaser", StandardLaser.new())
+		combat_component.add_weapon("SpreadShot", SpreadShot.new())
+		combat_component.add_weapon("ChargeBeam", ChargeBeam.new())
+		combat_component.add_weapon("MissileLauncher", MissileLauncher.new())
+		
+		# Set initial weapon
+		combat_component.set_weapon("StandardLaser")
+
 func shoot():
 	if combat_component and not is_immobilized:
 		# Get the facing direction either from movement component or sprite
 		var direction = Vector2.RIGHT
 		if movement_component:
 			direction = movement_component.facing_direction
+		else:
+			# If no movement component, use sprite rotation
+			var sprite = get_node_or_null("Sprite2D")
+			if sprite:
+				direction = Vector2.RIGHT.rotated(sprite.rotation)
 		
 		combat_component.fire(direction)
 
@@ -296,7 +315,7 @@ func _on_position_changed(_old_position, _new_position):
 	check_boundaries()
 
 func _on_cell_changed(_cell_x, _cell_y):
-	# Additional logic when player changes cells
+	# Cell change logic is handled by the grid
 	pass
 
 func _on_weapon_changed(new_weapon):

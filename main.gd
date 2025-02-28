@@ -30,7 +30,7 @@ func _ready():
 		# Initialize world in a coordinated sequence
 		call_deferred("initialize_world")
 	else:
-		print("ERROR: Grid node not found!")
+		push_error("ERROR: Grid node not found!")
 	
 	# Initialize key states
 	for i in range(10):
@@ -38,55 +38,43 @@ func _ready():
 
 # Coordinate the world initialization sequence
 func initialize_world():
-	print("=== Starting coordinated world initialization ===")
-	
 	# Ensure grid is initialized
 	if grid:
-		print("Step 1: Ensuring grid is initialized")
 		grid.regenerate()
 		await get_tree().process_frame
 	else:
-		print("ERROR: Grid not found during initialization!")
+		push_error("ERROR: Grid not found during initialization!")
 		return
 	
 	# Generate planets
 	if planet_spawner:
-		print("Step 2: Initializing planets")
 		planet_spawner.generate_planets()
 		await get_tree().process_frame
 	else:
-		print("ERROR: Planet spawner not found during initialization!")
+		push_error("ERROR: Planet spawner not found during initialization!")
 		return
 	
 	# Generate asteroids
 	if asteroid_spawner:
-		print("Step 3: Initializing asteroids")
 		asteroid_spawner.generate_asteroids()
 		await get_tree().process_frame
 	else:
-		print("ERROR: Asteroid spawner not found during initialization!")
+		push_error("ERROR: Asteroid spawner not found during initialization!")
 		return
 	
 	# Create or place player
-	print("Step 4: Creating or placing player")
 	create_player()
 	await get_tree().process_frame
 	await get_tree().process_frame  # Add an extra frame to ensure player is fully initialized
 	
 	# Spawn enemies
 	if enemy_spawner:
-		print("Step 5: Spawning enemies")
 		enemy_spawner.spawn_enemies()
 		await get_tree().process_frame
-	else:
-		print("WARNING: Enemy spawner not found during initialization!")
 	
 	# Force a grid update to ensure everything is loaded
 	if player and grid:
-		print("Step 6: Forcing grid update to ensure visibility")
 		force_grid_update()
-	
-	print("=== World initialization complete ===")
 
 func _process(delta):
 	# Handle seed changing via numeric keys
@@ -114,7 +102,6 @@ func handle_seed_key_input():
 		# Check if key was just pressed
 		if key_pressed and not previous_key_states[key_code]:
 			if grid:
-				print("Setting seed to: ", i)
 				grid.set_seed(i)
 				update_seed_label()
 				create_player()
@@ -164,7 +151,6 @@ func show_message(text):
 		message_label.text = text
 		message_label.visible = true
 		message_timer = MESSAGE_DURATION
-		print(text)  # Also output to console
 
 # Hide current message
 func hide_message():
@@ -175,20 +161,29 @@ func hide_message():
 # Respawn player at initial planet
 func respawn_player_at_initial_planet():
 	if player and initial_planet_position:
-		print("Respawning player at initial planet: ", initial_planet_position)
-		
-		# Reset player state completely
+		# Properly reset player state through its methods
 		if player.has_method("set_immobilized"):
 			player.set_immobilized(false)
-			player.movement_speed = 300
-			player.is_immobilized = false
-			player.respawn_timer = 0.0
-			player.was_in_boundary_cell = false
-			player.was_outside_grid = false
+			
+			# Make sure movement component exists before trying to access it
+			if player.has_node("MovementComponent") and player.get_node("MovementComponent").has_method("set_speed"):
+				player.get_node("MovementComponent").set_speed(300)
+			elif player.has_node("MovementComponent"):
+				player.get_node("MovementComponent").speed = 300
 		
-		# Reset player position
+		# Reset position and other player properties that exist on Player class
 		player.global_position = initial_planet_position
 		player.last_valid_position = initial_planet_position
+		
+		# Reset all player state variables that might be used in Player class
+		if "is_immobilized" in player:
+			player.is_immobilized = false
+		if "respawn_timer" in player:
+			player.respawn_timer = 0.0  
+		if "was_in_boundary_cell" in player:
+			player.was_in_boundary_cell = false
+		if "was_outside_grid" in player:
+			player.was_outside_grid = false
 		
 		# Update grid chunks
 		grid.current_player_cell_x = initial_planet_cell_x
@@ -206,14 +201,14 @@ func respawn_player_at_initial_planet():
 		var planet_name = planet_spawner.get_planet_name(initial_planet_cell_x, initial_planet_cell_y)
 		show_message("You have been rescued and returned to planet " + planet_name + ".")
 	else:
-		print("ERROR: Cannot respawn player - missing initial planet position!")
+		push_error("ERROR: Cannot respawn player - missing initial planet position!")
 		place_player_at_random_planet()
 
 # Place player at a random planet
 func place_player_at_random_planet():
 	# Verify player exists
 	if player == null:
-		print("ERROR: Player is null!")
+		push_error("ERROR: Player is null!")
 		return
 	
 	# Force grid re-render
@@ -251,9 +246,6 @@ func place_player_at_random_planet():
 		var planet_name = planet_spawner.get_planet_name(chosen_planet.grid_x, chosen_planet.grid_y)
 		show_message("Welcome to planet " + planet_name + "!")
 		
-		print("Player placed at planet " + planet_name + " position: ", chosen_planet.position)
-		print("Starting cell: (", cell_x, ",", cell_y, ")")
-		
 		# Force another update after a brief delay
 		await get_tree().create_timer(0.1).timeout
 		force_grid_update()
@@ -279,9 +271,6 @@ func place_player_at_random_planet():
 		grid.current_player_cell_y = -1
 		grid.update_loaded_chunks(cell_x, cell_y)
 		
-		print("WARNING: No planets found. Player placed at grid center: ", center)
-		print("Starting cell: (", cell_x, ",", cell_y, ")")
-		
 		# Force another update after a brief delay
 		await get_tree().create_timer(0.1).timeout
 		force_grid_update()
@@ -291,7 +280,6 @@ func create_player():
 	# Use existing player or create new one
 	if has_node("Player"):
 		player = get_node("Player")
-		print("Using existing player instance")
 		call_deferred("place_player_at_random_planet")
 		return
 	
@@ -313,8 +301,6 @@ func _deferred_create_player():
 	player.global_position = Vector2(100, 100)
 	player.name = "Player"
 	
-	print("Player created at initial position: ", player.global_position)
-	
 	# Place player
 	call_deferred("place_player_at_random_planet")
 
@@ -323,10 +309,10 @@ func get_planet_positions():
 	if planet_spawner:
 		return planet_spawner.get_all_planet_positions()
 	else:
-		print("ERROR: Planet spawner not found!")
+		push_error("ERROR: Planet spawner not found!")
 		return []
 	
-	# Add this new function to main.gd
+# Force a grid update
 func force_grid_update():
 	if player and grid:
 		# Calculate player cell position
@@ -340,5 +326,3 @@ func force_grid_update():
 		 
 		# Force a redraw
 		grid.queue_redraw()
-		
-		print("Forced grid update at cell: (", cell_x, ",", cell_y, ")")

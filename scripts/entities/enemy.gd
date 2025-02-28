@@ -10,6 +10,7 @@ var state_machine
 # Enemy-specific properties
 var original_position: Vector2
 var is_active: bool = true
+var detection_range: float = 300.0 # Add explicit detection range
 
 func _ready():
 	# Set basic properties
@@ -59,6 +60,21 @@ func update_active_state(is_active_state: bool):
 		movement_component.set_active(is_active)
 	if state_machine:
 		state_machine.process_mode = Node.PROCESS_MODE_INHERIT if is_active else Node.PROCESS_MODE_DISABLED
+	is_active = is_active_state
+	visible = is_active
+	
+	# Update process states
+	process_mode = Node.PROCESS_MODE_INHERIT if is_active else Node.PROCESS_MODE_DISABLED
+	
+	# Update all components
+	if health_component:
+		health_component.set_active(is_active)
+	if combat_component:
+		combat_component.set_active(is_active)
+	if movement_component:
+		movement_component.set_active(is_active)
+	if state_machine:
+		state_machine.process_mode = Node.PROCESS_MODE_INHERIT if is_active else Node.PROCESS_MODE_DISABLED
 
 func is_player_in_same_cell() -> bool:
 	var player = get_node_or_null("/root/Main/Player")
@@ -82,14 +98,14 @@ func shoot_at_player(player: Node2D):
 		combat_component.fire(direction)
 
 func can_see_player(player: Node2D) -> bool:
-	if not player or not combat_component:
+	if not player:
 		return false
 		
 	# Get distance to player
 	var distance = global_position.distance_to(player.global_position)
 	
 	# Check if player is within range and in the same cell
-	return distance <= combat_component.range and is_player_in_same_cell()
+	return distance <= detection_range and is_player_in_same_cell()
 
 func check_laser_hit(laser) -> bool:
 	if combat_component:

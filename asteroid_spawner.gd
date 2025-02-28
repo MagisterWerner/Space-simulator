@@ -90,11 +90,11 @@ func create_fallback_asteroid_texture(size_category: String):
 		texture_size = 16
 	
 	var image = Image.create(texture_size, texture_size, false, Image.FORMAT_RGBA8)
-	var radius = texture_size / 2.0 - 2
+	var radius = float(texture_size) / 2.0 - 2.0  # Convert to float for precise radius
 	
 	for x in range(texture_size):
 		for y in range(texture_size):
-			var dist = Vector2(x - texture_size/2, y - texture_size/2).length()
+			var dist = Vector2(x - texture_size/2.0, y - texture_size/2.0).length()  # Using floats for division
 			if dist < radius:
 				image.set_pixel(x, y, Color(0.7, 0.3, 0, 1))  # Brownish color for asteroids
 	
@@ -144,7 +144,7 @@ func generate_asteroids():
 	
 	# Determine how many asteroid fields to spawn
 	var non_boundary_count = available_cells.size()
-	var asteroid_count = max(minimum_asteroids, int(non_boundary_count * float(asteroid_percentage) / 100.0))
+	var asteroid_count = max(minimum_asteroids, int(non_boundary_count * float(asteroid_percentage) / 100.0))  # Using floats for division
 	asteroid_count = min(asteroid_count, non_boundary_count)  # Cap at available cells
 	
 	# Setup RNG with the grid's seed
@@ -293,8 +293,8 @@ func generate_asteroids():
 					var quad_height = safe_height / 4.0
 					
 					pos_offset = Vector2(
-						margin_x + (quadrant_x * quad_width) + asteroid_rng.randf_range(0, quad_width) - grid.cell_size.x / 2,
-						margin_y + (quadrant_y * quad_height) + asteroid_rng.randf_range(0, quad_height) - grid.cell_size.y / 2
+						margin_x + (quadrant_x * quad_width) + asteroid_rng.randf_range(0, quad_width) - grid.cell_size.x / 2.0,
+						margin_y + (quadrant_y * quad_height) + asteroid_rng.randf_range(0, quad_height) - grid.cell_size.y / 2.0
 					)
 				
 				# Make sure the asteroid stays within margins
@@ -357,7 +357,7 @@ func _on_grid_seed_changed(_new_seed = null):
 	call_deferred("generate_asteroids")
 
 # Method to draw asteroids using sprites and instantiating actual asteroid entities
-func draw_asteroids(canvas: CanvasItem, loaded_cells: Dictionary):
+func draw_asteroids(_canvas: CanvasItem, loaded_cells: Dictionary):
 	if not grid:
 		return
 	
@@ -390,10 +390,10 @@ func draw_asteroids(canvas: CanvasItem, loaded_cells: Dictionary):
 			var field_data = asteroid_data[field_index]
 			
 			# Draw each asteroid in the field
-			for asteroid_data in field_data.asteroids:
+			for asteroid_item in field_data.asteroids:
 				# Get the appropriate sprite array based on size category
 				var sprite_array = []
-				match asteroid_data.size_category:
+				match asteroid_item.size_category:
 					"large":
 						sprite_array = large_asteroid_sprites
 					"medium":
@@ -402,19 +402,19 @@ func draw_asteroids(canvas: CanvasItem, loaded_cells: Dictionary):
 						sprite_array = small_asteroid_sprites
 				
 				# Skip if no sprites available or invalid variant
-				if sprite_array.size() == 0 or asteroid_data.sprite_variant >= sprite_array.size():
+				if sprite_array.size() == 0 or asteroid_item.sprite_variant >= sprite_array.size():
 					continue
 				
 				# Get the sprite texture
-				var texture = sprite_array[asteroid_data.sprite_variant]
+				var texture = sprite_array[asteroid_item.sprite_variant]
 				
 				# Instead of drawing directly, instantiate an actual asteroid entity
 				spawn_asteroid_entity(
-					cell_center + asteroid_data.offset,  # position
-					asteroid_data.size_category,         # size category
-					asteroid_data.sprite_variant,        # sprite variant
-					asteroid_data.scale,                 # scale
-					asteroid_data.rotation_speed,        # rotation speed
+					cell_center + asteroid_item.offset,  # position
+					asteroid_item.size_category,         # size category
+					asteroid_item.sprite_variant,        # sprite variant
+					asteroid_item.scale,                 # scale
+					asteroid_item.rotation_speed,        # rotation speed
 					texture                              # texture
 				)
 
@@ -471,7 +471,7 @@ func draw_fallback_asteroid(canvas, position, size_category, scale, rotation, se
 	asteroid_rng.seed = seed_value
 	
 	for i in range(sides):
-		var angle = TAU * i / sides
+		var angle = TAU * i / float(sides)  # Use float for division
 		var radius = size * asteroid_rng.randf_range(0.8, 1.2)
 		points.append(Vector2(cos(angle) * radius, sin(angle) * radius))
 	

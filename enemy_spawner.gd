@@ -24,8 +24,6 @@ func _ready():
 	
 	# Spawn enemies in empty cells
 	spawn_enemies()
-	
-	print("Enemy spawner initialized - Total enemies: ", spawned_enemies.size())
 
 # Function to spawn enemies in empty cells
 func spawn_enemies():
@@ -55,8 +53,6 @@ func spawn_enemies():
 	# Determine how many enemies to spawn based on percentage with a minimum
 	var num_enemies = max(minimum_enemies, int(ceil(empty_cells.size() * spawn_percentage / 100.0)))
 	num_enemies = min(num_enemies, empty_cells.size())  # Cap at available cells
-	
-	print("Found ", empty_cells.size(), " empty cells - Spawning ", num_enemies, " enemies")
 	
 	# Choose random cells for enemies
 	var rng = RandomNumberGenerator.new()
@@ -91,12 +87,10 @@ func spawn_enemies():
 		
 		# Set up the basic enemy if no state machine exists
 		if not enemy.has_node("StateMachine"):
-			print("WARNING: Enemy missing StateMachine, creating simplified enemy")
-			
 			# Create a state machine
 			var state_machine = Node.new()
 			state_machine.name = "StateMachine"
-			state_machine.set_script(load("res://enemy_state_machine.gd"))
+			state_machine.set_script(load("res://scripts/core/state_machine.gd"))
 			enemy.add_child(state_machine)
 			
 			# Create Idle state
@@ -114,8 +108,6 @@ func spawn_enemies():
 		# Add enemy to the scene
 		get_parent().add_child(enemy)
 		spawned_enemies.append(enemy)
-		
-		print("Spawned enemy at cell: (", cell_pos.x, ",", cell_pos.y, ")")
 	
 	# Initialize enemy visibility based on loaded chunks
 	initialize_enemy_visibility()
