@@ -185,9 +185,9 @@ func respawn_player_at_initial_planet():
 		if "was_outside_grid" in player:
 			player.was_outside_grid = false
 		
-		# Update grid chunks
-		grid.current_player_cell_x = initial_planet_cell_x
-		grid.current_player_cell_y = initial_planet_cell_y
+		# Force grid to completely reset loaded chunks
+		grid.current_player_cell_x = -999
+		grid.current_player_cell_y = -999
 		grid.update_loaded_chunks(initial_planet_cell_x, initial_planet_cell_y)
 		grid.queue_redraw()
 		
@@ -197,9 +197,20 @@ func respawn_player_at_initial_planet():
 		grid.was_in_boundary_cell = false
 		grid.respawn_timer = 0.0
 		
+		# Force all game elements to update
+		if planet_spawner:
+			planet_spawner.draw_planets(grid, grid.loaded_cells)
+		if asteroid_spawner:
+			asteroid_spawner.draw_asteroids(grid, grid.loaded_cells)
+		if enemy_spawner:
+			enemy_spawner.initialize_enemy_visibility()
+		
 		# Get and display planet name
 		var planet_name = planet_spawner.get_planet_name(initial_planet_cell_x, initial_planet_cell_y)
 		show_message("You have been rescued and returned to planet " + planet_name + ".")
+		
+		# Force another grid update after a brief delay for good measure
+		call_deferred("force_grid_update")
 	else:
 		push_error("ERROR: Cannot respawn player - missing initial planet position!")
 		place_player_at_random_planet()

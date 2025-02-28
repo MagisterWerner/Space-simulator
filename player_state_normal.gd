@@ -42,7 +42,7 @@ func process(delta: float) -> void:
 		else:
 			movement_component.stop()
 	
-	# Handle shooting if primary fire is pressed
+	# Handle shooting
 	if Input.is_action_pressed("primary_fire") and combat_component:
 		if entity.is_charging_weapon:
 			# Update charge value if charging
@@ -51,3 +51,8 @@ func process(delta: float) -> void:
 			# Try to shoot if not charging and cooldown is ready
 			if combat_component.can_fire():
 				entity.shoot()
+	
+	# Extra primary fire check
+	if Input.is_physical_key_pressed(KEY_SPACE) and combat_component:
+		if combat_component.can_fire():
+			entity.shoot()

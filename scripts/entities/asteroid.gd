@@ -8,6 +8,7 @@ var sprite_variant: int = 0
 var rotation_speed: float = 0.0
 var base_scale: float = 1.0
 var field_data = null  # Reference to parent asteroid field data
+var initial_rotation: float = 0.0  # Store the initial rotation from the seed
 
 func _ready():
 	# Set basic properties
@@ -30,20 +31,34 @@ func _ready():
 		health_component.current_health = health_component.max_health
 		health_component.connect("died", _on_destroyed)
 	
-	# Apply scale to asteroid
+	# Apply scale and initial rotation to asteroid sprite
 	if has_node("Sprite2D"):
-		$Sprite2D.scale = Vector2(base_scale, base_scale)
-
+		var sprite = $Sprite2D
+		sprite.scale = Vector2(base_scale, base_scale)
+		sprite.rotation = initial_rotation  # Set initial rotation based on seed
+	
+	# Ensure this node is processing
+	process_mode = Node.PROCESS_MODE_INHERIT
+	set_process(true)
+	
 func _process(delta):
-	# Apply rotation if set
-	if rotation_speed != 0 and has_node("Sprite2D"):
+	# Apply rotation if rotation speed is set
+	if has_node("Sprite2D") and rotation_speed != 0:
+		# Apply rotation to the sprite directly
 		$Sprite2D.rotation += rotation_speed * delta
 
-func setup(size: String, variant: int, scale_value: float, rot_speed: float):
+# Setup function called when asteroid is spawned or reused from pool
+func setup(size: String, variant: int, scale_value: float, rot_speed: float, initial_rot: float = 0.0):
 	size_category = size
 	sprite_variant = variant
 	base_scale = scale_value
-	rotation_speed = rot_speed
+	rotation_speed = rot_speed  # Rotation speed in radians per second
+	initial_rotation = initial_rot  # Store the initial rotation
+	
+	# Apply settings immediately if we already have a sprite
+	if has_node("Sprite2D"):
+		$Sprite2D.scale = Vector2(base_scale, base_scale)
+		$Sprite2D.rotation = initial_rotation
 
 func take_damage(amount: float) -> bool:
 	if health_component:
@@ -131,7 +146,7 @@ func _spawn_fragments():
 		# Configure fragment
 		var sprite_idx = rng.randi() % fragment_sprites.size()
 		var fragment_scale = base_scale * rng.randf_range(0.6, 0.9)
-		var rot_speed = rng.randf_range(-1.0, 1.0)
+		var rot_speed = rng.randf_range(-2.0, 2.0)  # Faster rotation for fragments
 		fragment.setup(fragment_size, sprite_idx, fragment_scale, rot_speed)
 		
 		# Add sprite
