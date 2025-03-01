@@ -9,31 +9,26 @@ enum PlanetTheme {
 	ICE,        # Cold, bluish-white palette
 	LAVA,       # Volcanic, red and orange hues
 	LUSH,       # Green and blue, vegetation-like
-	ROCKY,      # Gray and brown, mineral-rich
 	DESERT,     # Dry, sandy, with rock formations
-	ALPINE,     # Mountain and snow-capped terrain
-	SUNSET,     # Warm-toned, with sunset-like coloration
+	ALPINE,     # Mountain and snow-capped terrain with forests
 	OCEAN       # Predominantly water-based world
 }
 
 # Planet characteristics
-var planet_size: int = 400  # Display size of the planet
-var pixel_resolution: int = 256  # Increased resolution for better detail
+var planet_size: int = 128  # Display size of the planet
+var pixel_resolution: int = 192  # Resolution for detail
 var seed_value: int = 0  # Base randomization seed
 var current_theme: PlanetTheme = PlanetTheme.ARID
-
-# Debug label to display current planet theme
-var theme_label: Label
 
 # Terrain Configuration
 var terrain_size: float = 8.0  # Base terrain feature size
 var terrain_octaves: int = 6  # Noise complexity
 var light_origin: Vector2 = Vector2(0.39, 0.39)  # Light source position
 
-# Atmosphere parameters - Improved rendering
-const ATMOSPHERE_THICKNESS: float = 1.0  # More pronounced atmosphere thickness
-const ATMOSPHERE_INTENSITY: float = 0.5  # Slightly more transparent atmosphere
-const BASE_PLANET_RADIUS_FACTOR: float = 0.42  # Adjusted base planet size
+# Atmosphere parameters
+const ATMOSPHERE_THICKNESS: float = 1.0
+const ATMOSPHERE_INTENSITY: float = 0.5
+const BASE_PLANET_RADIUS_FACTOR: float = 0.42
 
 # Global variables for planet generation
 var planet_radius_factor: float = BASE_PLANET_RADIUS_FACTOR
@@ -54,13 +49,8 @@ func update_planet_size_factor() -> void:
 	# Save for next time
 	last_size_percentage = size_percentage
 	
-	# Convert to scaling factor
-	var size_factor = float(size_percentage) / 100.0
-	
 	# Apply to planet radius
-	planet_radius_factor = BASE_PLANET_RADIUS_FACTOR * size_factor
-	
-	print("Planet size: ", size_percentage, "% of base size")
+	planet_radius_factor = BASE_PLANET_RADIUS_FACTOR * (float(size_percentage) / 100.0)
 
 # Get planet size as percentage
 func get_planet_size_percentage() -> int:
@@ -125,7 +115,7 @@ func spherify(x: float, y: float) -> Vector2:
 		(sphere_y + 1.0) * 0.5
 	)
 
-# Generate sophisticated color palettes for different planetary themes
+# Generate color palettes for different planetary themes
 func generate_planet_palette(theme: PlanetTheme) -> PackedColorArray:
 	var rng = RandomNumberGenerator.new()
 	rng.seed = seed_value
@@ -133,92 +123,65 @@ func generate_planet_palette(theme: PlanetTheme) -> PackedColorArray:
 	match theme:
 		PlanetTheme.ARID:
 			return PackedColorArray([
-				Color(0.7, 0.5, 0.3),   # Light sand
-				Color(0.6, 0.4, 0.2),   # Dark sand
-				Color(0.8, 0.6, 0.4),   # Sandy base
-				Color(0.5, 0.3, 0.2),   # Deep rocky terrain
-				Color(0.4, 0.3, 0.1),   # Dark rocky ground
-				Color(0.9, 0.7, 0.5)    # Highlight rocky hills
+				Color(0.82, 0.58, 0.35),  # Light sand with red tint
+				Color(0.70, 0.42, 0.25),  # Dark sand with red tint
+				Color(0.63, 0.38, 0.22),  # Sandy base with red tint
+				Color(0.53, 0.30, 0.16),  # Deep rocky terrain with red tint
+				Color(0.40, 0.23, 0.12)   # Dark rocky ground with red tint
 			])
 		
 		PlanetTheme.LAVA:
 			return PackedColorArray([
-				Color(1.0, 0.3, 0.0),   # Bright lava
-				Color(0.8, 0.2, 0.0),   # Dark lava base
-				Color(0.6, 0.1, 0.0),   # Cooled lava
-				Color(0.4, 0.1, 0.0),   # Volcanic rock
-				Color(0.9, 0.4, 0.1),   # Lava glow
-				Color(0.3, 0.1, 0.0)    # Deep volcanic trenches
+				Color(1.0, 0.6, 0.0),     # Single bright orange for lava lakes
+				Color(0.7, 0.1, 0.05),    # Dark red lava
+				Color(0.55, 0.08, 0.04),  # Deeper red lava
+				Color(0.4, 0.06, 0.03),   # Very dark red terrain
+				Color(0.25, 0.04, 0.02)   # Nearly black volcanic rock
 			])
 		
 		PlanetTheme.LUSH:
 			return PackedColorArray([
-				Color(0.2, 0.6, 0.2),   # Bright green vegetation
-				Color(0.1, 0.5, 0.1),   # Dark forest green
-				Color(0.3, 0.7, 0.3),   # Lime green
-				Color(0.3, 0.5, 0.7),   # Water regions
-				Color(0.2, 0.4, 0.2),   # Deep forest
-				Color(0.4, 0.8, 0.4)    # Bright mountain highlands
+				Color(0.2, 0.7, 0.3),     # Bright vibrant green
+				Color(0.1, 0.5, 0.1),     # Dark forest green
+				Color(0.3, 0.5, 0.7),     # Blue water regions
+				Color(0.25, 0.6, 0.25),   # Mid-tone vegetation
+				Color(0.15, 0.4, 0.15)    # Deep forest shadow
 			])
 		
 		PlanetTheme.ICE:
 			return PackedColorArray([
-				Color(0.9, 0.95, 1.0),  # Bright white ice
-				Color(0.6, 0.8, 1.0),   # Light blue glacial
-				Color(0.7, 0.85, 0.95), # Pale blue
-				Color(0.4, 0.6, 0.8),   # Deep ice
-				Color(0.8, 0.9, 1.0),   # Snow regions
-				Color(0.5, 0.7, 0.9)    # Icy mountain peaks
-			])
-		
-		PlanetTheme.ROCKY:
-			return PackedColorArray([
-				Color(0.6, 0.5, 0.4),   # Light stone
-				Color(0.5, 0.4, 0.3),   # Brownish gray
-				Color(0.7, 0.6, 0.5),   # Warm stone
-				Color(0.4, 0.3, 0.2),   # Dark stone
-				Color(0.8, 0.7, 0.6),   # Sandy rock
-				Color(0.3, 0.2, 0.1)    # Deep rocky canyons
+				Color(0.92, 0.97, 1.0),   # Bright white ice
+				Color(0.75, 0.85, 0.95),  # Light blue glacial
+				Color(0.60, 0.75, 0.90),  # Deeper glacial blue
+				Color(0.45, 0.65, 0.85),  # Deep ice
+				Color(0.30, 0.50, 0.75)   # Glacial crevasses
 			])
 		
 		PlanetTheme.DESERT:
 			return PackedColorArray([
-				Color(0.9, 0.8, 0.5),   # Light sand dunes
-				Color(0.8, 0.7, 0.4),   # Warm sand
-				Color(0.7, 0.6, 0.3),   # Sandy plateaus
-				Color(0.6, 0.5, 0.2),   # Rocky outcrops
-				Color(0.5, 0.4, 0.1),   # Deep desert terrain
-				Color(0.4, 0.3, 0.0)    # Dark rocky formations
+				Color(0.88, 0.72, 0.45),  # Light sand dunes
+				Color(0.80, 0.65, 0.38),  # Warm sand
+				Color(0.70, 0.55, 0.30),  # Sandy plateaus
+				Color(0.60, 0.45, 0.25),  # Rocky outcrops
+				Color(0.48, 0.35, 0.20)   # Deep desert terrain
 			])
 		
 		PlanetTheme.ALPINE:
 			return PackedColorArray([
-				Color(0.9, 0.9, 1.0),   # Snow-capped peaks
-				Color(0.6, 0.7, 0.6),   # Rocky mountain slopes
-				Color(0.4, 0.5, 0.4),   # Mountain forest
-				Color(0.7, 0.8, 0.7),   # Alpine meadows
-				Color(0.5, 0.6, 0.5),   # Mountain stone
-				Color(0.8, 0.9, 0.8)    # Bright mountain tops
-			])
-		
-		PlanetTheme.SUNSET:
-			return PackedColorArray([
-				Color(1.0, 0.6, 0.3),   # Bright sunset orange
-				Color(0.9, 0.5, 0.2),   # Deep sunset base
-				Color(0.8, 0.4, 0.1),   # Dark sunset tones
-				Color(0.7, 0.3, 0.2),   # Rich sunset crimson
-				Color(0.6, 0.2, 0.1),   # Deep sunset horizon
-				Color(0.5, 0.1, 0.0)    # Dark sunset valleys
+				Color(0.98, 0.98, 0.98),  # Pure white snow
+				Color(0.90, 0.90, 0.95),  # Bright white snow
+				Color(0.85, 0.85, 0.90),  # Light grey snow
+				Color(0.75, 0.85, 0.75),  # Snow-covered forests (white-green)
+				Color(0.65, 0.75, 0.65)   # Light snow-dusted forests
 			])
 		
 		PlanetTheme.OCEAN:
 			return PackedColorArray([
-				Color(0.1, 0.4, 0.7),   # Deep ocean blue
-				Color(0.2, 0.5, 0.8),   # Mid-ocean blue
-				Color(0.3, 0.6, 0.9),   # Light ocean blue
-				Color(0.4, 0.7, 1.0),   # Shallow water
-				Color(0.5, 0.8, 1.0),   # Tropical water
-				Color(0.6, 0.9, 1.0)    # Bright coastal regions
+				Color(0.10, 0.35, 0.65),  # Deep ocean blue
+				Color(0.15, 0.45, 0.75),  # Mid-ocean blue
+				Color(0.20, 0.55, 0.85),  # Light ocean blue
+				Color(0.30, 0.65, 0.90),  # Shallow water
+				Color(0.40, 0.75, 0.95)   # Coastal waters
 			])
 		
 		_:
@@ -227,35 +190,30 @@ func generate_planet_palette(theme: PlanetTheme) -> PackedColorArray:
 				Color(0.6, 0.6, 0.6),
 				Color(0.4, 0.4, 0.4),
 				Color(0.7, 0.7, 0.7),
-				Color(0.3, 0.3, 0.3),
-				Color(0.8, 0.8, 0.8)
+				Color(0.3, 0.3, 0.3)
 			])
 
-# Get atmosphere color with more nuanced approach
+# Get atmosphere color with more realistic approach
 func get_atmosphere_color(theme: PlanetTheme) -> Color:
 	match theme:
 		PlanetTheme.LUSH:
-			return Color(0.4, 0.7, 1.0, 1.0)  # Soft blue-green atmosphere
+			return Color(0.35, 0.60, 0.90, 1.0)  # Blue with hint of green
 		PlanetTheme.OCEAN:
-			return Color(0.3, 0.6, 1.0, 1.0)  # Deep marine blue atmosphere
+			return Color(0.25, 0.55, 0.95, 1.0)  # Deep blue atmosphere
 		PlanetTheme.ICE:
-			return Color(0.6, 0.8, 1.0, 1.0)  # Pale blue atmosphere
+			return Color(0.65, 0.78, 0.95, 1.0)  # Pale blue atmosphere
 		PlanetTheme.ALPINE:
-			return Color(0.5, 0.7, 1.0, 1.0)  # Mountain blue atmosphere
+			return Color(0.80, 0.82, 0.85, 1.0)  # Light grey with hint of blue
 		PlanetTheme.LAVA:
-			return Color(1.0, 0.4, 0.1, 1.0)  # Deep orange-red atmosphere
+			return Color(0.65, 0.15, 0.05, 1.0)  # Dark red atmosphere with slight orange tint
 		PlanetTheme.DESERT:
-			return Color(0.9, 0.7, 0.4, 1.0)  # Beige-brown atmosphere
+			return Color(0.85, 0.65, 0.35, 1.0)  # Tan/brown atmosphere
 		PlanetTheme.ARID:
-			return Color(0.8, 0.6, 0.3, 1.0)  # Sandy brown atmosphere
-		PlanetTheme.SUNSET:
-			return Color(0.9, 0.5, 0.2, 1.0)  # Burnt orange atmosphere
-		PlanetTheme.ROCKY:
-			return Color(0.7, 0.5, 0.3, 1.0)  # Soft brown atmosphere
+			return Color(0.80, 0.45, 0.25, 1.0)  # Dusty red atmosphere
 		_:
-			return Color(0.6, 0.9, 1.0, 1.0)  # Default blue-ish atmosphere
+			return Color(0.60, 0.70, 0.90, 1.0)  # Default atmosphere
 
-# Create planet texture with improved atmosphere rendering
+# Create planet texture with atmosphere rendering
 func create_planet_texture() -> Array:
 	var final_resolution = pixel_resolution
 	var image = Image.create(final_resolution, final_resolution, false, Image.FORMAT_RGBA8)
@@ -281,19 +239,12 @@ func create_planet_texture() -> Array:
 			var dy = ny - 0.5
 			var d_circle = sqrt(dx * dx + dy * dy) * 2.0
 			
-			# Atmospheric rendering with more pronounced edge
+			# Atmospheric rendering
 			if d_circle > planet_radius and d_circle <= atmosphere_radius:
-				# Create a more gradual and visible atmospheric transition
 				var atmos_distance = (d_circle - planet_radius) / (atmosphere_radius - planet_radius)
-				
-				# More sophisticated power curve for atmospheric effect
 				var atmos_alpha = pow(1.0 - atmos_distance, 4) * ATMOSPHERE_INTENSITY
-				
 				var pixel_atmosphere = atmosphere_color
-				
-				# Enhanced gradient effect with non-linear alpha falloff
 				pixel_atmosphere.a = atmos_alpha * (1.0 - pow(atmos_distance, 0.5))
-				
 				atmosphere_image.set_pixel(x, y, pixel_atmosphere)
 				continue
 			
@@ -325,13 +276,12 @@ func create_planet_texture() -> Array:
 			image.set_pixel(x, y, final_color)
 	
 	return [
-		ImageTexture.create_from_image(image),         # Planet texture
-		ImageTexture.create_from_image(atmosphere_image) # Atmosphere texture
+		ImageTexture.create_from_image(image),
+		ImageTexture.create_from_image(atmosphere_image)
 	]
 
-# Scene setup with planet generation and debug label
+# Scene setup with planet generation
 func _ready():
-	# Make sure planet size is updated before creating textures
 	update_planet_size_factor()
 	
 	var textures = create_planet_texture()
@@ -341,7 +291,7 @@ func _ready():
 	# Calculate dynamic container size based on planet radius
 	var display_size = int(planet_size * (last_size_percentage / 100.0))
 	
-	# Planet container for proper layering
+	# Planet container for layering
 	var planet_container = Node2D.new()
 	planet_container.position = (get_viewport_rect().size - Vector2(display_size, display_size)) / 2
 	
@@ -361,53 +311,28 @@ func _ready():
 	planet_container.add_child(planet_texture_rect)
 	planet_container.add_child(atmosphere_texture_rect)
 	add_child(planet_container)
-	
-	# Debug label configuration
-	theme_label = Label.new()
-	theme_label.text = "Theme: " + PlanetTheme.keys()[current_theme] + " (Size: " + str(get_planet_size_percentage()) + "%)"
-	theme_label.position = Vector2(10, 10)
-	theme_label.add_theme_color_override("font_color", Color.WHITE)
-	theme_label.add_theme_font_size_override("font_size", 20)
-	
-	# Semi-transparent background for label readability
-	var label_background = ColorRect.new()
-	label_background.color = Color(0, 0, 0, 0.5)
-	label_background.size = Vector2(250, 40)  # Made wider to fit more text
-	label_background.position = theme_label.position
-	
-	add_child(label_background)
-	add_child(theme_label)
 
 # Regenerate planet on spacebar press
 func _input(event):
 	if event is InputEventKey and event.pressed and event.keycode == KEY_SPACE:
-		seed_value = randi()  # Completely randomize the seed
+		seed_value = randi()
 		current_theme = PlanetTheme.values()[randi() % PlanetTheme.size()]
 		
-		# Force update of planet radius to ensure it changes every time
 		update_planet_size_factor()
 		
-		# Regenerate planet and atmosphere textures
 		var textures = create_planet_texture()
-		var planet_container = get_child(get_child_count() - 3)  # Get the planet container
+		var planet_container = get_child(0)
 		
 		# Update planet texture
 		planet_container.get_child(0).texture = textures[0]
 		# Update atmosphere texture
 		planet_container.get_child(1).texture = textures[1]
-		
-		# Update theme label and include planet size info
-		if theme_label:
-			theme_label.text = "Theme: " + PlanetTheme.keys()[current_theme] + " (Size: " + str(get_planet_size_percentage()) + "%)"
-			print("Regenerated planet with seed:", seed_value, "and size:", get_planet_size_percentage(), "%")
 
 # Initialize planet with current inspector settings
 func _enter_tree():
 	# Only randomize seed if it's 0 (not manually set)
 	if seed_value == 0:
 		seed_value = randi()
-	
-	# Keep the theme from the inspector, don't randomize it
 	
 	# Initialize planet size factor
 	update_planet_size_factor()
