@@ -1,4 +1,4 @@
-class_name MoonGenerator
+# moon_generator.gd - Procedural moon generation system
 extends RefCounted
 
 # Moon generation constants and configuration
@@ -58,7 +58,7 @@ static func get_moon_texture(seed_value: int) -> Texture2D:
 	if moon_texture_cache.has(seed_value):
 		return moon_texture_cache[seed_value]
 	
-	var generator = MoonGenerator.new()
+	var generator = new()
 	var texture = generator.create_moon_texture(seed_value)
 	
 	# Cache the texture

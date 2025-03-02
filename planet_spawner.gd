@@ -1,7 +1,8 @@
 extends Node
 
-# Preload the MoonGenerator class
+# Preload required generators
 const MoonGeneratorClass = preload("res://moon_generator.gd")
+const PlanetGeneratorClass = preload("res://planet_generator.gd")
 
 # Planet generation parameters
 @export var planet_percentage = 10  # Percentage of grid cells that will contain planets
@@ -20,25 +21,13 @@ var grid = null
 var planet_positions = []
 var planet_data = []  # Stores additional planet data like size, color, etc.
 
-# Planet size and color arrays (for fallback)
-var planet_sizes = []
-var planet_colors = []
-
-# Arrays to store planet and moon sprites
-var planet_sprites = []
+# Fallback planet sprites (used if generation fails)
+var fallback_planet_sprites = []
 var moon_sprites = []   # Will keep this for fallback
 
-# Pool of procedurally generated moon textures
+# Texture caches
+var generated_planet_textures = {}
 var generated_moon_textures = {}
-
-# Planet color palette for fallback drawing
-var planet_color_palette = [
-	Color.WHITE, 
-	Color.GREEN, 
-	Color.RED, 
-	Color(0.96, 0.96, 0.86),  # Light yellow
-	Color.BLUE
-]
 
 func _ready():
 	grid = get_node_or_null("/root/Main/Grid")
@@ -50,16 +39,16 @@ func _ready():
 	if grid.has_signal("_seed_changed"):
 		grid.connect("_seed_changed", _on_grid_seed_changed)
 	
-	# Load planet and moon sprites
-	load_sprites()
+	# Load fallback planet sprites
+	load_fallback_sprites()
 
-# Function to load planet and moon sprites
-func load_sprites():
+# Function to load fallback planet sprites
+func load_fallback_sprites():
 	# Clear existing sprites
-	planet_sprites.clear()
+	fallback_planet_sprites.clear()
 	moon_sprites.clear()
 	
-	# Load planet sprites
+	# Load planet sprites as fallbacks
 	var planet_paths = [
 		"res://sprites/planets/planet_1.png",
 		"res://sprites/planets/planet_2.png",
@@ -72,7 +61,7 @@ func load_sprites():
 		if ResourceLoader.exists(path):
 			var texture = load(path)
 			if texture:
-				planet_sprites.append(texture)
+				fallback_planet_sprites.append(texture)
 	
 	# Load moon sprites (for fallback)
 	var moon_paths = [
@@ -88,7 +77,7 @@ func load_sprites():
 				moon_sprites.append(texture)
 	
 	# Create fallback sprites if none were loaded
-	if planet_sprites.size() == 0:
+	if fallback_planet_sprites.size() == 0:
 		var image = Image.create(64, 64, false, Image.FORMAT_RGBA8)
 		for x in range(64):
 			for y in range(64):
@@ -96,7 +85,7 @@ func load_sprites():
 				if dist < 30:
 					image.set_pixel(x, y, Color(1, 1, 1, 1))
 		var fallback_texture = ImageTexture.create_from_image(image)
-		planet_sprites.append(fallback_texture)
+		fallback_planet_sprites.append(fallback_texture)
 	
 	if moon_sprites.size() == 0:
 		var image = Image.create(32, 32, false, Image.FORMAT_RGBA8)
@@ -113,23 +102,12 @@ func generate_planets():
 	# Clear existing planet data
 	planet_positions.clear()
 	planet_data.clear()
+	generated_planet_textures.clear()
 	generated_moon_textures.clear()
-	
-	# Initialize planet_sizes and planet_colors arrays
-	planet_sizes = []
-	planet_colors = []
 	
 	# Make sure grid is ready
 	if grid.cell_contents.size() == 0:
 		return
-	
-	# Initialize the planet arrays to match grid size
-	for y in range(int(grid.grid_size.y)):
-		planet_sizes.append([])
-		planet_colors.append([])
-		for x in range(int(grid.grid_size.x)):
-			planet_sizes[y].append(0.0)
-			planet_colors[y].append(Color.WHITE)
 	
 	# Get a list of non-boundary cells for placing planets
 	var available_cells = []
@@ -177,29 +155,29 @@ func generate_planets():
 		grid.cell_contents[y][x] = grid.CellContent.PLANET
 		actual_planet_count += 1
 		
-		# Choose a random color from the palette (for fallback drawing)
-		var color_index = rng.randi() % planet_color_palette.size()
-		var planet_color = planet_color_palette[color_index]
-		planet_colors[y][x] = planet_color
+		# Generate a unique seed for this planet
+		var planet_seed = grid.seed_value + x * 10000 + y * 1000
 		
-		# Select a random planet sprite
-		var planet_sprite_idx = rng.randi() % planet_sprites.size() if planet_sprites.size() > 0 else 0
+		# Generate planet textures
+		var planet_textures = PlanetGeneratorClass.get_planet_texture(planet_seed)
+		var planet_texture = planet_textures[0]  # Main planet texture
+		var atmosphere_texture = planet_textures[1]  # Atmosphere texture
+		var planet_pixel_size = planet_textures[2]  # Planet size
 		
-		# Get planet size from the sprite size
-		var planet_texture = planet_sprites[planet_sprite_idx]
-		var texture_size = planet_texture.get_size()
+		# Store in cache
+		var planet_key = str(planet_seed)
+		generated_planet_textures[planet_key] = planet_textures
+		
+		# Calculate the safe area within the cell considering the planet size
 		var cell_min_dimension = min(grid.cell_size.x, grid.cell_size.y) * (1.0 - 2 * cell_margin)
-		var planet_pixel_size = max(texture_size.x, texture_size.y)
 		
-		# Start with 1:1 pixel scale (no scaling)
+		# Scale the planet if needed to fit cell
 		var scale = 1.0
-		
-		# Only scale down if the planet is too large for the cell
 		if planet_pixel_size > cell_min_dimension:
 			scale = cell_min_dimension / planet_pixel_size
 		
 		# Calculate the visual radius of the planet with scaling
-		var planet_radius = texture_size.x * scale / 2
+		var planet_radius = planet_pixel_size * scale / 2
 		
 		# Determine if this planet has moons
 		var has_moons = rng.randi() % 100 < moon_chance
@@ -218,7 +196,7 @@ func generate_planets():
 			# First pass to calculate the largest moon orbit radius
 			for m in range(num_moons):
 				# Generate a unique seed for this moon
-				var moon_seed = grid.seed_value + x * 1000 + y * 100 + m
+				var moon_seed = planet_seed + m * 100
 				
 				# Determine moon pixel size based on seed
 				var moon_generator = MoonGeneratorClass.new()
@@ -246,7 +224,7 @@ func generate_planets():
 			# Generate moon data for each moon
 			for m in range(num_moons):
 				# Generate a unique seed for this moon
-				var moon_seed = grid.seed_value + x * 1000 + y * 100 + m
+				var moon_seed = planet_seed + m * 100
 				
 				# Get moon texture from generator
 				var moon_texture = MoonGeneratorClass.get_moon_texture(moon_seed)
@@ -307,8 +285,7 @@ func generate_planets():
 		})
 		
 		planet_data.append({
-			"sprite_idx": planet_sprite_idx,
-			"color": planet_color,
+			"seed": planet_seed,
 			"scale": scale,
 			"pixel_size": planet_pixel_size,
 			"moons": moons,
@@ -357,14 +334,23 @@ func draw_planets(canvas: CanvasItem, loaded_cells: Dictionary):
 			
 			if planet_index != -1:
 				var planet = planet_data[planet_index]
-				var sprite_idx = planet.sprite_idx
+				var planet_seed = planet.seed
 				
-				# Skip if invalid sprite index
-				if sprite_idx >= planet_sprites.size():
-					continue
+				# Get planet textures from cache or generate them
+				var planet_key = str(planet_seed)
+				var planet_textures = null
 				
-				var texture = planet_sprites[sprite_idx]
-				var texture_size = texture.get_size()
+				if generated_planet_textures.has(planet_key):
+					planet_textures = generated_planet_textures[planet_key]
+				else:
+					# Generate planet textures if not in cache
+					planet_textures = PlanetGeneratorClass.get_planet_texture(planet_seed)
+					generated_planet_textures[planet_key] = planet_textures
+				
+				# Get planet texture and atmosphere texture
+				var planet_texture = planet_textures[0]
+				var atmosphere_texture = planet_textures[1]
+				var texture_size = Vector2(planet.pixel_size, planet.pixel_size)
 				
 				# Calculate rotation based on time and planet's rotation speed
 				var rotation = time * planet.rotation_speed
@@ -390,9 +376,13 @@ func draw_planets(canvas: CanvasItem, loaded_cells: Dictionary):
 						if sin(moon_angle) > 0:  # Moon is in the "back" half of the orbit
 							draw_procedural_moon(canvas, moon, moon_pos, time)
 				
-				# Draw the planet at its position (which now includes the random offset)
+				# First draw the planet atmosphere (which is behind the planet)
 				canvas.draw_set_transform(planet_positions[planet_index].position, rotation, Vector2(planet.scale, planet.scale))
-				canvas.draw_texture(texture, -texture_size / 2, Color.WHITE)
+				canvas.draw_texture(atmosphere_texture, -texture_size / 2, Color.WHITE)
+				
+				# Then draw the planet at its position (which now includes the random offset)
+				canvas.draw_set_transform(planet_positions[planet_index].position, rotation, Vector2(planet.scale, planet.scale))
+				canvas.draw_texture(planet_texture, -texture_size / 2, Color.WHITE)
 				canvas.draw_set_transform(planet_positions[planet_index].position, 0, Vector2(1, 1))  # Reset transform
 				
 				# Now draw moons that should appear IN FRONT of the planet
@@ -437,7 +427,6 @@ func draw_procedural_moon(canvas: CanvasItem, moon, moon_pos: Vector2, time: flo
 		var moon_rotation = time * moon.orbit_speed * 0.5
 		
 		# Draw the moon
-		moon.scale = 1.0
 		canvas.draw_set_transform(moon_pos, moon_rotation, Vector2(moon.scale, moon.scale))
 		canvas.draw_texture(moon_texture, -moon_size / 2, Color.WHITE)
 		canvas.draw_set_transform(moon_pos, 0, Vector2(1, 1))  # Reset transform

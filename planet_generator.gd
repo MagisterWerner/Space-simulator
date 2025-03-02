@@ -1,7 +1,5 @@
-extends Node2D
-
-# Realistic Procedural Planet Generator
-# Planetary terrain generation system with atmosphere
+# planet_generator.gd - Procedural planet generation system
+extends RefCounted
 
 # Represents different planetary types with unique geological characteristics
 enum PlanetTheme {
@@ -15,10 +13,10 @@ enum PlanetTheme {
 }
 
 # Planet characteristics
-var planet_size: int = 128  # Display size of the planet
-var pixel_resolution: int = 192  # Resolution for detail
-var seed_value: int = 0  # Base randomization seed
-var current_theme: PlanetTheme = PlanetTheme.ARID
+const PLANET_SIZE_MIN: int = 96
+const PLANET_SIZE_RANGE: int = 64
+const PIXEL_RESOLUTION: int = 192  # Resolution for detail
+const BASE_PLANET_RADIUS_FACTOR: float = 0.42
 
 # Terrain Configuration
 var terrain_size: float = 8.0  # Base terrain feature size
@@ -28,42 +26,63 @@ var light_origin: Vector2 = Vector2(0.39, 0.39)  # Light source position
 # Atmosphere parameters
 const ATMOSPHERE_THICKNESS: float = 1.0
 const ATMOSPHERE_INTENSITY: float = 0.5
-const BASE_PLANET_RADIUS_FACTOR: float = 0.42
 
-# Global variables for planet generation
-var planet_radius_factor: float = BASE_PLANET_RADIUS_FACTOR
-var last_size_percentage: int = 100
+# Cache for generated planets by seed
+static var planet_texture_cache: Dictionary = {}
 
-# Function to update planet size factor based on seed
-func update_planet_size_factor() -> void:
+# Initialize the generator
+func _init():
+	pass
+
+# Get a cached texture or generate a new one
+static func get_planet_texture(seed_value: int) -> Array:
+	if planet_texture_cache.has(seed_value):
+		return planet_texture_cache[seed_value]
+	
+	var generator = new()
+	var textures = generator.create_planet_texture(seed_value)
+	
+	# Cache the texture
+	planet_texture_cache[seed_value] = textures
+	
+	# Limit cache size to prevent memory issues
+	if planet_texture_cache.size() > 50:
+		var oldest_key = planet_texture_cache.keys()[0]
+		planet_texture_cache.erase(oldest_key)
+	
+	return textures
+
+# Get planet size based on seed
+func get_planet_size(seed_value: int) -> int:
 	var rng = RandomNumberGenerator.new()
-	rng.randomize()
+	rng.seed = seed_value
+	return PLANET_SIZE_MIN + (rng.randi() % PLANET_SIZE_RANGE)
+
+# Get planet theme based on seed
+func get_planet_theme(seed_value: int) -> int:
+	var rng = RandomNumberGenerator.new()
+	rng.seed = seed_value
+	return rng.randi() % PlanetTheme.size()
+
+# Calculate planet radius factor based on seed
+func calculate_planet_radius_factor(seed_value: int) -> float:
+	var rng = RandomNumberGenerator.new()
+	rng.seed = seed_value
 	
 	# Generate a whole number percentage (100-150)
 	var size_percentage = rng.randi_range(100, 150)
 	
-	# Avoid repeating the same size
-	if size_percentage == last_size_percentage:
-		size_percentage = (size_percentage + rng.randi_range(5, 15)) % 51 + 100
-	
-	# Save for next time
-	last_size_percentage = size_percentage
-	
 	# Apply to planet radius
-	planet_radius_factor = BASE_PLANET_RADIUS_FACTOR * (float(size_percentage) / 100.0)
-
-# Get planet size as percentage
-func get_planet_size_percentage() -> int:
-	return last_size_percentage
+	return BASE_PLANET_RADIUS_FACTOR * (float(size_percentage) / 100.0)
 
 # Pseudo-random number generation with consistent geological behavior
-func get_random_seed(x: float, y: float) -> float:
+func get_random_seed(x: float, y: float, seed_value: int) -> float:
 	var rng = RandomNumberGenerator.new()
 	rng.seed = hash(str(seed_value) + str(x) + str(y))
 	return rng.randf()
 
 # Interpolated noise generation
-func noise(x: float, y: float) -> float:
+func noise(x: float, y: float, seed_value: int) -> float:
 	var ix = floor(x)
 	var iy = floor(y)
 	var fx = x - ix
@@ -72,10 +91,10 @@ func noise(x: float, y: float) -> float:
 	var cubic_x = fx * fx * (3.0 - 2.0 * fx)
 	var cubic_y = fy * fy * (3.0 - 2.0 * fy)
 	
-	var a = get_random_seed(ix, iy)
-	var b = get_random_seed(ix + 1.0, iy)
-	var c = get_random_seed(ix, iy + 1.0)
-	var d = get_random_seed(ix + 1.0, iy + 1.0)
+	var a = get_random_seed(ix, iy, seed_value)
+	var b = get_random_seed(ix + 1.0, iy, seed_value)
+	var c = get_random_seed(ix, iy + 1.0, seed_value)
+	var d = get_random_seed(ix + 1.0, iy + 1.0, seed_value)
 	
 	return lerp(
 		lerp(a, b, cubic_x),
@@ -84,13 +103,13 @@ func noise(x: float, y: float) -> float:
 	)
 
 # Fractal Brownian Motion (fBm) terrain generation
-func fbm(x: float, y: float, octaves: int = 6, variation: float = 1.0) -> float:
+func fbm(x: float, y: float, octaves: int, variation: float, seed_value: int) -> float:
 	var value = 0.0
 	var amplitude = 0.5
 	var frequency = terrain_size * variation
 	
 	for _i in range(octaves):
-		value += noise(x * frequency, y * frequency) * amplitude
+		value += noise(x * frequency, y * frequency, seed_value) * amplitude
 		frequency *= 2.0
 		amplitude *= 0.5
 	
@@ -116,7 +135,7 @@ func spherify(x: float, y: float) -> Vector2:
 	)
 
 # Generate color palettes for different planetary themes
-func generate_planet_palette(theme: PlanetTheme) -> PackedColorArray:
+func generate_planet_palette(theme: int, seed_value: int) -> PackedColorArray:
 	var rng = RandomNumberGenerator.new()
 	rng.seed = seed_value
 	
@@ -194,7 +213,7 @@ func generate_planet_palette(theme: PlanetTheme) -> PackedColorArray:
 			])
 
 # Get atmosphere color with more realistic approach
-func get_atmosphere_color(theme: PlanetTheme) -> Color:
+func get_atmosphere_color(theme: int) -> Color:
 	match theme:
 		PlanetTheme.LUSH:
 			return Color(0.35, 0.60, 0.90, 1.0)  # Blue with hint of green
@@ -214,17 +233,21 @@ func get_atmosphere_color(theme: PlanetTheme) -> Color:
 			return Color(0.60, 0.70, 0.90, 1.0)  # Default atmosphere
 
 # Create planet texture with atmosphere rendering
-func create_planet_texture() -> Array:
-	var final_resolution = pixel_resolution
+func create_planet_texture(seed_value: int) -> Array:
+	var planet_size = get_planet_size(seed_value)
+	var final_resolution = PIXEL_RESOLUTION
 	var image = Image.create(final_resolution, final_resolution, false, Image.FORMAT_RGBA8)
 	var atmosphere_image = Image.create(final_resolution, final_resolution, true, Image.FORMAT_RGBA8)
 	
+	# Get theme for this planet
+	var current_theme = get_planet_theme(seed_value)
+	
 	# Generate color palette for current theme
-	var colors = generate_planet_palette(current_theme)
+	var colors = generate_planet_palette(current_theme, seed_value)
 	var atmosphere_color = get_atmosphere_color(current_theme)
 	
 	# Calculate atmosphere parameters
-	var planet_radius = planet_radius_factor
+	var planet_radius = calculate_planet_radius_factor(seed_value)
 	var atmosphere_radius = planet_radius * (1.0 + ATMOSPHERE_THICKNESS)
 	
 	# Generate planet surface and atmosphere
@@ -256,14 +279,14 @@ func create_planet_texture() -> Array:
 			var sphere_uv = spherify(nx, ny)
 			
 			# Generate multiple noise layers for complex terrain
-			var base_noise = fbm(sphere_uv.x, sphere_uv.y, terrain_octaves)
-			var detail_noise = fbm(sphere_uv.x * 2.0, sphere_uv.y * 2.0, max(2, terrain_octaves - 2), 1.5)
+			var base_noise = fbm(sphere_uv.x, sphere_uv.y, terrain_octaves, 1.0, seed_value)
+			var detail_noise = fbm(sphere_uv.x * 2.0, sphere_uv.y * 2.0, max(2, terrain_octaves - 2), 1.5, seed_value + 10000)
 			
 			# Combine noise layers for rich terrain variation
 			var combined_noise = base_noise * 0.7 + detail_noise * 0.3
 			
 			# Color mapping with terrain variation
-			var color_index = floor(combined_noise * colors.size())
+			var color_index = int(combined_noise * colors.size())
 			color_index = clamp(color_index, 0, colors.size() - 1)
 			
 			# Final color with terrain detail
@@ -277,62 +300,6 @@ func create_planet_texture() -> Array:
 	
 	return [
 		ImageTexture.create_from_image(image),
-		ImageTexture.create_from_image(atmosphere_image)
+		ImageTexture.create_from_image(atmosphere_image),
+		planet_size  # Return the planet size as well
 	]
-
-# Scene setup with planet generation
-func _ready():
-	update_planet_size_factor()
-	
-	var textures = create_planet_texture()
-	var planet_texture = textures[0]
-	var atmosphere_texture = textures[1]
-	
-	# Calculate dynamic container size based on planet radius
-	var display_size = int(planet_size * (last_size_percentage / 100.0))
-	
-	# Planet container for layering
-	var planet_container = Node2D.new()
-	planet_container.position = (get_viewport_rect().size - Vector2(display_size, display_size)) / 2
-	
-	# Planet base
-	var planet_texture_rect = TextureRect.new()
-	planet_texture_rect.texture = planet_texture
-	planet_texture_rect.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
-	planet_texture_rect.custom_minimum_size = Vector2(display_size, display_size)
-	
-	# Atmosphere layer
-	var atmosphere_texture_rect = TextureRect.new()
-	atmosphere_texture_rect.texture = atmosphere_texture
-	atmosphere_texture_rect.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
-	atmosphere_texture_rect.custom_minimum_size = Vector2(display_size, display_size)
-	
-	# Add planet and atmosphere to container
-	planet_container.add_child(planet_texture_rect)
-	planet_container.add_child(atmosphere_texture_rect)
-	add_child(planet_container)
-
-# Regenerate planet on spacebar press
-func _input(event):
-	if event is InputEventKey and event.pressed and event.keycode == KEY_SPACE:
-		seed_value = randi()
-		current_theme = PlanetTheme.values()[randi() % PlanetTheme.size()]
-		
-		update_planet_size_factor()
-		
-		var textures = create_planet_texture()
-		var planet_container = get_child(0)
-		
-		# Update planet texture
-		planet_container.get_child(0).texture = textures[0]
-		# Update atmosphere texture
-		planet_container.get_child(1).texture = textures[1]
-
-# Initialize planet with current inspector settings
-func _enter_tree():
-	# Only randomize seed if it's 0 (not manually set)
-	if seed_value == 0:
-		seed_value = randi()
-	
-	# Initialize planet size factor
-	update_planet_size_factor()

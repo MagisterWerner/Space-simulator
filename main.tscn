@@ -23,8 +23,8 @@ script = ExtResource("1_brldc")
 
 [node name="Grid" type="Node2D" parent="."]
 script = ExtResource("2_lvljp")
-cell_size = Vector2(512, 512)
-grid_size = Vector2(15, 15)
+cell_size = Vector2(2048, 2048)
+grid_size = Vector2(5, 5)
 
 [node name="CanvasLayer" type="CanvasLayer" parent="."]
 

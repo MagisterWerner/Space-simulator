@@ -245,7 +245,6 @@ func check_planet_collision():
 	
 	var planet_positions = planet_spawner.planet_positions
 	var planet_data = planet_spawner.planet_data
-	var sprites = planet_spawner.planet_sprites
 	
 	var player_radius = 16
 	var on_any_planet = false
@@ -256,27 +255,9 @@ func check_planet_collision():
 		var planet_pos = planet_positions[i].position
 		var planet = planet_data[i]
 		
-		# Skip if planet sprite index is invalid
-		if planet.sprite_idx >= sprites.size():
-			continue
-			
-		# Get the sprite for this planet
-		var sprite = sprites[planet.sprite_idx]
-		if not sprite:
-			continue
-			
-		# Get the radius of the planet
-		var sprite_size = sprite.get_size()
-		var planet_radius = max(sprite_size.x, sprite_size.y) * planet.scale / 2
-		
 		# Calculate distance between player and planet centers
 		var distance = global_position.distance_to(planet_pos)
 		
-		# Check if player is within the planet's radius
-		if distance < planet_radius + player_radius * 0.5:
-			on_any_planet = true
-			new_planet_id = i
-			break
 	
 	# Handle entering a new planet
 	if new_planet_id != -1 and new_planet_id != current_planet_id:
