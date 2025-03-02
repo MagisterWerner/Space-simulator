@@ -1,10 +1,10 @@
 [gd_scene load_steps=3 format=3 uid="uid://c8vlg3ecu7x3q"]
 
-[ext_resource type="Script" path="res://scripts/projectiles/missile.gd" id="1_7jr6e"]
+[ext_resource type="Script" path="res://scripts/projectiles/homing_missile.gd" id="1_3jv6g"]
 [ext_resource type="Texture2D" uid="uid://cxmbw6twk5flm" path="res://sprites/weapons/missile.png" id="2_f43rq"]
 
-[node name="Missile" type="Node2D"]
-script = ExtResource("1_7jr6e")
+[node name="HomingMissile" type="Node2D"]
+script = ExtResource("1_3jv6g")
 
 [node name="Sprite2D" type="Sprite2D" parent="."]
 texture = ExtResource("2_f43rq")
