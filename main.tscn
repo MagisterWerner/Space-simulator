@@ -1,6 +1,7 @@
-[gd_scene load_steps=10 format=3 uid="uid://dl7etmw31qnof"]
+[gd_scene load_steps=11 format=3 uid="uid://dl7etmw31qnof"]
 
 [ext_resource type="Script" path="res://main.gd" id="1_brldc"]
+[ext_resource type="Script" path="res://scripts/space_background.gd" id="2_doega"]
 [ext_resource type="Script" path="res://managers/grid.gd" id="2_lvljp"]
 [ext_resource type="PackedScene" uid="uid://bqf1ewcvnbx7q" path="res://player.tscn" id="3_4h0bx"]
 [ext_resource type="Script" path="res://enemy_spawner.gd" id="4_bfxvw"]
@@ -20,6 +21,9 @@ shadow_offset = Vector2(2, 2)
 
 [node name="Main" type="Node2D"]
 script = ExtResource("1_brldc")
+
+[node name="ParallaxBackground" type="ParallaxBackground" parent="."]
+script = ExtResource("2_doega")
 
 [node name="Grid" type="Node2D" parent="."]
 script = ExtResource("2_lvljp")
