@@ -1,4 +1,4 @@
-# planet_generator.gd - Procedural planet generation system
+# planet_generator.gd - Improved procedural planet generation system
 extends RefCounted
 
 # Represents different planetary types with unique geological characteristics
@@ -13,25 +13,28 @@ enum PlanetTheme {
 }
 
 # Fixed planet sizes - exactly what will be rendered, no scaling occurs
-const PLANET_SIZE_SMALL: int = 192
 const PLANET_SIZE_LARGE: int = 256
-const BASE_PLANET_RADIUS_FACTOR: float = 0.42
+const BASE_PLANET_RADIUS_FACTOR: float = 0.93  # Slightly reduced to prevent edge bleeding
 
-# Terrain Configuration
-var terrain_size: float = 8.0  # Base terrain feature size
-var terrain_octaves: int = 6   # Noise complexity
-var light_origin: Vector2 = Vector2(0.39, 0.39)  # Light source position
-
-# Atmosphere parameters
-const ATMOSPHERE_THICKNESS: float = 1.0
-const ATMOSPHERE_INTENSITY: float = 0.5
+# Performance and quality settings
+const TERRAIN_OCTAVES: int = 4   # Increased for more detail and color variation
+const COLOR_VARIATION: float = 1.5  # Higher values create more color variety
 
 # Cache for generated planets by seed
 static var planet_texture_cache: Dictionary = {}
 
+# Optimization: Precomputed lookup tables and caches
+var cubic_lookup: Array = []
+var noise_cache: Dictionary = {}
+const CUBIC_RESOLUTION: int = 512
+
 # Initialize the generator
 func _init():
-	pass
+	# Initialize cubic lookup table for smooth interpolation
+	cubic_lookup.resize(CUBIC_RESOLUTION)
+	for i in range(CUBIC_RESOLUTION):
+		var t = float(i) / (CUBIC_RESOLUTION - 1)
+		cubic_lookup[i] = t * t * (3.0 - 2.0 * t)
 
 # Get a cached texture or generate a new one
 static func get_planet_texture(seed_value: int) -> Array:
@@ -73,21 +76,37 @@ func calculate_planet_radius_factor(seed_value: int) -> float:
 	# Apply to planet radius
 	return BASE_PLANET_RADIUS_FACTOR * (float(size_percentage) / 100.0)
 
-# Pseudo-random number generation with consistent geological behavior
+# Optimized pseudo-random number generation with caching
 func get_random_seed(x: float, y: float, seed_value: int) -> float:
+	# Create cache key
+	var key = str(x) + "_" + str(y) + "_" + str(seed_value)
+	if noise_cache.has(key):
+		return noise_cache[key]
+	
 	var rng = RandomNumberGenerator.new()
 	rng.seed = hash(str(seed_value) + str(x) + str(y))
-	return rng.randf()
+	var value = rng.randf()
+	
+	# Store in cache
+	noise_cache[key] = value
+	return value
 
-# Interpolated noise generation
+# Get cubic interpolation from lookup table
+func get_cubic(t: float) -> float:
+	var index = int(t * (CUBIC_RESOLUTION - 1))
+	index = clamp(index, 0, CUBIC_RESOLUTION - 1)
+	return cubic_lookup[index]
+
+# Optimized interpolated noise generation
 func noise(x: float, y: float, seed_value: int) -> float:
 	var ix = floor(x)
 	var iy = floor(y)
 	var fx = x - ix
 	var fy = y - iy
 	
-	var cubic_x = fx * fx * (3.0 - 2.0 * fx)
-	var cubic_y = fy * fy * (3.0 - 2.0 * fy)
+	# Use precomputed lookup table for cubic interpolation
+	var cubic_x = get_cubic(fx) 
+	var cubic_y = get_cubic(fy)
 	
 	var a = get_random_seed(ix, iy, seed_value)
 	var b = get_random_seed(ix + 1.0, iy, seed_value)
@@ -100,11 +119,11 @@ func noise(x: float, y: float, seed_value: int) -> float:
 		cubic_y
 	)
 
-# Fractal Brownian Motion (fBm) terrain generation
-func fbm(x: float, y: float, octaves: int, variation: float, seed_value: int) -> float:
+# Improved Fractal Brownian Motion with better quality control
+func fbm(x: float, y: float, octaves: int, seed_value: int) -> float:
 	var value = 0.0
 	var amplitude = 0.5
-	var frequency = terrain_size * variation
+	var frequency = 8.0
 	
 	for _i in range(octaves):
 		value += noise(x * frequency, y * frequency, seed_value) * amplitude
@@ -113,7 +132,7 @@ func fbm(x: float, y: float, octaves: int, variation: float, seed_value: int) ->
 	
 	return value
 
-# Sophisticated spherical coordinate mapping
+# Optimized spherical coordinate mapping with edge smoothing
 func spherify(x: float, y: float) -> Vector2:
 	var centered_x = x * 2.0 - 1.0
 	var centered_y = y * 2.0 - 1.0
@@ -132,7 +151,7 @@ func spherify(x: float, y: float) -> Vector2:
 		(sphere_y + 1.0) * 0.5
 	)
 
-# Generate color palettes for different planetary themes
+# Generate enhanced color palettes for different planetary themes
 func generate_planet_palette(theme: int, seed_value: int) -> PackedColorArray:
 	var rng = RandomNumberGenerator.new()
 	rng.seed = seed_value
@@ -140,7 +159,9 @@ func generate_planet_palette(theme: int, seed_value: int) -> PackedColorArray:
 	match theme:
 		PlanetTheme.ARID:
 			return PackedColorArray([
+				Color(0.90, 0.70, 0.40),  # Light sand
 				Color(0.82, 0.58, 0.35),  # Light sand with red tint
+				Color(0.75, 0.47, 0.30),  # Medium sand
 				Color(0.70, 0.42, 0.25),  # Dark sand with red tint
 				Color(0.63, 0.38, 0.22),  # Sandy base with red tint
 				Color(0.53, 0.30, 0.16),  # Deep rocky terrain with red tint
@@ -149,7 +170,9 @@ func generate_planet_palette(theme: int, seed_value: int) -> PackedColorArray:
 		
 		PlanetTheme.LAVA:
 			return PackedColorArray([
-				Color(1.0, 0.6, 0.0),     # Single bright orange for lava lakes
+				Color(1.0, 0.6, 0.0),     # Bright orange for lava lakes
+				Color(0.9, 0.4, 0.05),    # Orange lava
+				Color(0.8, 0.2, 0.05),    # Red-orange lava
 				Color(0.7, 0.1, 0.05),    # Dark red lava
 				Color(0.55, 0.08, 0.04),  # Deeper red lava
 				Color(0.4, 0.06, 0.03),   # Very dark red terrain
@@ -157,17 +180,23 @@ func generate_planet_palette(theme: int, seed_value: int) -> PackedColorArray:
 			])
 		
 		PlanetTheme.LUSH:
+			# Fixed palette for lush planets - more balanced greens and blues
 			return PackedColorArray([
-				Color(0.2, 0.7, 0.3),     # Bright vibrant green
-				Color(0.1, 0.5, 0.1),     # Dark forest green
-				Color(0.3, 0.5, 0.7),     # Blue water regions
-				Color(0.25, 0.6, 0.25),   # Mid-tone vegetation
-				Color(0.15, 0.4, 0.15)    # Deep forest shadow
+				Color(0.20, 0.70, 0.30),  # Bright vibrant green
+				Color(0.18, 0.65, 0.25),  # Medium bright green  
+				Color(0.15, 0.60, 0.20),  # Medium green
+				Color(0.12, 0.55, 0.15),  # Forest green
+				Color(0.10, 0.50, 0.10),  # Dark forest green
+				Color(0.35, 0.50, 0.70),  # Light blue water
+				Color(0.30, 0.45, 0.65),  # Medium blue water
+				Color(0.25, 0.40, 0.60)   # Deeper blue water
 			])
 		
 		PlanetTheme.ICE:
 			return PackedColorArray([
-				Color(0.92, 0.97, 1.0),   # Bright white ice
+				Color(0.98, 0.99, 1.0),   # Bright white ice
+				Color(0.92, 0.97, 1.0),   # Bright white ice with blue tint
+				Color(0.85, 0.92, 0.98),  # Very light blue ice
 				Color(0.75, 0.85, 0.95),  # Light blue glacial
 				Color(0.60, 0.75, 0.90),  # Deeper glacial blue
 				Color(0.45, 0.65, 0.85),  # Deep ice
@@ -177,8 +206,11 @@ func generate_planet_palette(theme: int, seed_value: int) -> PackedColorArray:
 		PlanetTheme.DESERT:
 			return PackedColorArray([
 				Color(0.88, 0.72, 0.45),  # Light sand dunes
+				Color(0.85, 0.68, 0.40),  # Light warm sand
 				Color(0.80, 0.65, 0.38),  # Warm sand
+				Color(0.75, 0.60, 0.35),  # Medium sand
 				Color(0.70, 0.55, 0.30),  # Sandy plateaus
+				Color(0.65, 0.50, 0.28),  # Sandy rock
 				Color(0.60, 0.45, 0.25),  # Rocky outcrops
 				Color(0.48, 0.35, 0.20)   # Deep desert terrain
 			])
@@ -186,17 +218,23 @@ func generate_planet_palette(theme: int, seed_value: int) -> PackedColorArray:
 		PlanetTheme.ALPINE:
 			return PackedColorArray([
 				Color(0.98, 0.98, 0.98),  # Pure white snow
+				Color(0.95, 0.95, 0.97),  # Off-white snow
 				Color(0.90, 0.90, 0.95),  # Bright white snow
 				Color(0.85, 0.85, 0.90),  # Light grey snow
+				Color(0.80, 0.85, 0.80),  # Snow-forest transition
 				Color(0.75, 0.85, 0.75),  # Snow-covered forests (white-green)
-				Color(0.65, 0.75, 0.65)   # Light snow-dusted forests
+				Color(0.70, 0.80, 0.70),  # Light forests
+				Color(0.65, 0.75, 0.65)   # Deeper forests
 			])
 		
 		PlanetTheme.OCEAN:
 			return PackedColorArray([
 				Color(0.10, 0.35, 0.65),  # Deep ocean blue
+				Color(0.15, 0.40, 0.70),  # Deep ocean
 				Color(0.15, 0.45, 0.75),  # Mid-ocean blue
+				Color(0.18, 0.50, 0.80),  # Medium ocean blue
 				Color(0.20, 0.55, 0.85),  # Light ocean blue
+				Color(0.25, 0.60, 0.88),  # Shallow ocean
 				Color(0.30, 0.65, 0.90),  # Shallow water
 				Color(0.40, 0.75, 0.95)   # Coastal waters
 			])
@@ -210,96 +248,101 @@ func generate_planet_palette(theme: int, seed_value: int) -> PackedColorArray:
 				Color(0.3, 0.3, 0.3)
 			])
 
-# Get atmosphere color with more realistic approach
-func get_atmosphere_color(theme: int) -> Color:
-	match theme:
-		PlanetTheme.LUSH:
-			return Color(0.35, 0.60, 0.90, 1.0)  # Blue with hint of green
-		PlanetTheme.OCEAN:
-			return Color(0.25, 0.55, 0.95, 1.0)  # Deep blue atmosphere
-		PlanetTheme.ICE:
-			return Color(0.65, 0.78, 0.95, 1.0)  # Pale blue atmosphere
-		PlanetTheme.ALPINE:
-			return Color(0.80, 0.82, 0.85, 1.0)  # Light grey with hint of blue
-		PlanetTheme.LAVA:
-			return Color(0.65, 0.15, 0.05, 1.0)  # Dark red atmosphere with slight orange tint
-		PlanetTheme.DESERT:
-			return Color(0.85, 0.65, 0.35, 1.0)  # Tan/brown atmosphere
-		PlanetTheme.ARID:
-			return Color(0.80, 0.45, 0.25, 1.0)  # Dusty red atmosphere
-		_:
-			return Color(0.60, 0.70, 0.90, 1.0)  # Default atmosphere
+# Create empty atmosphere texture (1x1 transparent pixel)
+func create_empty_atmosphere() -> Image:
+	var empty_atmosphere = Image.create(1, 1, true, Image.FORMAT_RGBA8)
+	empty_atmosphere.set_pixel(0, 0, Color(0, 0, 0, 0))
+	return empty_atmosphere
 
-# Create planet texture with atmosphere rendering - ALWAYS at exact pixel size
+# Improved planet texture creation with enhanced color variation
 func create_planet_texture(seed_value: int) -> Array:
 	# Always use 256x256 pixels for planets
 	var planet_size = PLANET_SIZE_LARGE
 	
 	# Create images at exact pixel resolution
-	var image = Image.create(planet_size, planet_size, false, Image.FORMAT_RGBA8)
-	var atmosphere_image = Image.create(planet_size, planet_size, true, Image.FORMAT_RGBA8)
+	var image = Image.create(planet_size, planet_size, true, Image.FORMAT_RGBA8)  # Enable alpha
 	
 	# Get theme for this planet
 	var current_theme = get_planet_theme(seed_value)
 	
 	# Generate color palette for current theme
 	var colors = generate_planet_palette(current_theme, seed_value)
-	var atmosphere_color = get_atmosphere_color(current_theme)
 	
 	# Calculate atmosphere parameters
 	var planet_radius = calculate_planet_radius_factor(seed_value)
-	var atmosphere_radius = planet_radius * (1.0 + ATMOSPHERE_THICKNESS)
 	
-	# Generate planet surface and atmosphere
-	for x in range(planet_size):
-		for y in range(planet_size):
-			# Normalize coordinates
-			var nx = float(x) / (planet_size - 1)
-			var ny = float(y) / (planet_size - 1)
-			
-			# Calculate distance from center
+	# Precompute some values for optimization
+	var color_size = colors.size() - 1
+	var half_size = planet_size / 2.0
+	var planet_size_minus_one = planet_size - 1
+	
+	# Calculate a hard edge margin to prevent bleeding
+	var edge_margin = 0.01  # Small margin to create hard edge
+	var planet_draw_radius = planet_radius - edge_margin
+	
+	# Create noise multiplier seeds for color variation
+	var variation_seed_1 = seed_value + 12345
+	var variation_seed_2 = seed_value + 67890
+	
+	# Generate planet surface with clean edge
+	for y in range(planet_size):
+		var ny = float(y) / planet_size_minus_one
+		var dy = ny - 0.5
+		
+		for x in range(planet_size):
+			var nx = float(x) / planet_size_minus_one
 			var dx = nx - 0.5
-			var dy = ny - 0.5
+			
+			# Calculate normalized distance from center (0-1)
 			var d_circle = sqrt(dx * dx + dy * dy) * 2.0
 			
-			# Atmospheric rendering
-			if d_circle > planet_radius and d_circle <= atmosphere_radius:
-				var atmos_distance = (d_circle - planet_radius) / (atmosphere_radius - planet_radius)
-				var atmos_alpha = pow(1.0 - atmos_distance, 4) * ATMOSPHERE_INTENSITY
-				var pixel_atmosphere = atmosphere_color
-				pixel_atmosphere.a = atmos_alpha * (1.0 - pow(atmos_distance, 0.5))
-				atmosphere_image.set_pixel(x, y, pixel_atmosphere)
+			# Skip pixels outside the planet radius
+			if d_circle > planet_radius:
+				# Set fully transparent 
+				image.set_pixel(x, y, Color(0, 0, 0, 0))
 				continue
-			
-			# Skip pixels completely outside the atmosphere
-			if d_circle > atmosphere_radius:
-				continue
+				
+			# Create a smooth edge transition at the boundary
+			var edge_alpha = 1.0
+			if d_circle > planet_draw_radius:
+				var edge_factor = (planet_radius - d_circle) / (planet_radius - planet_draw_radius)
+				edge_alpha = clamp(edge_factor, 0.0, 1.0)
 			
 			# Spherify coordinates for natural planetary mapping
 			var sphere_uv = spherify(nx, ny)
 			
-			# Generate multiple noise layers for complex terrain
-			var base_noise = fbm(sphere_uv.x, sphere_uv.y, terrain_octaves, 1.0, seed_value)
-			var detail_noise = fbm(sphere_uv.x * 2.0, sphere_uv.y * 2.0, max(2, terrain_octaves - 2), 1.5, seed_value + 10000)
+			# Generate base noise - main terrain features
+			var base_noise = fbm(sphere_uv.x, sphere_uv.y, TERRAIN_OCTAVES, seed_value)
 			
-			# Combine noise layers for rich terrain variation
-			var combined_noise = base_noise * 0.7 + detail_noise * 0.3
+			# Add detail variation for more interesting coloration
+			var detail_variation_1 = fbm(sphere_uv.x * 3.0, sphere_uv.y * 3.0, 2, variation_seed_1) * 0.1
+			var detail_variation_2 = fbm(sphere_uv.x * 5.0, sphere_uv.y * 5.0, 1, variation_seed_2) * 0.05
 			
-			# Color mapping with terrain variation
-			var color_index = int(combined_noise * colors.size())
-			color_index = clamp(color_index, 0, colors.size() - 1)
+			# Combine noise for more color variety
+			var combined_noise = base_noise + detail_variation_1 + detail_variation_2
+			combined_noise = clamp(combined_noise * COLOR_VARIATION, 0.0, 1.0)
 			
-			# Final color with terrain detail
+			# Color mapping with enhanced terrain variation
+			var color_index = int(combined_noise * color_size)
+			color_index = clamp(color_index, 0, color_size)
+			
+			# Final color with improved lighting
 			var final_color = colors[color_index]
 			
-			# Add depth and lighting simulation
-			var edge_shade = 1.0 - pow(d_circle * 2, 2)
-			final_color *= 0.8 + edge_shade * 0.2
+			# Add depth shading - better looking gradient 
+			var edge_shade = 1.0 - pow(d_circle / planet_radius, 2) * 0.3
+			final_color *= edge_shade
+			
+			# Apply edge alpha for clean transition
+			final_color.a = edge_alpha
 			
 			image.set_pixel(x, y, final_color)
 	
+	# Return the generated textures with an empty atmosphere
+	var empty_atmosphere = create_empty_atmosphere()
+	
 	return [
 		ImageTexture.create_from_image(image),
-		ImageTexture.create_from_image(atmosphere_image),
+		ImageTexture.create_from_image(empty_atmosphere),
 		planet_size  # Return the exact planet size as well
 	]

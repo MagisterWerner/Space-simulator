@@ -98,16 +98,6 @@ func generate_planets():
 		# Generate a unique seed for this planet
 		var planet_seed = grid.seed_value + x * 10000 + y * 1000
 		
-		# Generate planet textures
-		var planet_textures = PlanetGeneratorClass.get_planet_texture(planet_seed)
-		var planet_texture = planet_textures[0]  # Main planet texture
-		var atmosphere_texture = planet_textures[1]  # Atmosphere texture
-		var planet_pixel_size = 256  # Force planet size to 256x256
-		
-		# Store in cache
-		var planet_key = str(planet_seed)
-		generated_planet_textures[planet_key] = planet_textures
-		
 		# Calculate the world position at cell center
 		var world_pos = Vector2(
 			x * grid.cell_size.x + grid.cell_size.x / 2,
@@ -138,7 +128,7 @@ func generate_planets():
 				
 				# Calculate moon parameters
 				var moon_radius = moon_pixel_size / 2.0
-				var planet_radius = planet_pixel_size / 2.0
+				var planet_radius = 256 / 2.0  # Planet size is always 256x256
 				var padding = rng.randf_range(10, 30)
 				var moon_orbit_distance = planet_radius + moon_radius + padding
 				
@@ -191,7 +181,7 @@ func generate_planets():
 	# Force grid redraw
 	grid.queue_redraw()
 
-# Method to draw planets with moons
+# Method to draw planets with moons - optimized for speed
 func draw_planets(canvas: CanvasItem, loaded_cells: Dictionary):
 	# Get current time for animation
 	var time = Time.get_ticks_msec() / 1000.0
@@ -227,7 +217,6 @@ func draw_planets(canvas: CanvasItem, loaded_cells: Dictionary):
 				
 				# Get planet texture and atmosphere texture
 				var planet_texture = planet_textures[0]
-				var atmosphere_texture = planet_textures[1]
 				
 				# Calculate rotation based on time and planet's rotation speed
 				var rotation = time * planet.rotation_speed
@@ -235,16 +224,14 @@ func draw_planets(canvas: CanvasItem, loaded_cells: Dictionary):
 				# Always use 256x256 size for planets
 				var planet_size = Vector2(256, 256)
 				
-				# Draw atmosphere first (behind the planet)
-				# CRITICAL: Use an identity transform matrix to prevent any scaling
-				canvas.draw_set_transform(planet_positions[planet_index].position, rotation, Vector2.ONE)
-				canvas.draw_texture(atmosphere_texture, -planet_size / 2, Color.WHITE)
+				# CRITICAL: Reset transform before drawing
+				canvas.draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
 				
 				# Draw the planet at exact pixel size - NEVER SCALE
 				canvas.draw_set_transform(planet_positions[planet_index].position, rotation, Vector2.ONE)
 				canvas.draw_texture(planet_texture, -planet_size / 2, Color.WHITE)
 				
-				# Reset transform
+				# Reset transform immediately after drawing
 				canvas.draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
 				
 				# Draw moons that should appear BEHIND the planet
@@ -286,9 +273,6 @@ func draw_planets(canvas: CanvasItem, loaded_cells: Dictionary):
 						# Determine if moon is in front of the planet based on Y position
 						if sin(moon_angle) <= 0:  # Moon is in the "front" half of the orbit
 							draw_procedural_moon(canvas, moon, moon_pos, time)
-				
-				# Always reset transform after drawing is complete
-				canvas.draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
 
 # Helper function to draw a procedurally generated moon at a specific position
 func draw_procedural_moon(canvas: CanvasItem, moon, moon_pos: Vector2, time: float):
