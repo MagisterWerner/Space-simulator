@@ -56,8 +56,6 @@ func _create_visual_effects():
 			pickup_particles.color = Color(0.2, 0.5, 1.0)
 		"SpreadShot":
 			pickup_particles.color = Color(0.2, 0.8, 1.0)
-		"ChargeBeam":
-			pickup_particles.color = Color(1.0, 0.5, 0.0)
 		"MissileLauncher":
 			pickup_particles.color = Color(1.0, 0.3, 0.2)
 		_:
@@ -72,8 +70,6 @@ func _initialize_weapon_strategy():
 			weapon_strategy = StandardLaser.new()
 		"SpreadShot":
 			weapon_strategy = SpreadShot.new()
-		"ChargeBeam":
-			weapon_strategy = ChargeBeam.new()
 		"MissileLauncher":
 			weapon_strategy = MissileLauncher.new()
 		_:
@@ -130,8 +126,6 @@ func _create_pickup_effect():
 			flash.color = Color(0.2, 0.5, 1.0)
 		"SpreadShot":
 			flash.color = Color(0.2, 0.8, 1.0)
-		"ChargeBeam":
-			flash.color = Color(1.0, 0.5, 0.0)
 		"MissileLauncher":
 			flash.color = Color(1.0, 0.3, 0.2)
 		_:
@@ -159,8 +153,6 @@ func _draw():
 				color = Color(0.2, 0.5, 1.0)
 			"SpreadShot":
 				color = Color(0.2, 0.8, 1.0)
-			"ChargeBeam":
-				color = Color(1.0, 0.5, 0.0)
 			"MissileLauncher":
 				color = Color(1.0, 0.3, 0.2)
 		
@@ -177,10 +169,6 @@ func _draw():
 				draw_line(Vector2(-10, -5), Vector2(10, -10), Color.WHITE, 2)
 				draw_line(Vector2(-10, 0), Vector2(10, 0), Color.WHITE, 2)
 				draw_line(Vector2(-10, 5), Vector2(10, 10), Color.WHITE, 2)
-			"ChargeBeam":
-				# Draw charge beam
-				draw_circle(Vector2.ZERO, 5, Color.WHITE)
-				draw_line(Vector2(-10, 0), Vector2(10, 0), Color.WHITE, 5)
 			"MissileLauncher":
 				# Draw missile
 				draw_rect(Rect2(-8, -3, 16, 6), Color.WHITE)

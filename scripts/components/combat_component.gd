@@ -46,10 +46,6 @@ func set_weapon(weapon_name: String) -> bool:
 		current_weapon_strategy = weapon_strategies[weapon_name]
 		emit_signal("weapon_changed", current_weapon_strategy)
 		
-		# Create charge visual if this is a chargeable weapon
-		if current_weapon_strategy is ChargeBeam:
-			current_weapon_strategy.create_charge_visual(entity)
-			
 		return true
 	return false
 

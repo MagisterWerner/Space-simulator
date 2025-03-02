@@ -125,7 +125,6 @@ func initialize_weapons():
 		# Add all available weapon types
 		combat_component.add_weapon("StandardLaser", StandardLaser.new())
 		combat_component.add_weapon("SpreadShot", SpreadShot.new())
-		combat_component.add_weapon("ChargeBeam", ChargeBeam.new())
 		combat_component.add_weapon("MissileLauncher", MissileLauncher.new())
 		
 		# Set initial weapon
