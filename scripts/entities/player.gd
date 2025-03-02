@@ -7,6 +7,7 @@ var combat_component
 var movement_component
 var resource_component
 var state_machine
+var camera_2d
 
 # Player-specific properties
 var is_immobilized: bool = false
@@ -32,6 +33,13 @@ func _ready():
 	movement_component = $MovementComponent
 	resource_component = $ResourceComponent
 	state_machine = $StateMachine
+	camera_2d = $Camera2D
+	
+	# IMPORTANT: Ensure the camera has zoom exactly 1.0 to avoid scaling
+	if camera_2d:
+		camera_2d.zoom = Vector2.ONE
+		# Disable smoothing to avoid interpolation issues
+		camera_2d.position_smoothing_enabled = false
 	
 	# Store initial position
 	last_valid_position = global_position
@@ -67,6 +75,10 @@ func _ready():
 			state_machine.change_state("Normal")
 
 func _process(delta):
+	# Ensure camera zoom is always set to 1.0
+	if camera_2d and camera_2d.zoom != Vector2.ONE:
+		camera_2d.zoom = Vector2.ONE
+	
 	# Update respawn timer if immobilized
 	if is_immobilized:
 		respawn_timer -= delta

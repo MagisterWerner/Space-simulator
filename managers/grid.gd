@@ -46,6 +46,9 @@ var planet_spawner = null
 var asteroid_spawner = null
 
 func _ready():
+	# Ensure NO SCALING is applied to the grid
+	scale = Vector2.ONE
+	
 	# Get resource manager - try multiple paths
 	resource_manager = get_node_or_null("/root/Main/ResourceManager")
 	if not resource_manager:
@@ -62,6 +65,10 @@ func _ready():
 	generate_cell_contents()
 
 func _process(delta):
+	# Ensure the grid has no scaling applied each frame
+	if scale != Vector2.ONE:
+		scale = Vector2.ONE
+		
 	# Get player reference
 	var player = get_node_or_null("/root/Main/Player")
 	if not player:
@@ -237,6 +244,9 @@ func update_enemy_visibility():
 			enemy.update_active_state(is_cell_loaded)
 
 func _draw():
+	# IMPORTANT: Reset transform to ensure NO SCALING is applied
+	draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
+	
 	# Only draw grid lines and cell coordinates for the loaded chunks
 	for cell_pos in loaded_cells.keys():
 		var x = int(cell_pos.x)
@@ -262,11 +272,16 @@ func _draw():
 		# Draw cell coordinates
 		draw_cell_coordinates(x, y)
 	
-	# Draw planets and asteroids
+	# For planets and asteroids, we'll call them with custom drawing
+	# rather than using the grid as the canvas
 	if planet_spawner:
+		# Reset transform to ensure NO SCALING is applied
+		draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
 		planet_spawner.draw_planets(self, loaded_cells)
 	
 	if asteroid_spawner:
+		# Reset transform to ensure NO SCALING is applied
+		draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
 		asteroid_spawner.draw_asteroids(self, loaded_cells)
 
 # Draw cell content (helper function)
@@ -274,8 +289,6 @@ func draw_cell_content(x, y):
 	# Skip if out of bounds
 	if y >= cell_contents.size() or x >= cell_contents[y].size():
 		return
-	
-	# No need to calculate cell_center here as it's not used
 
 # Draw cell coordinates (helper function)
 func draw_cell_coordinates(x, y):

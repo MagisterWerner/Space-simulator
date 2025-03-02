@@ -12,15 +12,14 @@ enum PlanetTheme {
 	OCEAN       # Predominantly water-based world
 }
 
-# Planet characteristics
-const PLANET_SIZE_MIN: int = 96
-const PLANET_SIZE_RANGE: int = 64
-const PIXEL_RESOLUTION: int = 192  # Resolution for detail
+# Fixed planet sizes - exactly what will be rendered, no scaling occurs
+const PLANET_SIZE_SMALL: int = 192
+const PLANET_SIZE_LARGE: int = 256
 const BASE_PLANET_RADIUS_FACTOR: float = 0.42
 
 # Terrain Configuration
 var terrain_size: float = 8.0  # Base terrain feature size
-var terrain_octaves: int = 6  # Noise complexity
+var terrain_octaves: int = 6   # Noise complexity
 var light_origin: Vector2 = Vector2(0.39, 0.39)  # Light source position
 
 # Atmosphere parameters
@@ -52,9 +51,17 @@ static func get_planet_texture(seed_value: int) -> Array:
 	
 	return textures
 
-# Get planet size based on seed
+# Get planet size based on seed - returns exactly PLANET_SIZE_SMALL or PLANET_SIZE_LARGE
 func get_planet_size(seed_value: int) -> int:
-	return PLANET_SIZE_MIN + (seed_value % PLANET_SIZE_RANGE)
+	# Use the seed to deterministically choose one of the two fixed sizes
+	var rng = RandomNumberGenerator.new()
+	rng.seed = seed_value
+	
+	# 50% chance of small or large planet
+	if rng.randi() % 2 == 0:
+		return PLANET_SIZE_SMALL
+	else:
+		return PLANET_SIZE_LARGE
 
 # Get planet theme based on seed
 func get_planet_theme(seed_value: int) -> int:
@@ -230,12 +237,14 @@ func get_atmosphere_color(theme: int) -> Color:
 		_:
 			return Color(0.60, 0.70, 0.90, 1.0)  # Default atmosphere
 
-# Create planet texture with atmosphere rendering
+# Create planet texture with atmosphere rendering - ALWAYS at exact pixel size
 func create_planet_texture(seed_value: int) -> Array:
+	# Get either 192x192 or 256x256 pixels based on seed
 	var planet_size = get_planet_size(seed_value)
-	var final_resolution = PIXEL_RESOLUTION
-	var image = Image.create(final_resolution, final_resolution, false, Image.FORMAT_RGBA8)
-	var atmosphere_image = Image.create(final_resolution, final_resolution, true, Image.FORMAT_RGBA8)
+	
+	# Create images at exact pixel resolution
+	var image = Image.create(planet_size, planet_size, false, Image.FORMAT_RGBA8)
+	var atmosphere_image = Image.create(planet_size, planet_size, true, Image.FORMAT_RGBA8)
 	
 	# Get theme for this planet
 	var current_theme = get_planet_theme(seed_value)
@@ -249,11 +258,11 @@ func create_planet_texture(seed_value: int) -> Array:
 	var atmosphere_radius = planet_radius * (1.0 + ATMOSPHERE_THICKNESS)
 	
 	# Generate planet surface and atmosphere
-	for x in range(final_resolution):
-		for y in range(final_resolution):
+	for x in range(planet_size):
+		for y in range(planet_size):
 			# Normalize coordinates
-			var nx = float(x) / (final_resolution - 1)
-			var ny = float(y) / (final_resolution - 1)
+			var nx = float(x) / (planet_size - 1)
+			var ny = float(y) / (planet_size - 1)
 			
 			# Calculate distance from center
 			var dx = nx - 0.5
@@ -299,5 +308,5 @@ func create_planet_texture(seed_value: int) -> Array:
 	return [
 		ImageTexture.create_from_image(image),
 		ImageTexture.create_from_image(atmosphere_image),
-		planet_size  # Return the planet size as well
+		planet_size  # Return the exact planet size as well
 	]

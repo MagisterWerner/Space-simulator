@@ -2,9 +2,9 @@
 extends RefCounted
 
 # Moon generation constants and configuration
-const MOON_SIZE_MIN: int = 12
-const MOON_SIZE_RANGE: int = 13
-const PIXEL_RESOLUTION: int = 32
+# Modified moon sizes to be specific fixed values
+const MOON_SIZES: Array = [24, 32, 40, 48, 56]  # Fixed pixel sizes for moons
+const PIXEL_RESOLUTION: int = 64  # Base resolution for textures (will be used based on moon size)
 
 # Optimized noise generation parameters
 const CUBIC_RESOLUTION: int = 512
@@ -70,6 +70,15 @@ static func get_moon_texture(seed_value: int) -> Texture2D:
 		moon_texture_cache.erase(oldest_key)
 	
 	return texture
+
+# Get moon size based on seed - returns one of the fixed moon sizes
+func get_moon_size(seed_value: int) -> int:
+	var rng = RandomNumberGenerator.new()
+	rng.seed = seed_value
+	
+	# Return one of the predefined moon sizes
+	var index = rng.randi() % MOON_SIZES.size()
+	return MOON_SIZES[index]
 
 func get_cubic(t: float) -> float:
 	# Fast cubic interpolation using precomputed lookup
@@ -278,7 +287,11 @@ func apply_lighting(color: Color, normal: Vector3) -> Color:
 	)
 
 func create_moon_texture(seed_value: int) -> ImageTexture:
-	var final_resolution = PIXEL_RESOLUTION
+	# Get the moon size based on seed
+	var moon_size = get_moon_size(seed_value)
+	
+	# Create image at the exact pixel size
+	var final_resolution = moon_size
 	var image = Image.create(final_resolution, final_resolution, true, Image.FORMAT_RGBA8)
 	
 	noise_cache.clear()
@@ -382,9 +395,3 @@ func create_moon_texture(seed_value: int) -> ImageTexture:
 			image.set_pixel(x, y, final_color)
 	
 	return ImageTexture.create_from_image(image)
-
-# Get moon pixel size based on seed
-func get_moon_size(seed_value: int) -> int:
-	var rng = RandomNumberGenerator.new()
-	rng.seed = seed_value
-	return MOON_SIZE_MIN + (rng.randi() % MOON_SIZE_RANGE)

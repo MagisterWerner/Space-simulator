@@ -22,8 +22,14 @@ var player = null
 var previous_key_states = {}
 
 func _ready():
+	# Ensure no scaling is applied to the main scene or any children
+	scale = Vector2.ONE
+	
 	# Initialize the grid
 	if grid:
+		# Ensure grid has no scaling
+		grid.scale = Vector2.ONE
+		
 		# Update the seed display
 		update_seed_label()
 		
@@ -77,6 +83,13 @@ func initialize_world():
 		force_grid_update()
 
 func _process(delta):
+	# Ensure no scaling is applied each frame
+	if scale != Vector2.ONE:
+		scale = Vector2.ONE
+	
+	if grid and grid.scale != Vector2.ONE:
+		grid.scale = Vector2.ONE
+	
 	# Handle seed changing via numeric keys
 	handle_seed_key_input()
 	
@@ -306,6 +319,13 @@ func _deferred_create_player():
 	if !player.get_script():
 		var player_script = load("res://player.gd")
 		player.set_script(player_script)
+	
+	# Ensure player has no scaling
+	player.scale = Vector2.ONE
+	
+	# Make sure camera zoom is set to exactly 1.0
+	if player.has_node("Camera2D"):
+		player.get_node("Camera2D").zoom = Vector2.ONE
 	
 	# Add to scene and position
 	add_child(player)
