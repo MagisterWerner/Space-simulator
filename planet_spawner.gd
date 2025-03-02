@@ -13,6 +13,11 @@ const AtmosphereGeneratorClass = preload("res://atmosphere_generator.gd")
 @export var moon_orbit_factor = 0.05      # Factor to slow down moon orbits (lower = slower)
 @export var cell_margin = 0.2       # Margin from cell edges (as percentage of cell size)
 
+# Added moon orbit parameters
+@export var min_moon_distance_factor = 1.8  # Minimum distance from planet edge (multiplier of planet radius)
+@export var max_moon_distance_factor = 2.5  # Maximum distance from planet edge (multiplier of planet radius)
+@export var max_orbit_deviation = 0.15      # Maximum deviation from equator (0 = perfect equator orbits)
+
 # Reference to the grid
 var grid = null
 
@@ -128,13 +133,20 @@ func generate_planets():
 				var moon_generator = MoonGeneratorClass.new()
 				var moon_pixel_size = moon_generator.get_moon_size(moon_seed)
 				
-				# Calculate moon parameters
+				# Use the planet radius and improved factors to calculate moon distance
+				var planet_radius = 128.0  # Half of the 256x256 planet texture
 				var moon_radius = moon_pixel_size / 2.0
-				var planet_radius = 256 / 2.0  # Planet size is always 256x256
-				var padding = rng.randf_range(10, 30)
-				var moon_orbit_distance = planet_radius + moon_radius + padding
 				
+				# Calculate improved moon orbit parameters
+				var min_distance = planet_radius * min_moon_distance_factor + moon_radius
+				var max_distance = planet_radius * max_moon_distance_factor + moon_radius
+				var moon_orbit_distance = rng.randf_range(min_distance, max_distance)
+				
+				# Random initial angle around the planet
 				var moon_angle = rng.randf_range(0, TAU)
+				
+				# Limited vertical deviation from equator - mostly orbit along planet equator
+				var orbit_deviation = rng.randf_range(-max_orbit_deviation, max_orbit_deviation)
 				
 				moons.append({
 					"seed": moon_seed,
@@ -142,6 +154,7 @@ func generate_planets():
 					"angle": moon_angle,
 					"scale": 1.0,  # ALWAYS EXACTLY 1.0 - NO SCALING
 					"orbit_speed": rng.randf_range(0.2, 0.5) * moon_orbit_factor,
+					"orbit_deviation": orbit_deviation,  # How far from equator the orbit deviates
 					"phase_offset": rng.randf_range(0, TAU),
 					"pixel_size": moon_pixel_size
 				})
@@ -181,7 +194,7 @@ func generate_planets():
 				if grid.is_valid_position(nx, ny):
 					reserved_cells[Vector2i(nx, ny)] = true
 		
-		# Stop if we've placed enough planets
+		# Stop if we've placed enough planet fields
 		if actual_planet_count >= planet_count:
 			break
 	
@@ -268,10 +281,13 @@ func draw_planets(canvas: CanvasItem, loaded_cells: Dictionary):
 						# Add phase offset for orbital variety
 						moon_angle += moon.phase_offset
 						
-						# Calculate moon position WITHOUT tilt (flat orbits)
+						# Calculate moon position with limited deviation from equator
+						var deviation_factor = sin(moon_angle) * moon.orbit_deviation
+						
+						# Calculate moon position - mostly follow equator with small vertical deviation
 						var moon_pos = planet_positions[planet_index].position + Vector2(
 							cos(moon_angle) * moon.distance,
-							sin(moon_angle) * moon.distance
+							sin(moon_angle) * moon.distance * (1.0 + deviation_factor)
 						)
 						
 						# Determine if moon is behind the planet based on Y position
@@ -287,10 +303,13 @@ func draw_planets(canvas: CanvasItem, loaded_cells: Dictionary):
 						# Add phase offset for orbital variety
 						moon_angle += moon.phase_offset
 						
-						# Calculate moon position WITHOUT tilt (flat orbits)
+						# Calculate moon position with limited deviation from equator
+						var deviation_factor = sin(moon_angle) * moon.orbit_deviation
+						
+						# Calculate moon position - mostly follow equator with small vertical deviation
 						var moon_pos = planet_positions[planet_index].position + Vector2(
 							cos(moon_angle) * moon.distance,
-							sin(moon_angle) * moon.distance
+							sin(moon_angle) * moon.distance * (1.0 + deviation_factor)
 						)
 						
 						# Determine if moon is in front of the planet based on Y position

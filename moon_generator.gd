@@ -291,36 +291,38 @@ func create_moon_texture(seed_value: int) -> ImageTexture:
 	# Get the moon size based on seed
 	var moon_size = get_moon_size(seed_value)
 	
-	# Create image at the exact pixel size
-	var final_resolution = moon_size
-	var image = Image.create(final_resolution, final_resolution, true, Image.FORMAT_RGBA8)
+	# Create image at the exact pixel size with padding to avoid clipping
+	var padding = 2
+	var padded_size = moon_size + (padding * 2)
+	var image = Image.create(padded_size, padded_size, true, Image.FORMAT_RGBA8)
 	
+	# Clear cache and generate craters
 	noise_cache.clear()
 	generate_craters(seed_value)
 	
 	# Pre-calculate pixel coordinates and sphere data for better performance
 	var sphere_data = []
-	sphere_data.resize(final_resolution * final_resolution)
+	sphere_data.resize(padded_size * padded_size)
 	var nx_values = []
 	var ny_values = []
 	
-	nx_values.resize(final_resolution)
-	ny_values.resize(final_resolution)
+	nx_values.resize(padded_size)
+	ny_values.resize(padded_size)
 	
-	for i in range(final_resolution):
-		nx_values[i] = float(i) / (final_resolution - 1)
-		ny_values[i] = float(i) / (final_resolution - 1)
+	for i in range(padded_size):
+		nx_values[i] = (float(i) - padding) / (moon_size - 1)
+		ny_values[i] = (float(i) - padding) / (moon_size - 1)
 	
-	for y in range(final_resolution):
+	for y in range(padded_size):
 		var ny = ny_values[y]
 		var dy = ny - 0.5
 		
-		for x in range(final_resolution):
+		for x in range(padded_size):
 			var nx = nx_values[x]
 			var dx = nx - 0.5
 			var d_circle = sqrt(dx * dx + dy * dy) * 2.0
 			
-			var idx = y * final_resolution + x
+			var idx = y * padded_size + x
 			if d_circle > 1.0:
 				sphere_data[idx] = null
 			else:
@@ -333,11 +335,11 @@ func create_moon_texture(seed_value: int) -> ImageTexture:
 	
 	# Calculate crater depth map
 	var depth_map = []
-	depth_map.resize(final_resolution * final_resolution)
+	depth_map.resize(padded_size * padded_size)
 	
-	for y in range(final_resolution):
-		for x in range(final_resolution):
-			var idx = y * final_resolution + x
+	for y in range(padded_size):
+		for x in range(padded_size):
+			var idx = y * padded_size + x
 			var data = sphere_data[idx]
 			
 			if data == null:
@@ -350,12 +352,12 @@ func create_moon_texture(seed_value: int) -> ImageTexture:
 			
 			depth_map[idx] = crater_depth
 	
-	# Generate final image with lighting
+	# Generate final image with lighting and enhanced edges
 	var color_size = colors.size() - 1
 	
-	for y in range(final_resolution):
-		for x in range(final_resolution):
-			var idx = y * final_resolution + x
+	for y in range(padded_size):
+		for x in range(padded_size):
+			var idx = y * padded_size + x
 			var data = sphere_data[idx]
 			
 			if data == null:
@@ -381,18 +383,20 @@ func create_moon_texture(seed_value: int) -> ImageTexture:
 			var base_color = colors[color_index]
 			
 			# Calculate normal and apply lighting
-			var normal = calculate_normal(depth_map, x, y, final_resolution)
+			var normal = calculate_normal(depth_map, x, y, padded_size)
 			var lit_color = apply_lighting(base_color, normal)
 			
-			# Add subtle edge shading with proper anti-aliasing
+			# Add subtle edge shading with enhanced anti-aliasing
 			var edge_factor = 1.0 - pow(d_circle, 2) * 0.2
 			
-			# Apply anti-aliasing to the moon edge
+			# Apply premium anti-aliasing to the moon edge
 			var edge_alpha = 1.0
-			var aa_width = 0.02  # Width of anti-aliasing transition zone
+			var aa_width = 0.03  # Width of anti-aliasing transition zone
 			if d_circle > (1.0 - aa_width):
 				edge_alpha = 1.0 - (d_circle - (1.0 - aa_width)) / aa_width
+				# Smooth cubic falloff for natural edges
 				edge_alpha = clamp(edge_alpha, 0.0, 1.0)
+				edge_alpha = edge_alpha * edge_alpha * (3.0 - 2.0 * edge_alpha)  # Smoothstep
 			
 			var final_color = Color(
 				lit_color.r * edge_factor,
@@ -403,4 +407,10 @@ func create_moon_texture(seed_value: int) -> ImageTexture:
 			
 			image.set_pixel(x, y, final_color)
 	
-	return ImageTexture.create_from_image(image)
+	# Crop the padded image back to the exact moon size to ensure perfect alignment
+	var final_image = Image.create(moon_size, moon_size, true, Image.FORMAT_RGBA8)
+	for y in range(moon_size):
+		for x in range(moon_size):
+			final_image.set_pixel(x, y, image.get_pixel(x + padding, y + padding))
+	
+	return ImageTexture.create_from_image(final_image)

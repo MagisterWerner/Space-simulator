@@ -14,10 +14,10 @@ enum PlanetTheme {
 
 # Fixed planet sizes - exactly what will be rendered, no scaling occurs
 const PLANET_SIZE_LARGE: int = 256
-const BASE_PLANET_RADIUS_FACTOR: float = 0.93  # Slightly reduced to prevent edge bleeding
+const PLANET_RADIUS: float = 128.0  # Exactly half of the texture size
 
 # Performance and quality settings
-const TERRAIN_OCTAVES: int = 4   # Increased for more detail and color variation
+const TERRAIN_OCTAVES: int = 4   # Used for noise generation
 const COLOR_VARIATION: float = 1.5  # Higher values create more color variety
 
 # Cache for generated planets by seed
@@ -54,7 +54,7 @@ static func get_planet_texture(seed_value: int) -> Array:
 	
 	return textures
 
-# Get planet size based on seed - always returns PLANET_SIZE_LARGE (256)
+# Get planet size - always returns PLANET_SIZE_LARGE (256)
 func get_planet_size(seed_value: int) -> int:
 	# Always return the large size (256x256) for consistent planet rendering
 	return PLANET_SIZE_LARGE
@@ -64,17 +64,6 @@ func get_planet_theme(seed_value: int) -> int:
 	var rng = RandomNumberGenerator.new()
 	rng.seed = seed_value
 	return rng.randi() % PlanetTheme.size()
-
-# Calculate planet radius factor based on seed
-func calculate_planet_radius_factor(seed_value: int) -> float:
-	var rng = RandomNumberGenerator.new()
-	rng.seed = seed_value
-	
-	# Generate a whole number percentage (100-150)
-	var size_percentage = rng.randi_range(100, 150)
-	
-	# Apply to planet radius
-	return BASE_PLANET_RADIUS_FACTOR * (float(size_percentage) / 100.0)
 
 # Optimized pseudo-random number generation with caching
 func get_random_seed(x: float, y: float, seed_value: int) -> float:
@@ -254,13 +243,13 @@ func create_empty_atmosphere() -> Image:
 	empty_atmosphere.set_pixel(0, 0, Color(0, 0, 0, 0))
 	return empty_atmosphere
 
-# Improved planet texture creation with enhanced color variation
+# Improved planet texture creation with proper circular masking
 func create_planet_texture(seed_value: int) -> Array:
 	# Always use 256x256 pixels for planets
 	var planet_size = PLANET_SIZE_LARGE
 	
-	# Create images at exact pixel resolution
-	var image = Image.create(planet_size, planet_size, true, Image.FORMAT_RGBA8)  # Enable alpha
+	# Create image at exact pixel resolution with alpha channel enabled
+	var image = Image.create(planet_size, planet_size, true, Image.FORMAT_RGBA8)
 	
 	# Get theme for this planet
 	var current_theme = get_planet_theme(seed_value)
@@ -268,45 +257,49 @@ func create_planet_texture(seed_value: int) -> Array:
 	# Generate color palette for current theme
 	var colors = generate_planet_palette(current_theme, seed_value)
 	
-	# Calculate atmosphere parameters
-	var planet_radius = calculate_planet_radius_factor(seed_value)
+	# Use exact radius - half of the texture size
+	var planet_radius = PLANET_RADIUS
+	
+	# Create a small anti-aliasing band at the edge
+	var aa_width = 1.5  # Anti-aliasing width in pixels
+	var aa_width_normalized = aa_width / planet_radius
+	
+	# Create noise multiplier seeds for color variation
+	var variation_seed_1 = seed_value + 12345
+	var variation_seed_2 = seed_value + 67890
 	
 	# Precompute some values for optimization
 	var color_size = colors.size() - 1
 	var half_size = planet_size / 2.0
 	var planet_size_minus_one = planet_size - 1
 	
-	# Calculate a hard edge margin to prevent bleeding
-	var edge_margin = 0.01  # Small margin to create hard edge
-	var planet_draw_radius = planet_radius - edge_margin
-	
-	# Create noise multiplier seeds for color variation
-	var variation_seed_1 = seed_value + 12345
-	var variation_seed_2 = seed_value + 67890
-	
 	# Generate planet surface with clean edge
 	for y in range(planet_size):
+		# Calculate normalized y coordinate (-0.5 to 0.5)
 		var ny = float(y) / planet_size_minus_one
-		var dy = ny - 0.5
+		var dy = ny - 0.5  # Distance from center in y
 		
 		for x in range(planet_size):
+			# Calculate normalized x coordinate (-0.5 to 0.5)
 			var nx = float(x) / planet_size_minus_one
-			var dx = nx - 0.5
+			var dx = nx - 0.5  # Distance from center in x
 			
-			# Calculate normalized distance from center (0-1)
-			var d_circle = sqrt(dx * dx + dy * dy) * 2.0
+			# Calculate distance from center (0 to 1.0)
+			var dist_squared = dx * dx + dy * dy
+			var dist = sqrt(dist_squared)
+			var normalized_dist = dist * 2.0  # Now 0-1 represents 0 to radius
 			
 			# Skip pixels outside the planet radius
-			if d_circle > planet_radius:
-				# Set fully transparent 
+			if normalized_dist > 1.0:
+				# Set fully transparent for outside pixels
 				image.set_pixel(x, y, Color(0, 0, 0, 0))
 				continue
 				
-			# Create a smooth edge transition at the boundary
-			var edge_alpha = 1.0
-			if d_circle > planet_draw_radius:
-				var edge_factor = (planet_radius - d_circle) / (planet_radius - planet_draw_radius)
-				edge_alpha = clamp(edge_factor, 0.0, 1.0)
+			# Apply anti-aliasing at the edge
+			var alpha = 1.0
+			if normalized_dist > (1.0 - aa_width_normalized):
+				alpha = 1.0 - (normalized_dist - (1.0 - aa_width_normalized)) / aa_width_normalized
+				alpha = clamp(alpha, 0.0, 1.0)
 			
 			# Spherify coordinates for natural planetary mapping
 			var sphere_uv = spherify(nx, ny)
@@ -330,15 +323,17 @@ func create_planet_texture(seed_value: int) -> Array:
 			var final_color = colors[color_index]
 			
 			# Add depth shading - better looking gradient 
-			var edge_shade = 1.0 - pow(d_circle / planet_radius, 2) * 0.3
-			final_color *= edge_shade
+			var edge_shade = 1.0 - pow(normalized_dist, 2) * 0.3
+			final_color.r *= edge_shade
+			final_color.g *= edge_shade
+			final_color.b *= edge_shade
 			
-			# Apply edge alpha for clean transition
-			final_color.a = edge_alpha
+			# Apply alpha for clean edge
+			final_color.a = alpha
 			
 			image.set_pixel(x, y, final_color)
 	
-	# Return the generated textures with an empty atmosphere
+	# Return the generated textures
 	var empty_atmosphere = create_empty_atmosphere()
 	
 	return [

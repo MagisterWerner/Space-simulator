@@ -13,9 +13,9 @@ enum PlanetTheme {
 }
 
 # Atmosphere parameters
-const BASE_ATMOSPHERE_SIZE: int = 320  # Larger than planet (256) to allow for corona
-const INNER_RADIUS_FACTOR: float = 0.95  # Where the atmosphere starts (relative to planet edge)
-const BASE_THICKNESS_FACTOR: float = 0.25  # Base thickness of the atmosphere (0-1)
+const BASE_ATMOSPHERE_SIZE: int = 384  # Increased to ensure no clipping at edges
+const INNER_RADIUS_FACTOR: float = 0.97  # Where the atmosphere starts (relative to planet edge)
+const BASE_THICKNESS_FACTOR: float = 0.26  # Base thickness of the atmosphere (0-1)
 
 # Atmosphere color by planet type
 const ATMOSPHERE_COLORS = {
@@ -58,7 +58,7 @@ func generate_atmosphere_data(theme: int, seed_value: int) -> Dictionary:
 	var r = clamp(base_color.r + (rng.randf() - 0.5) * color_variation, 0, 1)
 	var g = clamp(base_color.g + (rng.randf() - 0.5) * color_variation, 0, 1)
 	var b = clamp(base_color.b + (rng.randf() - 0.5) * color_variation, 0, 1)
-	var a = clamp(base_color.a + (rng.randf() - 0.5) * color_variation * 0.5, 0, 1)
+	var a = clamp(base_color.a + (rng.randf() - 0.5) * color_variation * 0.5, 0.05, 0.8)
 	
 	var color = Color(r, g, b, a)
 	var thickness = base_thickness * (1.0 + (rng.randf() - 0.5) * thickness_variation)
@@ -66,7 +66,7 @@ func generate_atmosphere_data(theme: int, seed_value: int) -> Dictionary:
 	# For lava planets, add increased thickness and opacity
 	if theme == PlanetTheme.LAVA:
 		thickness *= 1.2
-		color.a += 0.1
+		color.a = min(color.a + 0.1, 0.8)
 	
 	# For ocean planets, add slight blue-green tint
 	if theme == PlanetTheme.OCEAN:
@@ -97,20 +97,20 @@ static func get_atmosphere_texture(theme: int, seed_value: int, color: Color, th
 	
 	return texture
 
-# Generate atmosphere texture
+# Generate atmosphere texture with improved quality
 func generate_atmosphere_texture(theme: int, seed_value: int, color: Color, thickness_factor: float) -> ImageTexture:
-	# Create image with proper size
+	# Create image with proper size - larger to ensure no clipping
 	var atm_size = BASE_ATMOSPHERE_SIZE
 	var image = Image.create(atm_size, atm_size, true, Image.FORMAT_RGBA8)
 	
 	# Calculate atmosphere parameters
-	var planet_radius = 128  # Half of planet size (256/2)
+	var planet_radius = 127.0  # Half of planet size (256/2) with slight adjustment for perfect centering
 	var inner_radius = planet_radius * INNER_RADIUS_FACTOR  # Start slightly inside planet edge
 	var thickness = planet_radius * BASE_THICKNESS_FACTOR * thickness_factor
 	var outer_radius = planet_radius + thickness
 	
 	# Center of the atmosphere
-	var center = Vector2(atm_size / 2, atm_size / 2)
+	var center = Vector2(atm_size / 2.0, atm_size / 2.0)
 	
 	# Additional atmosphere variations based on theme
 	var noise_scale = 0.0
@@ -151,8 +151,8 @@ func generate_atmosphere_texture(theme: int, seed_value: int, color: Color, thic
 			# Calculate base alpha based on distance (stronger near planet, fading outward)
 			var atmosphere_t = (dist - inner_radius) / (outer_radius - inner_radius)
 			
-			# Use a smooth curve for alpha falloff
-			var alpha_curve = 1.0 - atmosphere_t  # Linear falloff
+			# Enhanced smooth curve for alpha falloff
+			var alpha_curve = 1.0 - atmosphere_t  # Linear falloff base
 			alpha_curve = alpha_curve * alpha_curve * (3.0 - 2.0 * alpha_curve)  # Smooth step
 			
 			# Apply noise if enabled
@@ -179,10 +179,31 @@ func generate_atmosphere_texture(theme: int, seed_value: int, color: Color, thic
 			# Apply the alpha curve and noise factor
 			var final_alpha = color.a * alpha_curve * noise_factor
 			
-			# Create the final color
+			# Ensure smooth fading at outer edges
+			if atmosphere_t > 0.85:
+				final_alpha *= (1.0 - (atmosphere_t - 0.85) / 0.15)
+			
+			# Create the final color - ensure atmosphere gets more transparent at edges
 			var final_color = Color(color.r, color.g, color.b, final_alpha)
 			
 			image.set_pixel(x, y, final_color)
+	
+	# Verify no hard edges by smoothing the atmosphere's edge
+	for y in range(atm_size):
+		for x in range(atm_size):
+			var pos = Vector2(x, y)
+			var dist = pos.distance_to(center)
+			
+			# Only process the edge area
+			if dist > outer_radius - 2.0 and dist < outer_radius + 2.0:
+				var t = (dist - (outer_radius - 2.0)) / 4.0  # 0 to 1 in the 4 pixel transition
+				t = clamp(t, 0.0, 1.0)
+				t = t * t * (3.0 - 2.0 * t)  # Smooth step
+				
+				var pixel_color = image.get_pixel(x, y)
+				pixel_color.a *= 1.0 - t
+				
+				image.set_pixel(x, y, pixel_color)
 	
 	return ImageTexture.create_from_image(image)
 
