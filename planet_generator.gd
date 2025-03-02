@@ -54,9 +54,7 @@ static func get_planet_texture(seed_value: int) -> Array:
 
 # Get planet size based on seed
 func get_planet_size(seed_value: int) -> int:
-	var rng = RandomNumberGenerator.new()
-	rng.seed = seed_value
-	return PLANET_SIZE_MIN + (rng.randi() % PLANET_SIZE_RANGE)
+	return PLANET_SIZE_MIN + (seed_value % PLANET_SIZE_RANGE)
 
 # Get planet theme based on seed
 func get_planet_theme(seed_value: int) -> int:

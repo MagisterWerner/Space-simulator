@@ -173,8 +173,8 @@ func generate_planets():
 		
 		# Scale the planet if needed to fit cell
 		var scale = 1.0
-		if planet_pixel_size > cell_min_dimension:
-			scale = cell_min_dimension / planet_pixel_size
+		#if planet_pixel_size > cell_min_dimension:
+			#scale = cell_min_dimension / planet_pixel_size
 		
 		# Calculate the visual radius of the planet with scaling
 		var planet_radius = planet_pixel_size * scale / 2
@@ -312,9 +312,6 @@ func generate_planets():
 
 # Method to draw planets with moons that have depth sorting
 func draw_planets(canvas: CanvasItem, loaded_cells: Dictionary):
-	if not grid:
-		return
-	
 	# Get current time for animation
 	var time = Time.get_ticks_msec() / 1000.0
 	
@@ -336,6 +333,13 @@ func draw_planets(canvas: CanvasItem, loaded_cells: Dictionary):
 				var planet = planet_data[planet_index]
 				var planet_seed = planet.seed
 				
+				# Debug logging
+				print("--- Planet Debug ---")
+				print("Cell size: ", grid.cell_size)
+				print("Planet pixel size: ", planet.pixel_size)
+				print("Planet position: ", planet_positions[planet_index].position)
+				print("Planet data scale: ", planet.scale)
+				
 				# Get planet textures from cache or generate them
 				var planet_key = str(planet_seed)
 				var planet_textures = null
@@ -350,39 +354,22 @@ func draw_planets(canvas: CanvasItem, loaded_cells: Dictionary):
 				# Get planet texture and atmosphere texture
 				var planet_texture = planet_textures[0]
 				var atmosphere_texture = planet_textures[1]
+				
+				# IMPORTANT CHANGE: Always use full pixel size, remove scaling
 				var texture_size = Vector2(planet.pixel_size, planet.pixel_size)
+				
+				print("Texture size: ", texture_size)
 				
 				# Calculate rotation based on time and planet's rotation speed
 				var rotation = time * planet.rotation_speed
 				
-				# First draw moons that should appear BEHIND the planet
-				if planet.has("moons"):
-					for moon in planet.moons:
-						# Update moon angle based on time and orbit speed
-						var moon_angle = moon.angle + time * moon.orbit_speed
-						
-						# Add phase offset for orbital variety
-						moon_angle += moon.phase_offset
-						
-						# Calculate moon position with tilt (simulating orbital inclination)
-						var orbit_y_scale = 1.0 - abs(moon.tilt)  # Compress Y axis based on tilt
-						var moon_pos = planet_positions[planet_index].position + Vector2(
-							cos(moon_angle) * moon.distance,
-							sin(moon_angle) * moon.distance * orbit_y_scale
-						)
-						
-						# Determine if moon is behind the planet based on Y position 
-						# (if moon Y position > planet center Y, it's behind)
-						if sin(moon_angle) > 0:  # Moon is in the "back" half of the orbit
-							draw_procedural_moon(canvas, moon, moon_pos, time)
-				
-				# First draw the planet atmosphere (which is behind the planet)
-				canvas.draw_set_transform(planet_positions[planet_index].position, rotation, Vector2(planet.scale, planet.scale))
+				# Draw atmosphere first (behind the planet)
+				canvas.draw_set_transform(planet_positions[planet_index].position, rotation, Vector2.ONE)
 				canvas.draw_texture(atmosphere_texture, -texture_size / 2, Color.WHITE)
 				
-				# Then draw the planet at its position (which now includes the random offset)
-				canvas.draw_set_transform(planet_positions[planet_index].position, rotation, Vector2(planet.scale, planet.scale))
-				canvas.draw_texture(planet_texture, -texture_size / 2, Color.WHITE)
+				# Draw the planet
+				canvas.draw_set_transform(planet_positions[planet_index].position, rotation, Vector2.ONE)
+				canvas.draw_texture(planet_texture, -Vector2(planet.pixel_size, planet.pixel_size) / 2, Color.WHITE)
 				canvas.draw_set_transform(planet_positions[planet_index].position, 0, Vector2(1, 1))  # Reset transform
 				
 				# Now draw moons that should appear IN FRONT of the planet
