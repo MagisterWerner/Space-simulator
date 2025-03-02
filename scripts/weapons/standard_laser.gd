@@ -33,5 +33,10 @@ func fire(entity, spawn_position: Vector2, direction: Vector2) -> Array:
 	# Add to scene
 	entity.get_tree().current_scene.add_child(laser)
 	
+	# Play laser sound
+	var sound_system = entity.get_node_or_null("/root/SoundSystem")
+	if sound_system:
+		sound_system.play_laser(spawn_position)
+	
 	# Return the projectile array (just one for standard laser)
 	return [laser]

@@ -11,6 +11,10 @@ var state_machine
 var original_position: Vector2
 var is_active: bool = true
 var detection_range: float = 300.0 # Add explicit detection range
+var thruster_active: bool = false
+
+# Sound system reference
+var sound_system = null
 
 func _ready():
 	# Set basic properties
@@ -22,6 +26,9 @@ func _ready():
 	combat_component = $CombatComponent
 	movement_component = $MovementComponent
 	state_machine = $StateMachine
+	
+	# Get sound system reference
+	sound_system = get_node_or_null("/root/SoundSystem")
 	
 	# Store original position
 	original_position = global_position
@@ -37,6 +44,10 @@ func _ready():
 	if state_machine:
 		call_deferred("_check_for_player")
 
+func _process(delta):
+	# Update thruster sound
+	update_thruster_sound()
+
 func _check_for_player():
 	if state_machine:
 		if is_player_in_same_cell():
@@ -48,20 +59,9 @@ func update_active_state(is_active_state: bool):
 	is_active = is_active_state
 	visible = is_active
 	
-	# Update process states
-	process_mode = Node.PROCESS_MODE_INHERIT if is_active else Node.PROCESS_MODE_DISABLED
-	
-	# Update all components
-	if health_component:
-		health_component.set_active(is_active)
-	if combat_component:
-		combat_component.set_active(is_active)
-	if movement_component:
-		movement_component.set_active(is_active)
-	if state_machine:
-		state_machine.process_mode = Node.PROCESS_MODE_INHERIT if is_active else Node.PROCESS_MODE_DISABLED
-	is_active = is_active_state
-	visible = is_active
+	# Stop thruster sound if being deactivated
+	if !is_active_state:
+		stop_thruster_sound()
 	
 	# Update process states
 	process_mode = Node.PROCESS_MODE_INHERIT if is_active else Node.PROCESS_MODE_DISABLED
@@ -96,6 +96,10 @@ func shoot_at_player(player: Node2D):
 	if combat_component and player:
 		var direction = (player.global_position - global_position).normalized()
 		combat_component.fire(direction)
+		
+		# Play laser sound when firing
+		if sound_system:
+			sound_system.play_laser(global_position)
 
 func can_see_player(player: Node2D) -> bool:
 	if not player:
@@ -133,8 +137,36 @@ func get_current_cell() -> Vector2i:
 		return Vector2i(movement_component.cell_x, movement_component.cell_y)
 	return Vector2i(-1, -1)
 
+# Sound-related methods
+func update_thruster_sound():
+	if not sound_system or not is_active:
+		return
+		
+	# Check if enemy is moving
+	var is_moving = false
+	if movement_component:
+		is_moving = movement_component.velocity.length() > 0
+	
+	# Start or stop thruster sound based on movement
+	if is_moving and not thruster_active:
+		start_thruster_sound()
+	elif not is_moving and thruster_active:
+		stop_thruster_sound()
+
+func start_thruster_sound():
+	if sound_system:
+		sound_system.start_thruster(get_instance_id())
+		thruster_active = true
+
+func stop_thruster_sound():
+	if sound_system:
+		sound_system.stop_thruster(get_instance_id())
+		thruster_active = false
+
 # Signal handlers
 func _on_died():
+	# Stop thruster sound
+	stop_thruster_sound()
 	queue_free()
 
 func _on_cell_changed(_cell_x, _cell_y):

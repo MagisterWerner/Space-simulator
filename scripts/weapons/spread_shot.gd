@@ -20,6 +20,11 @@ func fire(entity, spawn_position: Vector2, direction: Vector2) -> Array:
 	# Calculate start angle for the spread
 	var start_angle = direction.angle() - (spread_angle * (projectile_count - 1) / 2)
 	
+	# Play laser sound (just once for spread shot)
+	var sound_system = entity.get_node_or_null("/root/SoundSystem")
+	if sound_system:
+		sound_system.play_laser(spawn_position)
+	
 	# Create multiple projectiles in a spread pattern
 	for i in range(projectile_count):
 		var angle = start_angle + (spread_angle * i)

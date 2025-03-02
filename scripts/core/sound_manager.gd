@@ -7,14 +7,15 @@ const MUSIC_BUS_IDX = 1
 const SFX_BUS_IDX = 2
 
 # Audio resources
-# var laser_sound: AudioStream  # Commented out for now
-# var missile_sound: AudioStream  # Commented out for now
+var laser_sound: AudioStream
+var missile_sound: AudioStream
 var thruster_sound: AudioStream
 var music_track: AudioStream
 
 # Collections of active audio players
 var active_players: Dictionary = {}
 var thruster_players: Dictionary = {}
+var missile_players: Dictionary = {}
 var music_player: AudioStreamPlayer = null
 
 # Sound effect pool for optimization
@@ -45,18 +46,32 @@ func _ready() -> void:
 	set_sfx_volume(sfx_volume)
 
 func _load_sound_resources() -> void:
-	# Load audio resources
-	# Laser and missile sounds are commented out for now
-	# laser_sound = load("res://sounds/laser.wav") 
-	# missile_sound = load("res://sounds/missile.wav")
+	# Load laser sound from sfxr file
+	var laser_sfxr_path = "res://sounds/laser.sfxr"
+	if ResourceLoader.exists(laser_sfxr_path):
+		laser_sound = load(laser_sfxr_path)
+	else:
+		print_debug("Warning: Could not load laser.sfxr")
 	
-	# Load the OGG files
-	thruster_sound = load("res://sounds/thruster.ogg")
-	if thruster_sound == null:
+	# Load missile sound from sfxr file
+	var missile_sfxr_path = "res://sounds/missile.sfxr"
+	if ResourceLoader.exists(missile_sfxr_path):
+		missile_sound = load(missile_sfxr_path)
+	else:
+		print_debug("Warning: Could not load missile.sfxr")
+	
+	# Load thruster OGG file
+	var thruster_path = "res://sounds/thruster.ogg"
+	if ResourceLoader.exists(thruster_path):
+		thruster_sound = load(thruster_path)
+	else:
 		print_debug("Warning: Could not load thruster.ogg")
 	
-	music_track = load("res://music/safety2.ogg")
-	if music_track == null:
+	# Load background music
+	var music_path = "res://music/safety2.ogg"
+	if ResourceLoader.exists(music_path):
+		music_track = load(music_path)
+	else:
 		print_debug("Warning: Could not load background music")
 
 func _initialize_sound_pool() -> void:
@@ -117,37 +132,58 @@ func _get_audio_player() -> AudioStreamPlayer:
 	sfx_pool.append(player)
 	return player
 
-# Play a laser sound effect - commented out for now
-# func play_laser(position: Vector2 = Vector2.ZERO) -> String:
-#	if laser_sound == null:
-#		print_debug("Cannot play laser sound: not loaded")
-#		return ""
-#		
-#	var player = _get_audio_player()
-#	player.stream = laser_sound
-#	player.volume_db = linear_to_db(sfx_volume)
-#	player.pitch_scale = randf_range(0.95, 1.05)  # Slight variation
-#	player.play()
-#	
-#	var sound_id = "laser_" + str(player.get_instance_id())
-#	active_players[sound_id] = player
-#	return sound_id
+# Play a laser sound effect
+func play_laser(position: Vector2 = Vector2.ZERO) -> String:
+	if laser_sound == null:
+		print_debug("Cannot play laser sound: not loaded")
+		return ""
+		
+	var player = _get_audio_player()
+	player.stream = laser_sound
+	player.volume_db = linear_to_db(sfx_volume)
+	player.pitch_scale = randf_range(0.95, 1.05)  # Slight variation
+	player.play()
+	
+	var sound_id = "laser_" + str(player.get_instance_id())
+	active_players[sound_id] = player
+	return sound_id
 
-# Play a missile sound effect - commented out for now
-# func play_missile(position: Vector2 = Vector2.ZERO) -> String:
-#	if missile_sound == null:
-#		print_debug("Cannot play missile sound: not loaded")
-#		return ""
-#		
-#	var player = _get_audio_player()
-#	player.stream = missile_sound
-#	player.volume_db = linear_to_db(sfx_volume)
-#	player.pitch_scale = randf_range(0.95, 1.05)  # Slight variation
-#	player.play()
-#	
-#	var sound_id = "missile_" + str(player.get_instance_id())
-#	active_players[sound_id] = player
-#	return sound_id
+# Play a missile sound effect continuously
+func play_missile(entity_id: int) -> void:
+	if missile_sound == null:
+		print_debug("Cannot play missile sound: not loaded")
+		return
+		
+	if missile_players.has(entity_id):
+		# Already playing for this missile
+		return
+	
+	var player = _get_audio_player()
+	player.stream = missile_sound
+	player.volume_db = linear_to_db(sfx_volume * 0.7)
+	player.pitch_scale = randf_range(0.9, 1.1)  # Some variation
+	
+	# Enable looping for missile sounds
+	if player.stream is AudioStreamOggVorbis:
+		player.stream.loop = true
+	
+	player.play()
+	
+	missile_players[entity_id] = player
+	var sound_id = "missile_" + str(entity_id)
+	active_players[sound_id] = player
+
+# Stop missile sound for a specific entity
+func stop_missile(entity_id: int) -> void:
+	if missile_players.has(entity_id):
+		var player = missile_players[entity_id]
+		player.stop()
+		
+		var sound_id = "missile_" + str(entity_id)
+		if active_players.has(sound_id):
+			active_players.erase(sound_id)
+		
+		missile_players.erase(entity_id)
 
 # Start playing thruster sound (continuous)
 func start_thruster(entity_id: int) -> void:
@@ -217,6 +253,7 @@ func stop_all_sounds() -> void:
 	
 	active_players.clear()
 	thruster_players.clear()
+	missile_players.clear()
 
 # Volume control methods
 func set_master_volume(vol: float) -> void:

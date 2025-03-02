@@ -22,6 +22,10 @@ var current_charge: float = 0.0
 var is_charging_weapon: bool = false
 var weapon_swap_index: int = 0  # For cycling through weapons
 
+# Sound system reference
+var sound_system = null
+var thruster_active = false
+
 func _ready():
 	# Set basic properties
 	z_index = 10
@@ -34,6 +38,9 @@ func _ready():
 	resource_component = $ResourceComponent
 	state_machine = $StateMachine
 	camera_2d = $Camera2D
+	
+	# Get sound system reference
+	sound_system = get_node_or_null("/root/SoundSystem")
 	
 	# IMPORTANT: Ensure the camera has zoom exactly 1.0 to avoid scaling
 	if camera_2d:
@@ -58,6 +65,7 @@ func _ready():
 	
 	if combat_component:
 		combat_component.connect("weapon_changed", _on_weapon_changed)
+		combat_component.connect("weapon_fired", _on_weapon_fired)
 	
 	# Initialize resource component if available
 	if resource_component:
@@ -96,6 +104,9 @@ func _process(delta):
 	# Handle weapon charging if button is held
 	if is_charging_weapon and combat_component:
 		current_charge = combat_component.update_charge(delta)
+		
+	# Update thruster sound based on movement
+	update_thruster_sound()
 
 func _unhandled_input(event):
 	# Skip if immobilized
@@ -190,6 +201,9 @@ func set_immobilized(value: bool):
 		# Immobilize
 		respawn_timer = 5.0
 		
+		# Stop thruster sound if active
+		stop_thruster_sound()
+		
 		# Change state to immobilized
 		if state_machine and state_machine.has_state("Immobilized"):
 			state_machine.change_state("Immobilized")
@@ -269,7 +283,6 @@ func check_planet_collision():
 		
 		# Calculate distance between player and planet centers
 		var distance = global_position.distance_to(planet_pos)
-		
 	
 	# Handle entering a new planet
 	if new_planet_id != -1 and new_planet_id != current_planet_id:
@@ -288,8 +301,37 @@ func get_current_cell() -> Vector2i:
 		return Vector2i(movement_component.cell_x, movement_component.cell_y)
 	return Vector2i(-1, -1)
 
+# Sound-related methods
+func update_thruster_sound():
+	if not sound_system or is_immobilized:
+		return
+		
+	# Check if player is moving
+	var is_moving = false
+	if movement_component:
+		is_moving = movement_component.velocity.length() > 0
+	
+	# Start or stop thruster sound based on movement
+	if is_moving and not thruster_active:
+		start_thruster_sound()
+	elif not is_moving and thruster_active:
+		stop_thruster_sound()
+
+func start_thruster_sound():
+	if sound_system:
+		sound_system.start_thruster(get_instance_id())
+		thruster_active = true
+
+func stop_thruster_sound():
+	if sound_system:
+		sound_system.stop_thruster(get_instance_id())
+		thruster_active = false
+
 # Signal handlers
 func _on_died():
+	# Stop thruster sound
+	stop_thruster_sound()
+	
 	# Reset health
 	if health_component:
 		health_component.current_health = health_component.max_health
@@ -325,3 +367,8 @@ func _on_weapon_changed(new_weapon):
 	# Show message about new weapon
 	if main and main.has_method("show_message"):
 		main.show_message("Weapon switched to: " + new_weapon.weapon_name)
+
+func _on_weapon_fired(position, direction):
+	# Play laser sound when weapon is fired
+	if sound_system:
+		sound_system.play_laser(position)

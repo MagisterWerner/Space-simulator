@@ -28,6 +28,11 @@ func fire(entity, spawn_position: Vector2, direction: Vector2) -> Array:
 	if ResourceLoader.exists(missile_scene_path):
 		missile_scene = load(missile_scene_path)
 	
+	# Play launch sound
+	var sound_system = entity.get_node_or_null("/root/SoundSystem")
+	if sound_system:
+		sound_system.play_laser(spawn_position)
+	
 	# Create missiles
 	for i in range(missile_count):
 		var angle = start_angle + (spread_angle * i)

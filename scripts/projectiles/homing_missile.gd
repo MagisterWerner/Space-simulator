@@ -16,6 +16,7 @@ var distance_traveled = 0.0
 var target = null
 var previous_position = null
 var trail_particles = null
+var sound_system = null
 
 # Called when the node enters the scene tree for the first time
 func _ready():
@@ -25,8 +26,14 @@ func _ready():
 	add_to_group("missiles")
 	previous_position = global_position
 	
+	# Get sound system reference
+	sound_system = get_node_or_null("/root/SoundSystem")
+	
 	# Create trail particles
 	_create_trail_particles()
+	
+	# Start continuous missile sound
+	start_missile_sound()
 
 # Called every frame
 func _process(delta):
@@ -186,7 +193,20 @@ func _create_trail_particles():
 	
 	add_child(trail_particles)
 
+# Play continuous missile sound
+func start_missile_sound():
+	if sound_system:
+		sound_system.play_missile(get_instance_id())
+
+# Stop missile sound
+func stop_missile_sound():
+	if sound_system:
+		sound_system.stop_missile(get_instance_id())
+
 func explode(direct_hit_entity = null):
+	# Stop missile sound
+	stop_missile_sound()
+	
 	# Apply direct damage to the hit entity
 	if direct_hit_entity and direct_hit_entity.has_method("take_damage"):
 		direct_hit_entity.take_damage(damage)
