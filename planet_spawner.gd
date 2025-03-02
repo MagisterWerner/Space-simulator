@@ -1,5 +1,8 @@
 extends Node
 
+# Preload the MoonGenerator class
+const MoonGeneratorClass = preload("res://moon_generator.gd")
+
 # Planet generation parameters
 @export var planet_percentage = 10  # Percentage of grid cells that will contain planets
 @export var minimum_planets = 5     # Minimum number of planets to generate
@@ -23,7 +26,10 @@ var planet_colors = []
 
 # Arrays to store planet and moon sprites
 var planet_sprites = []
-var moon_sprites = []
+var moon_sprites = []   # Will keep this for fallback
+
+# Pool of procedurally generated moon textures
+var generated_moon_textures = {}
 
 # Planet color palette for fallback drawing
 var planet_color_palette = [
@@ -68,7 +74,7 @@ func load_sprites():
 			if texture:
 				planet_sprites.append(texture)
 	
-	# Load moon sprites
+	# Load moon sprites (for fallback)
 	var moon_paths = [
 		"res://sprites/moons/moon_1.png",
 		"res://sprites/moons/moon_2.png",
@@ -107,6 +113,7 @@ func generate_planets():
 	# Clear existing planet data
 	planet_positions.clear()
 	planet_data.clear()
+	generated_moon_textures.clear()
 	
 	# Initialize planet_sizes and planet_colors arrays
 	planet_sizes = []
@@ -207,15 +214,18 @@ func generate_planets():
 		
 		# Generate moon data if applicable
 		var moons = []
-		if has_moons and moon_sprites.size() > 0:
+		if has_moons:
 			# First pass to calculate the largest moon orbit radius
 			for m in range(num_moons):
-				var moon_sprite_idx = rng.randi() % moon_sprites.size()
-				var moon_texture = moon_sprites[moon_sprite_idx]
-				var moon_texture_size = moon_texture.get_size()
+				# Generate a unique seed for this moon
+				var moon_seed = grid.seed_value + x * 1000 + y * 100 + m
+				
+				# Determine moon pixel size based on seed
+				var moon_generator = MoonGeneratorClass.new()
+				var moon_pixel_size = moon_generator.get_moon_size(moon_seed)
 				
 				# Calculate moon parameters
-				var moon_radius = moon_texture_size.x / 2
+				var moon_radius = moon_pixel_size / 2.0
 				var padding = rng.randf_range(10, 30)
 				var moon_orbit_distance = planet_radius + moon_radius + padding
 				
@@ -235,13 +245,22 @@ func generate_planets():
 			
 			# Generate moon data for each moon
 			for m in range(num_moons):
-				# Generate moon data
-				var moon_sprite_idx = rng.randi() % moon_sprites.size()
-				var moon_texture = moon_sprites[moon_sprite_idx]
-				var moon_texture_size = moon_texture.get_size()
+				# Generate a unique seed for this moon
+				var moon_seed = grid.seed_value + x * 1000 + y * 100 + m
+				
+				# Get moon texture from generator
+				var moon_texture = MoonGeneratorClass.get_moon_texture(moon_seed)
+				
+				# Store in our cache for quick access
+				var moon_key = str(moon_seed)
+				generated_moon_textures[moon_key] = moon_texture
+				
+				# Determine moon pixel size
+				var moon_generator = MoonGeneratorClass.new()
+				var moon_pixel_size = moon_generator.get_moon_size(moon_seed)
 				
 				# Calculate moon parameters
-				var moon_radius = moon_texture_size.x / 2
+				var moon_radius = moon_pixel_size / 2.0
 				var padding = rng.randf_range(10, 30)
 				var moon_orbit_distance = planet_radius + moon_radius + padding
 				
@@ -254,13 +273,14 @@ func generate_planets():
 				var orbit_tilt = rng.randf_range(-orbital_tilt, orbital_tilt)
 				
 				moons.append({
-					"sprite_idx": moon_sprite_idx,
+					"seed": moon_seed,
 					"distance": moon_orbit_distance,
 					"angle": moon_angle,
 					"scale": moon_scale,
 					"orbit_speed": rng.randf_range(0.2, 0.5) * moon_orbit_factor,
 					"tilt": orbit_tilt,
-					"phase_offset": rng.randf_range(0, TAU)
+					"phase_offset": rng.randf_range(0, TAU),
+					"pixel_size": moon_pixel_size
 				})
 		else:
 			# No moons, just account for planet radius in safe area
@@ -350,7 +370,7 @@ func draw_planets(canvas: CanvasItem, loaded_cells: Dictionary):
 				var rotation = time * planet.rotation_speed
 				
 				# First draw moons that should appear BEHIND the planet
-				if planet.has("moons") and moon_sprites.size() > 0:
+				if planet.has("moons"):
 					for moon in planet.moons:
 						# Update moon angle based on time and orbit speed
 						var moon_angle = moon.angle + time * moon.orbit_speed
@@ -368,7 +388,7 @@ func draw_planets(canvas: CanvasItem, loaded_cells: Dictionary):
 						# Determine if moon is behind the planet based on Y position 
 						# (if moon Y position > planet center Y, it's behind)
 						if sin(moon_angle) > 0:  # Moon is in the "back" half of the orbit
-							draw_moon(canvas, moon, moon_pos, time)
+							draw_procedural_moon(canvas, moon, moon_pos, time)
 				
 				# Draw the planet at its position (which now includes the random offset)
 				canvas.draw_set_transform(planet_positions[planet_index].position, rotation, Vector2(planet.scale, planet.scale))
@@ -376,7 +396,7 @@ func draw_planets(canvas: CanvasItem, loaded_cells: Dictionary):
 				canvas.draw_set_transform(planet_positions[planet_index].position, 0, Vector2(1, 1))  # Reset transform
 				
 				# Now draw moons that should appear IN FRONT of the planet
-				if planet.has("moons") and moon_sprites.size() > 0:
+				if planet.has("moons"):
 					for moon in planet.moons:
 						# Update moon angle based on time and orbit speed
 						var moon_angle = moon.angle + time * moon.orbit_speed
@@ -394,22 +414,35 @@ func draw_planets(canvas: CanvasItem, loaded_cells: Dictionary):
 						# Determine if moon is in front of the planet based on Y position
 						# (if moon Y position <= planet center Y, it's in front)
 						if sin(moon_angle) <= 0:  # Moon is in the "front" half of the orbit
-							draw_moon(canvas, moon, moon_pos, time)
+							draw_procedural_moon(canvas, moon, moon_pos, time)
 
-# Helper function to draw a moon at a specific position
-func draw_moon(canvas: CanvasItem, moon, moon_pos: Vector2, time: float):
-	if moon.sprite_idx < moon_sprites.size():
-		var moon_texture = moon_sprites[moon.sprite_idx]
-		var moon_texture_size = moon_texture.get_size()
+# Helper function to draw a procedurally generated moon at a specific position
+func draw_procedural_moon(canvas: CanvasItem, moon, moon_pos: Vector2, time: float):
+	# Get the moon texture from our cache or generate a new one
+	var moon_key = str(moon.seed)
+	var moon_texture = null
+	
+	if generated_moon_textures.has(moon_key):
+		moon_texture = generated_moon_textures[moon_key]
+	else:
+		# Generate the moon texture and cache it
+		moon_texture = MoonGeneratorClass.get_moon_texture(moon.seed)
+		generated_moon_textures[moon_key] = moon_texture
+	
+	if moon_texture:
+		# Calculate size based on moon's settings
+		var moon_size = Vector2(moon.pixel_size, moon.pixel_size)
 		
 		# Add slight moon rotation for extra realism
 		var moon_rotation = time * moon.orbit_speed * 0.5
 		
+		# Draw the moon
+		moon.scale = 1.0
 		canvas.draw_set_transform(moon_pos, moon_rotation, Vector2(moon.scale, moon.scale))
-		canvas.draw_texture(moon_texture, -moon_texture_size / 2, Color.WHITE)
+		canvas.draw_texture(moon_texture, -moon_size / 2, Color.WHITE)
 		canvas.draw_set_transform(moon_pos, 0, Vector2(1, 1))  # Reset transform
 	else:
-		# Fallback to drawing a circle for the moon
+		# Fallback to drawing a circle if texture generation failed
 		var moon_size = 10 * moon.scale
 		canvas.draw_circle(moon_pos, moon_size, Color(0.9, 0.9, 0.9))
 
