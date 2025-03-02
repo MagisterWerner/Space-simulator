@@ -3,6 +3,7 @@ extends Node
 # Preload required generators
 const MoonGeneratorClass = preload("res://moon_generator.gd")
 const PlanetGeneratorClass = preload("res://planet_generator.gd")
+const AtmosphereGeneratorClass = preload("res://atmosphere_generator.gd")
 
 # Planet generation parameters
 @export var planet_percentage = 10  # Percentage of grid cells that will contain planets
@@ -11,7 +12,6 @@ const PlanetGeneratorClass = preload("res://planet_generator.gd")
 @export var max_moons = 2           # Maximum number of moons per planet
 @export var moon_orbit_factor = 0.05      # Factor to slow down moon orbits (lower = slower)
 @export var cell_margin = 0.2       # Margin from cell edges (as percentage of cell size)
-@export var orbital_tilt = 0.2      # Tilt factor for orbital planes (0-1, 0=no tilt, 1=max tilt)
 
 # Reference to the grid
 var grid = null
@@ -23,6 +23,7 @@ var planet_data = []  # Stores additional planet data like size, color, etc.
 # Texture caches
 var generated_planet_textures = {}
 var generated_moon_textures = {}
+var generated_atmosphere_textures = {}
 
 # Debug flags
 var debug_mode = true
@@ -44,6 +45,7 @@ func generate_planets():
 	planet_data.clear()
 	generated_planet_textures.clear()
 	generated_moon_textures.clear()
+	generated_atmosphere_textures.clear()
 	
 	# Make sure grid is ready
 	if grid.cell_contents.size() == 0:
@@ -134,19 +136,23 @@ func generate_planets():
 				
 				var moon_angle = rng.randf_range(0, TAU)
 				
-				# Add orbital inclination for 3D effect
-				var orbit_tilt = rng.randf_range(-orbital_tilt, orbital_tilt)
-				
 				moons.append({
 					"seed": moon_seed,
 					"distance": moon_orbit_distance,
 					"angle": moon_angle,
 					"scale": 1.0,  # ALWAYS EXACTLY 1.0 - NO SCALING
 					"orbit_speed": rng.randf_range(0.2, 0.5) * moon_orbit_factor,
-					"tilt": orbit_tilt,
 					"phase_offset": rng.randf_range(0, TAU),
 					"pixel_size": moon_pixel_size
 				})
+		
+		# Get planet theme and generate atmosphere data
+		var planet_generator = PlanetGeneratorClass.new()
+		var planet_theme = planet_generator.get_planet_theme(planet_seed)
+		
+		# Generate atmosphere data
+		var atmosphere_generator = AtmosphereGeneratorClass.new()
+		var atmosphere_data = atmosphere_generator.generate_atmosphere_data(planet_theme, planet_seed)
 		
 		# Store planet position and data
 		planet_positions.append({
@@ -160,8 +166,9 @@ func generate_planets():
 			"scale": 1.0,  # ALWAYS EXACTLY 1.0 - NO SCALING
 			"pixel_size": 256,  # Force planet size to exactly 256x256
 			"moons": moons,
-			"rotation_speed": rng.randf_range(0.02, 0.05) * 0.02,  # Very slow rotation
-			"name": generate_planet_name(x, y)
+			"name": generate_planet_name(x, y),
+			"theme": planet_theme,
+			"atmosphere": atmosphere_data
 		})
 		
 		# Reserve this cell and adjacent cells
@@ -215,11 +222,23 @@ func draw_planets(canvas: CanvasItem, loaded_cells: Dictionary):
 					planet_textures = PlanetGeneratorClass.get_planet_texture(planet_seed)
 					generated_planet_textures[planet_key] = planet_textures
 				
-				# Get planet texture and atmosphere texture
-				var planet_texture = planet_textures[0]
+				# Get atmosphere texture from cache or generate it
+				var atmosphere_texture = null
+				if generated_atmosphere_textures.has(planet_key):
+					atmosphere_texture = generated_atmosphere_textures[planet_key]
+				else:
+					# Generate atmosphere texture if not in cache
+					var atmosphere_generator = AtmosphereGeneratorClass.new()
+					atmosphere_texture = atmosphere_generator.generate_atmosphere_texture(
+						planet.theme, 
+						planet_seed,
+						planet.atmosphere.color,
+						planet.atmosphere.thickness
+					)
+					generated_atmosphere_textures[planet_key] = atmosphere_texture
 				
-				# Calculate rotation based on time and planet's rotation speed
-				var rotation = time * planet.rotation_speed
+				# Get planet texture
+				var planet_texture = planet_textures[0]
 				
 				# Always use 256x256 size for planets
 				var planet_size = Vector2(256, 256)
@@ -227,8 +246,14 @@ func draw_planets(canvas: CanvasItem, loaded_cells: Dictionary):
 				# CRITICAL: Reset transform before drawing
 				canvas.draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
 				
-				# Draw the planet at exact pixel size - NEVER SCALE
-				canvas.draw_set_transform(planet_positions[planet_index].position, rotation, Vector2.ONE)
+				# Draw the atmosphere first (below planet)
+				if atmosphere_texture:
+					canvas.draw_set_transform(planet_positions[planet_index].position, 0, Vector2.ONE)
+					canvas.draw_texture(atmosphere_texture, -Vector2(atmosphere_texture.get_width(), atmosphere_texture.get_height()) / 2, Color.WHITE)
+					canvas.draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
+				
+				# Draw the planet at exact pixel size - NEVER SCALE, NO ROTATION
+				canvas.draw_set_transform(planet_positions[planet_index].position, 0, Vector2.ONE)
 				canvas.draw_texture(planet_texture, -planet_size / 2, Color.WHITE)
 				
 				# Reset transform immediately after drawing
@@ -243,16 +268,15 @@ func draw_planets(canvas: CanvasItem, loaded_cells: Dictionary):
 						# Add phase offset for orbital variety
 						moon_angle += moon.phase_offset
 						
-						# Calculate moon position with tilt (simulating orbital inclination)
-						var orbit_y_scale = 1.0 - abs(moon.tilt)  # Compress Y axis based on tilt
+						# Calculate moon position WITHOUT tilt (flat orbits)
 						var moon_pos = planet_positions[planet_index].position + Vector2(
 							cos(moon_angle) * moon.distance,
-							sin(moon_angle) * moon.distance * orbit_y_scale
+							sin(moon_angle) * moon.distance
 						)
 						
 						# Determine if moon is behind the planet based on Y position
 						if sin(moon_angle) > 0:  # Moon is in the "back" half of the orbit
-							draw_procedural_moon(canvas, moon, moon_pos, time)
+							draw_procedural_moon(canvas, moon, moon_pos)
 				
 				# Now draw moons that should appear IN FRONT of the planet
 				if planet.has("moons"):
@@ -263,19 +287,18 @@ func draw_planets(canvas: CanvasItem, loaded_cells: Dictionary):
 						# Add phase offset for orbital variety
 						moon_angle += moon.phase_offset
 						
-						# Calculate moon position with tilt (simulating orbital inclination)
-						var orbit_y_scale = 1.0 - abs(moon.tilt)  # Compress Y axis based on tilt
+						# Calculate moon position WITHOUT tilt (flat orbits)
 						var moon_pos = planet_positions[planet_index].position + Vector2(
 							cos(moon_angle) * moon.distance,
-							sin(moon_angle) * moon.distance * orbit_y_scale
+							sin(moon_angle) * moon.distance
 						)
 						
 						# Determine if moon is in front of the planet based on Y position
 						if sin(moon_angle) <= 0:  # Moon is in the "front" half of the orbit
-							draw_procedural_moon(canvas, moon, moon_pos, time)
+							draw_procedural_moon(canvas, moon, moon_pos)
 
 # Helper function to draw a procedurally generated moon at a specific position
-func draw_procedural_moon(canvas: CanvasItem, moon, moon_pos: Vector2, time: float):
+func draw_procedural_moon(canvas: CanvasItem, moon, moon_pos: Vector2):
 	# Get the moon texture from our cache or generate a new one
 	var moon_key = str(moon.seed)
 	var moon_texture = null
@@ -291,11 +314,8 @@ func draw_procedural_moon(canvas: CanvasItem, moon, moon_pos: Vector2, time: flo
 		# Calculate the exact moon size in pixels
 		var moon_size = Vector2(moon.pixel_size, moon.pixel_size)
 		
-		# Add slight moon rotation for extra realism
-		var moon_rotation = time * moon.orbit_speed * 0.5
-		
-		# Draw the moon at exact pixel size with NO SCALING
-		canvas.draw_set_transform(moon_pos, moon_rotation, Vector2.ONE)
+		# Draw the moon at exact pixel size with NO SCALING and NO ROTATION
+		canvas.draw_set_transform(moon_pos, 0, Vector2.ONE)
 		canvas.draw_texture(moon_texture, -moon_size / 2, Color.WHITE)
 		canvas.draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)  # Reset transform
 	else:

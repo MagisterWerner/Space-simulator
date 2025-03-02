@@ -286,6 +286,7 @@ func apply_lighting(color: Color, normal: Vector3) -> Color:
 		color.a
 	)
 
+# Enhanced moon texture generation with proper alpha masking
 func create_moon_texture(seed_value: int) -> ImageTexture:
 	# Get the moon size based on seed
 	var moon_size = get_moon_size(seed_value)
@@ -383,13 +384,21 @@ func create_moon_texture(seed_value: int) -> ImageTexture:
 			var normal = calculate_normal(depth_map, x, y, final_resolution)
 			var lit_color = apply_lighting(base_color, normal)
 			
-			# Add subtle edge shading
+			# Add subtle edge shading with proper anti-aliasing
 			var edge_factor = 1.0 - pow(d_circle, 2) * 0.2
+			
+			# Apply anti-aliasing to the moon edge
+			var edge_alpha = 1.0
+			var aa_width = 0.02  # Width of anti-aliasing transition zone
+			if d_circle > (1.0 - aa_width):
+				edge_alpha = 1.0 - (d_circle - (1.0 - aa_width)) / aa_width
+				edge_alpha = clamp(edge_alpha, 0.0, 1.0)
+			
 			var final_color = Color(
 				lit_color.r * edge_factor,
 				lit_color.g * edge_factor,
 				lit_color.b * edge_factor,
-				1.0
+				edge_alpha  # Apply the edge alpha
 			)
 			
 			image.set_pixel(x, y, final_color)
