@@ -102,7 +102,7 @@ func generate_planets():
 		var planet_textures = PlanetGeneratorClass.get_planet_texture(planet_seed)
 		var planet_texture = planet_textures[0]  # Main planet texture
 		var atmosphere_texture = planet_textures[1]  # Atmosphere texture
-		var planet_pixel_size = planet_textures[2]  # Planet size
+		var planet_pixel_size = 256  # Force planet size to 256x256
 		
 		# Store in cache
 		var planet_key = str(planet_seed)
@@ -168,7 +168,7 @@ func generate_planets():
 		planet_data.append({
 			"seed": planet_seed,
 			"scale": 1.0,  # ALWAYS EXACTLY 1.0 - NO SCALING
-			"pixel_size": planet_pixel_size,
+			"pixel_size": 256,  # Force planet size to exactly 256x256
 			"moons": moons,
 			"rotation_speed": rng.randf_range(0.02, 0.05) * 0.02,  # Very slow rotation
 			"name": generate_planet_name(x, y)
@@ -232,14 +232,8 @@ func draw_planets(canvas: CanvasItem, loaded_cells: Dictionary):
 				# Calculate rotation based on time and planet's rotation speed
 				var rotation = time * planet.rotation_speed
 				
-				# Get the actual texture size in pixels
-				var planet_size = Vector2(planet.pixel_size, planet.pixel_size)
-				
-				if debug_mode:
-					# Debug printing to check actual sizes
-					#print("Planet pixel size: ", planet.pixel_size)
-					#print("Texture size: ", planet_texture.get_size())
-					pass
+				# Always use 256x256 size for planets
+				var planet_size = Vector2(256, 256)
 				
 				# Draw atmosphere first (behind the planet)
 				# CRITICAL: Use an identity transform matrix to prevent any scaling

@@ -51,17 +51,10 @@ static func get_planet_texture(seed_value: int) -> Array:
 	
 	return textures
 
-# Get planet size based on seed - returns exactly PLANET_SIZE_SMALL or PLANET_SIZE_LARGE
+# Get planet size based on seed - always returns PLANET_SIZE_LARGE (256)
 func get_planet_size(seed_value: int) -> int:
-	# Use the seed to deterministically choose one of the two fixed sizes
-	var rng = RandomNumberGenerator.new()
-	rng.seed = seed_value
-	
-	# 50% chance of small or large planet
-	if rng.randi() % 2 == 0:
-		return PLANET_SIZE_SMALL
-	else:
-		return PLANET_SIZE_LARGE
+	# Always return the large size (256x256) for consistent planet rendering
+	return PLANET_SIZE_LARGE
 
 # Get planet theme based on seed
 func get_planet_theme(seed_value: int) -> int:
@@ -239,8 +232,8 @@ func get_atmosphere_color(theme: int) -> Color:
 
 # Create planet texture with atmosphere rendering - ALWAYS at exact pixel size
 func create_planet_texture(seed_value: int) -> Array:
-	# Get either 192x192 or 256x256 pixels based on seed
-	var planet_size = get_planet_size(seed_value)
+	# Always use 256x256 pixels for planets
+	var planet_size = PLANET_SIZE_LARGE
 	
 	# Create images at exact pixel resolution
 	var image = Image.create(planet_size, planet_size, false, Image.FORMAT_RGBA8)
