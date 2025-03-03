@@ -10,8 +10,10 @@ func check_all_laser_collisions():
 	if lasers.size() == 0:
 		return
 	
-	# Get player
-	var player = get_node_or_null("/root/Main/Player")
+	# Get player - check for PlayerOne first, then fallback to Player if needed
+	var player = get_node_or_null("/root/Main/PlayerOne")
+	if not player:
+		player = get_node_or_null("/root/Main/Player")
 	
 	# Get all enemies (only consider enemies that are active/visible)
 	var enemies = []

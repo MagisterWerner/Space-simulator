@@ -319,8 +319,8 @@ func place_player_at_random_planet():
 # Create or update player
 func create_player():
 	# Use existing player or create new one
-	if has_node("Player"):
-		player = get_node("Player")
+	if has_node("PlayerOne"):
+		player = get_node("PlayerOne")
 		call_deferred("place_player_at_random_planet")
 		return
 	
@@ -329,12 +329,12 @@ func create_player():
 
 # Deferred player creation
 func _deferred_create_player():
-	var player_scene = load("res://player.tscn")
+	var player_scene = load("res://player_one.tscn")
 	player = player_scene.instantiate()
 	
 	# Assign script if needed
 	if !player.get_script():
-		var player_script = load("res://player.gd")
+		var player_script = load("res://player_one.gd")
 		player.set_script(player_script)
 	
 	# Ensure player has no scaling
@@ -354,7 +354,7 @@ func _deferred_create_player():
 	# Add to scene and position
 	add_child(player)
 	player.global_position = Vector2(100, 100)
-	player.name = "Player"
+	player.name = "PlayerOne"
 	
 	# Place player
 	call_deferred("place_player_at_random_planet")

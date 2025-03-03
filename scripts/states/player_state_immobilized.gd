@@ -2,28 +2,30 @@
 extends State
 class_name PlayerStateImmobilized
 
-var movement_component
-
 func enter() -> void:
 	super.enter()
-	
-	# Get reference to movement component
-	movement_component = entity.get_node_or_null("MovementComponent")
 	
 	# Set player state
 	entity.is_immobilized = true
 	
-	# Stop movement through the component
-	if movement_component:
-		movement_component.stop()
-		movement_component.set_speed(0)
+	# For RigidBody2D, freeze the body
+	if entity is RigidBody2D:
+		entity.freeze = true
+		# Reset velocities to zero
+		entity.linear_velocity = Vector2.ZERO
+		entity.angular_velocity = 0.0
 		
-		# For RigidBody2D, also freeze the body
-		if entity is RigidBody2D:
-			entity.freeze = true
-			# Reset velocities to zero
-			entity.linear_velocity = Vector2.ZERO
-			entity.angular_velocity = 0.0
+		# Disable all thrusters
+		if entity.has_node("L/RearThruster"):
+			entity.get_node("L/RearThruster").set_deferred("emitting", false)
+		if entity.has_node("R/RearThruster"):
+			entity.get_node("R/RearThruster").set_deferred("emitting", false)
+		if entity.has_node("L/FrontThruster"):
+			entity.get_node("L/FrontThruster").set_deferred("emitting", false)
+		if entity.has_node("R/FrontThruster"):
+			entity.get_node("R/FrontThruster").set_deferred("emitting", false)
+		if entity.has_node("MainThruster"):
+			entity.get_node("MainThruster").set_deferred("emitting", false)
 	
 	# Show a message if not already shown
 	var main = entity.get_node_or_null("/root/Main")

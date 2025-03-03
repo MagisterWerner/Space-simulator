@@ -69,8 +69,11 @@ func _process(delta):
 	if scale != Vector2.ONE:
 		scale = Vector2.ONE
 		
-	# Get player reference
-	var player = get_node_or_null("/root/Main/Player")
+	# Get player reference - check for PlayerOne first, then fallback to Player if needed
+	var player = get_node_or_null("/root/Main/PlayerOne")
+	if not player:
+		player = get_node_or_null("/root/Main/Player")
+		
 	if not player:
 		return
 		
