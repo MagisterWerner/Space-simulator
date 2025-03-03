@@ -90,45 +90,34 @@ func get_collision_rect() -> Rect2:
 		return Rect2(-size/2, -size/2, size, size)
 
 func _on_destroyed():
-	# Play explosion sound
-	if sound_system:
-		sound_system.play_explosion(global_position)
+	# Use explode component if available
+	var explode_component = $ExplodeDebrisComponent if has_node("ExplodeDebrisComponent") else null
 	
-	# Get the spawner
-	var asteroid_spawner = get_node_or_null("/root/Main/AsteroidSpawner")
-	if asteroid_spawner:
-		# Use the spawner's method to create procedural fragments
-		asteroid_spawner._spawn_fragments(
-			global_position,
-			size_category,
-			2, # Default fragment count (will be overridden in spawner)
-			base_scale
-		)
-	
-	# Chance to spawn resources
-	_spawn_resources()
-	
-	# Create explosion effect
-	_create_explosion()
+	if explode_component and explode_component.has_method("explode"):
+		explode_component.explode()
+	else:
+		# Fallback to old method if component not found
+		_create_explosion()
+		
+		# Play explosion sound
+		if sound_system:
+			sound_system.play_explosion(global_position)
+		
+		# Get the spawner for fragments
+		var asteroid_spawner = get_node_or_null("/root/Main/AsteroidSpawner")
+		if asteroid_spawner:
+			# Use the spawner's method to create procedural fragments
+			asteroid_spawner._spawn_fragments(
+				global_position,
+				size_category,
+				2, # Default fragment count (will be overridden in spawner)
+				base_scale
+			)
 	
 	# Remove asteroid
 	queue_free()
 
-func _spawn_resources():
-	# Chance to spawn resources based on size
-	var chance = 0.1  # 10% base chance
-	match size_category:
-		"small": chance = 0.1
-		"medium": chance = 0.3
-		"large": chance = 0.5
-	
-	var rng = RandomNumberGenerator.new()
-	rng.randomize()
-	
-	if rng.randf() <= chance:
-		# Spawn resource if implemented
-		pass
-
+# Fallback explosion method
 func _create_explosion():
 	# Use the explosion effect scene if it exists
 	var explosion_scene_path = "res://scenes/explosion_effect.tscn"

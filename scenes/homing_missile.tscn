@@ -1,10 +1,17 @@
-[gd_scene load_steps=3 format=3 uid="uid://c8vlg3ecu7x3q"]
+[gd_scene load_steps=4 format=3 uid="uid://c8vlg3ecu7x3q"]
 
 [ext_resource type="Script" path="res://scripts/projectiles/homing_missile.gd" id="1_3jv6g"]
 [ext_resource type="Texture2D" uid="uid://cxmbw6twk5flm" path="res://sprites/weapons/missile.png" id="2_f43rq"]
+[ext_resource type="Script" path="res://scripts/components/explode_fire_component.gd" id="3_kld5v"]
 
 [node name="HomingMissile" type="Node2D"]
 script = ExtResource("1_3jv6g")
 
 [node name="Sprite2D" type="Sprite2D" parent="."]
 texture = ExtResource("2_f43rq")
+
+[node name="ExplodeFireComponent" type="Node" parent="."]
+script = ExtResource("3_kld5v")
+explosion_scale = 1.0
+explosion_duration_multiplier = 0.8
+screen_shake_intensity = 5.0

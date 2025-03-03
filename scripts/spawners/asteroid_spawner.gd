@@ -2,7 +2,7 @@ extends Node
 class_name AsteroidSpawner
 
 # Import the existing RandomAsteroid generator
-const RandomAsteroidGenerator = preload("res://random_asteroid.gd")
+const RandomAsteroidGenerator = preload("res://scripts/generators/asteroid_generator.gd")
 
 # Asteroid generation parameters
 @export var asteroid_percentage = 15

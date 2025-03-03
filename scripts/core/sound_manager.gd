@@ -11,7 +11,8 @@ var laser_sound: AudioStream
 var missile_sound: AudioStream
 var thruster_sound: AudioStream
 var music_track: AudioStream
-var explosion_sounds: Array[AudioStream] = []
+var fire_explosion_sound: AudioStream
+var debris_explosion_sound: AudioStream
 
 # Collections of active audio players
 var active_players: Dictionary = {}
@@ -61,31 +62,26 @@ func _load_sound_resources() -> void:
 	else:
 		print_debug("Warning: Could not load missile.sfxr")
 	
-	# Load thruster OGG file
+	# Load thruster sound
 	var thruster_path = "res://sounds/thruster.wav"
 	if ResourceLoader.exists(thruster_path):
 		thruster_sound = load(thruster_path)
 	else:
 		print_debug("Warning: Could not load thruster.wav")
 	
-	# Load explosion sounds
-	var explosion_path_1 = "res://sounds/explosion_1.wav"
-	var explosion_path_2 = "res://sounds/explosion_2.wav"
-	var explosion_path_default = "res://sounds/explosion.wav"
+	# Load specific explosion sounds
+	var fire_explosion_path = "res://sounds/explosion_fire.wav"
+	var debris_explosion_path = "res://sounds/explosion_debris.wav"
 	
-	# First try to load the numbered explosion sounds
-	if ResourceLoader.exists(explosion_path_1):
-		explosion_sounds.append(load(explosion_path_1))
+	if ResourceLoader.exists(fire_explosion_path):
+		fire_explosion_sound = load(fire_explosion_path)
+	else:
+		print_debug("Warning: Could not load explosion_fire.wav")
 	
-	if ResourceLoader.exists(explosion_path_2):
-		explosion_sounds.append(load(explosion_path_2))
-	
-	# If neither loaded, try the default explosion sound
-	if explosion_sounds.is_empty() and ResourceLoader.exists(explosion_path_default):
-		explosion_sounds.append(load(explosion_path_default))
-	
-	if explosion_sounds.is_empty():
-		print_debug("Warning: Could not load any explosion sounds")
+	if ResourceLoader.exists(debris_explosion_path):
+		debris_explosion_sound = load(debris_explosion_path)
+	else:
+		print_debug("Warning: Could not load explosion_debris.wav")
 	
 	# Load background music
 	var music_path = "res://music/space.ogg"
@@ -168,14 +164,14 @@ func play_laser(_position: Vector2 = Vector2.ZERO) -> String:
 	active_players[sound_id] = player
 	return sound_id
 
-# Play a random explosion sound effect
-func play_explosion(_position: Vector2 = Vector2.ZERO) -> String:
-	if explosion_sounds.is_empty():
-		print_debug("Cannot play explosion sound: none loaded")
-		return ""
+# Play an explosion sound effect
+func play_explosion(position: Vector2, is_fire: bool = false) -> String:
+	# Determine which explosion sound to use
+	var explosion_sound = fire_explosion_sound if is_fire else debris_explosion_sound
 	
-	# Get a random explosion sound from the array
-	var explosion_sound = explosion_sounds[randi() % explosion_sounds.size()]
+	if explosion_sound == null:
+		print_debug("Cannot play explosion sound: not loaded")
+		return ""
 	
 	var player = _get_audio_player()
 	player.stream = explosion_sound

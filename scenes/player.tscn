@@ -1,4 +1,4 @@
-[gd_scene load_steps=10 format=3 uid="uid://bqf1ewcvnbx7q"]
+[gd_scene load_steps=11 format=3 uid="uid://bqf1ewcvnbx7q"]
 
 [ext_resource type="Script" path="res://scripts/entities/player.gd" id="1_pv8nj"]
 [ext_resource type="Script" path="res://scripts/components/resource_component.gd" id="2_3e0d2"]
@@ -9,6 +9,7 @@
 [ext_resource type="Script" path="res://scripts/components/combat_component.gd" id="4_1m3nr"]
 [ext_resource type="Script" path="res://player_state_normal.gd" id="4_7s3qe"]
 [ext_resource type="Script" path="res://player_state_immobilized.gd" id="5_b30eq"]
+[ext_resource type="Script" path="res://scripts/components/explode_fire_component.gd" id="10_8xkhj"]
 
 [node name="Player" type="Node2D"]
 script = ExtResource("1_pv8nj")
@@ -26,6 +27,13 @@ script = ExtResource("3_d3f7g")
 [node name="CombatComponent" type="Node" parent="."]
 script = ExtResource("4_1m3nr")
 is_player_weapon = true
+
+[node name="ExplodeFireComponent" type="Node" parent="."]
+script = ExtResource("10_8xkhj")
+explosion_scale = 1.5
+explosion_duration_multiplier = 1.2
+screen_shake_intensity = 10.0
+screen_shake_duration = 0.4
 
 [node name="Sprite2D" type="Sprite2D" parent="."]
 texture = ExtResource("2_j8p5k")

@@ -207,9 +207,18 @@ func explode(direct_hit_entity = null):
 	# Stop missile sound
 	stop_missile_sound()
 	
-	# Play explosion sound
-	if sound_system:
-		sound_system.play_explosion(global_position)
+	# Use the explode component if available
+	var explode_component = $ExplodeFireComponent if has_node("ExplodeFireComponent") else null
+	
+	if explode_component and explode_component.has_method("explode"):
+		explode_component.explode()
+	else:
+		# Fallback to playing explosion sound directly
+		if sound_system:
+			sound_system.play_explosion(global_position)
+			
+		# Fallback to creating explosion visually
+		_create_explosion_effect()
 	
 	# Apply direct damage to the hit entity
 	if direct_hit_entity and direct_hit_entity.has_method("take_damage"):
@@ -217,9 +226,6 @@ func explode(direct_hit_entity = null):
 	
 	# Apply area damage to all entities within explosion radius
 	_apply_explosion_damage()
-	
-	# Create explosion visual effect
-	_create_explosion_effect()
 	
 	# Remove the missile
 	queue_free()

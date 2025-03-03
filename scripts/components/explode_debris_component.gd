@@ -28,6 +28,9 @@ var size_categories = {
 func _initialize():
 	# Get sound system reference
 	sound_system = entity.get_node_or_null("/root/SoundSystem")
+	
+	# Set default damage groups for asteroids
+	damage_groups = ["player", "enemies"]
 
 # Called when the entity is destroyed
 func explode():
@@ -50,7 +53,7 @@ func explode():
 		_apply_screen_shake()
 		
 	# Spawn fragments if enabled
-	if spawn_fragments and entity.has("size_category"):
+	if spawn_fragments and "size_category" in entity:
 		_spawn_fragments(explosion_position, entity.size_category)
 
 # Create the explosion visual effect
@@ -158,7 +161,7 @@ func _spawn_fragments(position: Vector2, current_size: String):
 	if asteroid_spawner and asteroid_spawner.has_method("_spawn_fragments"):
 		# Get scale from entity if it exists
 		var base_scale = 1.0
-		if entity.has("base_scale"):
+		if "base_scale" in entity:
 			base_scale = entity.base_scale
 			
 		# Use the spawner's method to create fragments

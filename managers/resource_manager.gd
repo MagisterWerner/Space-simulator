@@ -2,9 +2,9 @@ extends Node
 class_name ResourceManager
 
 # Preload scenes
-var laser_scene = preload("res://laser.tscn")
-var player_scene = preload("res://player.tscn")
-var enemy_scene = preload("res://enemy.tscn")
+var laser_scene = preload("res://scenes/laser.tscn")
+var player_scene = preload("res://scenes/player.tscn")
+var enemy_scene = preload("res://scenes/enemy.tscn")
 
 # Keep track of resource load status
 var resources_loaded = false

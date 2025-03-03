@@ -329,6 +329,12 @@ func stop_thruster_sound():
 
 # Signal handlers
 func _on_died():
+	# Use the explode component if available
+	var explode_component = $ExplodeFireComponent if has_node("ExplodeFireComponent") else null
+	
+	if explode_component and explode_component.has_method("explode"):
+		explode_component.explode()
+	
 	# Stop thruster sound
 	stop_thruster_sound()
 	

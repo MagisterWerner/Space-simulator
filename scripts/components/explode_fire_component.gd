@@ -19,6 +19,22 @@ var explosion_scene = preload("res://scenes/explosion_fire.tscn")
 func _initialize():
 	# Get sound system reference
 	sound_system = entity.get_node_or_null("/root/SoundSystem")
+	
+	# Set default damage groups based on parent type
+	if entity.is_in_group("player"):
+		damage_groups = ["enemies", "asteroids"]
+	elif entity.is_in_group("enemies"):
+		damage_groups = ["player"]
+	elif entity.is_in_group("missiles"):
+		# Check if player or enemy missile
+		var is_player_missile = false
+		if "is_player_missile" in entity:
+			is_player_missile = entity.is_player_missile
+		
+		if is_player_missile:
+			damage_groups = ["enemies", "asteroids"]
+		else:
+			damage_groups = ["player"]
 
 # Called when the entity is destroyed
 func explode():

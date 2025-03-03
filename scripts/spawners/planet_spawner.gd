@@ -1,9 +1,9 @@
 extends Node
 
 # Preload required generators
-const MoonGeneratorClass = preload("res://moon_generator.gd")
-const PlanetGeneratorClass = preload("res://planet_generator.gd")
-const AtmosphereGeneratorClass = preload("res://atmosphere_generator.gd")
+const MoonGeneratorClass = preload("res://scripts/generators/moon_generator.gd")
+const PlanetGeneratorClass = preload("res://scripts/generators/planet_generator.gd")
+const AtmosphereGeneratorClass = preload("res://scripts/generators/atmosphere_generator.gd")
 
 # Planet generation parameters
 @export var planet_percentage = 10  # Percentage of grid cells that will contain planets
