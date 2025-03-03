@@ -1,4 +1,5 @@
 extends Node2D
+class_name ExplosionFire
 
 @export var explosion_duration: float = 0.6
 @export var max_radius: float = 150.0
@@ -6,7 +7,7 @@ extends Node2D
 @export var num_core_fire_particles: int = 50
 @export var num_core_smoke_particles: int = 100
 @export var num_outer_smoke_particles: int = 150
-@export var num_debris_particles: int = 50
+@export var num_debris_particles: int = 30
 
 var center_fire_particles: CPUParticles2D
 var core_fire_particles: CPUParticles2D
@@ -205,16 +206,16 @@ func _create_debris_particles():
 	debris_particles.initial_velocity_min = 150.0
 	debris_particles.initial_velocity_max = 300.0
 	
-	# Appearance
-	debris_particles.color = Color(0.5, 0.3, 0.2, 0.8)
+	# Appearance - fire debris is more spark-like
+	debris_particles.color = Color(0.9, 0.5, 0.1, 0.8)
 	debris_particles.scale_amount_min = 1.0
-	debris_particles.scale_amount_max = 3.0
+	debris_particles.scale_amount_max = 2.0
 	
 	# Create a gradient for debris fade-out
 	var debris_gradient = Gradient.new()
-	debris_gradient.add_point(0.0, Color(0.7, 0.4, 0.2, 0.9))
-	debris_gradient.add_point(0.5, Color(0.5, 0.3, 0.1, 0.6))
-	debris_gradient.add_point(1.0, Color(0.3, 0.2, 0.1, 0.0))
+	debris_gradient.add_point(0.0, Color(1.0, 0.8, 0.2, 0.9))
+	debris_gradient.add_point(0.5, Color(0.9, 0.4, 0.1, 0.6))
+	debris_gradient.add_point(1.0, Color(0.5, 0.2, 0.1, 0.0))
 	
 	var debris_ramp = GradientTexture1D.new()
 	debris_ramp.gradient = debris_gradient

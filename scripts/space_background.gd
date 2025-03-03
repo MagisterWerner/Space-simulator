@@ -1,8 +1,8 @@
 extends ParallaxBackground
 
-@export var star_count_far: int = 400
-@export var star_count_mid: int = 200 
-@export var star_count_near: int = 80
+@export var star_count_far: int = 1500
+@export var star_count_mid: int = 500
+@export var star_count_near: int = 250
 @export var parallax_scale: float = 1.0
 
 var camera: Camera2D

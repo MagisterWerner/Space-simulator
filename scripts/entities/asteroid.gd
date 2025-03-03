@@ -9,6 +9,7 @@ var rotation_speed: float = 0.0
 var base_scale: float = 1.0
 var field_data = null  # Reference to parent asteroid field data
 var initial_rotation: float = 0.0  # Store the initial rotation from the seed
+var sound_system = null
 
 func _ready():
 	# Set basic properties
@@ -17,6 +18,9 @@ func _ready():
 	
 	# Get component references
 	health_component = $HealthComponent
+	
+	# Get sound system reference
+	sound_system = get_node_or_null("/root/SoundSystem")
 	
 	# Configure health based on size
 	if health_component:
@@ -86,6 +90,10 @@ func get_collision_rect() -> Rect2:
 		return Rect2(-size/2, -size/2, size, size)
 
 func _on_destroyed():
+	# Play explosion sound
+	if sound_system:
+		sound_system.play_explosion(global_position)
+	
 	# Get the spawner
 	var asteroid_spawner = get_node_or_null("/root/Main/AsteroidSpawner")
 	if asteroid_spawner:

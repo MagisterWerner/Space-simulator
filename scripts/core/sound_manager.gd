@@ -11,6 +11,7 @@ var laser_sound: AudioStream
 var missile_sound: AudioStream
 var thruster_sound: AudioStream
 var music_track: AudioStream
+var explosion_sounds: Array[AudioStream] = []
 
 # Collections of active audio players
 var active_players: Dictionary = {}
@@ -66,6 +67,25 @@ func _load_sound_resources() -> void:
 		thruster_sound = load(thruster_path)
 	else:
 		print_debug("Warning: Could not load thruster.wav")
+	
+	# Load explosion sounds
+	var explosion_path_1 = "res://sounds/explosion_1.wav"
+	var explosion_path_2 = "res://sounds/explosion_2.wav"
+	var explosion_path_default = "res://sounds/explosion.wav"
+	
+	# First try to load the numbered explosion sounds
+	if ResourceLoader.exists(explosion_path_1):
+		explosion_sounds.append(load(explosion_path_1))
+	
+	if ResourceLoader.exists(explosion_path_2):
+		explosion_sounds.append(load(explosion_path_2))
+	
+	# If neither loaded, try the default explosion sound
+	if explosion_sounds.is_empty() and ResourceLoader.exists(explosion_path_default):
+		explosion_sounds.append(load(explosion_path_default))
+	
+	if explosion_sounds.is_empty():
+		print_debug("Warning: Could not load any explosion sounds")
 	
 	# Load background music
 	var music_path = "res://music/space.ogg"
@@ -145,6 +165,25 @@ func play_laser(_position: Vector2 = Vector2.ZERO) -> String:
 	player.play()
 	
 	var sound_id = "laser_" + str(player.get_instance_id())
+	active_players[sound_id] = player
+	return sound_id
+
+# Play a random explosion sound effect
+func play_explosion(_position: Vector2 = Vector2.ZERO) -> String:
+	if explosion_sounds.is_empty():
+		print_debug("Cannot play explosion sound: none loaded")
+		return ""
+	
+	# Get a random explosion sound from the array
+	var explosion_sound = explosion_sounds[randi() % explosion_sounds.size()]
+	
+	var player = _get_audio_player()
+	player.stream = explosion_sound
+	player.volume_db = linear_to_db(sfx_volume * 0.8)  # Slightly quieter
+	player.pitch_scale = randf_range(0.9, 1.1)  # Some variation
+	player.play()
+	
+	var sound_id = "explosion_" + str(player.get_instance_id())
 	active_players[sound_id] = player
 	return sound_id
 

@@ -207,6 +207,10 @@ func explode(direct_hit_entity = null):
 	# Stop missile sound
 	stop_missile_sound()
 	
+	# Play explosion sound
+	if sound_system:
+		sound_system.play_explosion(global_position)
+	
 	# Apply direct damage to the hit entity
 	if direct_hit_entity and direct_hit_entity.has_method("take_damage"):
 		direct_hit_entity.take_damage(damage)
