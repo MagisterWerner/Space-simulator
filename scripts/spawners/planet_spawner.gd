@@ -6,17 +6,17 @@ const PlanetGeneratorClass = preload("res://scripts/generators/planet_generator.
 const AtmosphereGeneratorClass = preload("res://scripts/generators/atmosphere_generator.gd")
 
 # Planet generation parameters
-@export var planet_percentage = 10  # Percentage of grid cells that will contain planets
-@export var minimum_planets = 5     # Minimum number of planets to generate
-@export var moon_chance = 40        # Percentage chance for a planet to have moons
-@export var max_moons = 2           # Maximum number of moons per planet
-@export var moon_orbit_factor = 0.05      # Factor to slow down moon orbits (lower = slower)
-@export var cell_margin = 0.2       # Margin from cell edges (as percentage of cell size)
+@export var planet_percentage: int = 10  # Percentage of grid cells that will contain planets
+@export var minimum_planets: int = 5     # Minimum number of planets to generate
+@export var moon_chance: int = 40        # Percentage chance for a planet to have moons
+@export var max_moons: int = 2           # Maximum number of moons per planet
+@export var moon_orbit_factor: float = 0.05      # Factor to slow down moon orbits (lower = slower)
+@export var cell_margin: float = 0.2       # Margin from cell edges (as percentage of cell size)
 
 # Added moon orbit parameters
-@export var min_moon_distance_factor = 1.8  # Minimum distance from planet edge (multiplier of planet radius)
-@export var max_moon_distance_factor = 2.5  # Maximum distance from planet edge (multiplier of planet radius)
-@export var max_orbit_deviation = 0.15      # Maximum deviation from equator (0 = perfect equator orbits)
+@export var min_moon_distance_factor: float = 1.8  # Minimum distance from planet edge (multiplier of planet radius)
+@export var max_moon_distance_factor: float = 2.5  # Maximum distance from planet edge (multiplier of planet radius)
+@export var max_orbit_deviation: float = 0.15      # Maximum deviation from equator (0 = perfect equator orbits)
 
 # Reference to the grid
 var grid = null
@@ -70,9 +70,20 @@ func generate_planets():
 	# Create a Set to track reserved cells (cells that cannot have planets)
 	var reserved_cells = {}
 	
+	# Use safe default values for exported variables that might be null
+	var safe_planet_percentage = 10 if planet_percentage == null else planet_percentage
+	var safe_minimum_planets = 5 if minimum_planets == null else minimum_planets
+	var safe_moon_chance = 40 if moon_chance == null else moon_chance
+	var safe_max_moons = 2 if max_moons == null else max_moons
+	var safe_moon_orbit_factor = 0.05 if moon_orbit_factor == null else moon_orbit_factor
+	var safe_cell_margin = 0.2 if cell_margin == null else cell_margin
+	var safe_min_moon_distance = 1.8 if min_moon_distance_factor == null else min_moon_distance_factor
+	var safe_max_moon_distance = 2.5 if max_moon_distance_factor == null else max_moon_distance_factor
+	var safe_max_orbit_deviation = 0.15 if max_orbit_deviation == null else max_orbit_deviation
+	
 	# Determine how many planets to spawn
 	var non_boundary_count = available_cells.size()
-	var planet_count = max(minimum_planets, int(non_boundary_count * planet_percentage / 100.0))
+	var planet_count = max(safe_minimum_planets, int(non_boundary_count * safe_planet_percentage / 100.0))
 	planet_count = min(planet_count, non_boundary_count)  # Cap at available cells
 	
 	# Setup RNG with the grid's seed
@@ -112,8 +123,8 @@ func generate_planets():
 		)
 		
 		# Determine if this planet has moons
-		var has_moons = rng.randi() % 100 < moon_chance
-		var num_moons = rng.randi_range(1, max_moons) if has_moons else 0
+		var has_moons = rng.randi() % 100 < safe_moon_chance
+		var num_moons = rng.randi_range(1, safe_max_moons) if has_moons else 0
 		
 		# Generate moon data if applicable
 		var moons = []
@@ -138,22 +149,22 @@ func generate_planets():
 				var moon_radius = moon_pixel_size / 2.0
 				
 				# Calculate improved moon orbit parameters
-				var min_distance = planet_radius * min_moon_distance_factor + moon_radius
-				var max_distance = planet_radius * max_moon_distance_factor + moon_radius
+				var min_distance = planet_radius * safe_min_moon_distance + moon_radius
+				var max_distance = planet_radius * safe_max_moon_distance + moon_radius
 				var moon_orbit_distance = rng.randf_range(min_distance, max_distance)
 				
 				# Random initial angle around the planet
 				var moon_angle = rng.randf_range(0, TAU)
 				
 				# Limited vertical deviation from equator - mostly orbit along planet equator
-				var orbit_deviation = rng.randf_range(-max_orbit_deviation, max_orbit_deviation)
+				var orbit_deviation = rng.randf_range(-safe_max_orbit_deviation, safe_max_orbit_deviation)
 				
 				moons.append({
 					"seed": moon_seed,
 					"distance": moon_orbit_distance,
 					"angle": moon_angle,
 					"scale": 1.0,  # ALWAYS EXACTLY 1.0 - NO SCALING
-					"orbit_speed": rng.randf_range(0.2, 0.5) * moon_orbit_factor,
+					"orbit_speed": rng.randf_range(0.2, 0.5) * safe_moon_orbit_factor,
 					"orbit_deviation": orbit_deviation,  # How far from equator the orbit deviates
 					"phase_offset": rng.randf_range(0, TAU),
 					"pixel_size": moon_pixel_size

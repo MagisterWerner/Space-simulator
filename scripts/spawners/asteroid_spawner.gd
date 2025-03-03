@@ -4,19 +4,19 @@ class_name AsteroidSpawner
 # Import the existing RandomAsteroid generator
 const RandomAsteroidGenerator = preload("res://scripts/generators/asteroid_generator.gd")
 
-# Asteroid generation parameters
-@export var asteroid_percentage = 15
-@export var minimum_asteroids = 8
-@export var min_asteroids_per_cell = 50
-@export var max_asteroids_per_cell = 50
-@export var asteroid_scale_min = 0.9
-@export var asteroid_scale_max = 1.1
-@export var cell_margin = 0.15
-@export var cluster_percentage = 60
+# Asteroid generation parameters - explicitly typed
+@export var asteroid_percentage: int = 30
+@export var minimum_asteroids: int = 8
+@export var min_asteroids_per_cell: int = 50
+@export var max_asteroids_per_cell: int = 50
+@export var asteroid_scale_min: float = 0.9
+@export var asteroid_scale_max: float = 1.1
+@export var cell_margin: float = 0.15
+@export var cluster_percentage: int = 60
 
 # Size distribution - as requested
-@export var large_percentage = 70
-@export var medium_percentage = 20
+@export var large_percentage: int = 70
+@export var medium_percentage: int = 20
 # Small percentage is implied as the remaining 10%
 
 # Reference to the grid
@@ -138,9 +138,21 @@ func generate_asteroids():
 			
 			available_cells.append(Vector2i(x, y))
 	
+	# Use safe default values for exported variables that might be null
+	var safe_asteroid_percentage = 30 if asteroid_percentage == null else asteroid_percentage
+	var safe_minimum_asteroids = 8 if minimum_asteroids == null else minimum_asteroids
+	var safe_min_asteroids_per_cell = 50 if min_asteroids_per_cell == null else min_asteroids_per_cell
+	var safe_max_asteroids_per_cell = 50 if max_asteroids_per_cell == null else max_asteroids_per_cell
+	var safe_asteroid_scale_min = 0.9 if asteroid_scale_min == null else asteroid_scale_min
+	var safe_asteroid_scale_max = 1.1 if asteroid_scale_max == null else asteroid_scale_max
+	var safe_cell_margin = 0.15 if cell_margin == null else cell_margin
+	var safe_cluster_percentage = 60 if cluster_percentage == null else cluster_percentage
+	var safe_large_percentage = 70 if large_percentage == null else large_percentage
+	var safe_medium_percentage = 20 if medium_percentage == null else medium_percentage
+	
 	# Determine how many asteroid fields to spawn
 	var non_boundary_count = available_cells.size()
-	var asteroid_count = max(minimum_asteroids, int(non_boundary_count * float(asteroid_percentage) / 100.0))
+	var asteroid_count = max(safe_minimum_asteroids, int(non_boundary_count * float(safe_asteroid_percentage) / 100.0))
 	asteroid_count = min(asteroid_count, non_boundary_count)
 	
 	# Setup RNG with the grid's seed
@@ -164,7 +176,7 @@ func generate_asteroids():
 		grid.cell_contents[y][x] = grid.CellContent.ASTEROID
 		actual_asteroid_count += 1
 		
-		asteroid_counts[y][x] = min_asteroids_per_cell
+		asteroid_counts[y][x] = safe_min_asteroids_per_cell
 		
 		var world_pos = Vector2(
 			x * grid.cell_size.x + grid.cell_size.x / 2,
@@ -177,7 +189,9 @@ func generate_asteroids():
 			"grid_y": y
 		})
 		
-		_generate_asteroids_for_field(x, y, world_pos, rng)
+		_generate_asteroids_for_field(x, y, world_pos, rng, safe_min_asteroids_per_cell, safe_cell_margin, 
+									safe_large_percentage, safe_medium_percentage, safe_asteroid_scale_min, 
+									safe_asteroid_scale_max, safe_cluster_percentage)
 		
 		if actual_asteroid_count >= asteroid_count:
 			break
@@ -185,20 +199,22 @@ func generate_asteroids():
 	grid.queue_redraw()
 
 # Generate asteroid data for a specific field
-func _generate_asteroids_for_field(grid_x, grid_y, _center_pos, _rng):
+func _generate_asteroids_for_field(grid_x, grid_y, _center_pos, _rng, safe_min_asteroids_per_cell, 
+								safe_cell_margin, safe_large_percentage, safe_medium_percentage,
+								safe_asteroid_scale_min, safe_asteroid_scale_max, safe_cluster_percentage):
 	var field_asteroids = []
 	
 	# Apply cell margins for this field
-	var safe_width = grid.cell_size.x * (1.0 - 2 * cell_margin)
-	var safe_height = grid.cell_size.y * (1.0 - 2 * cell_margin)
-	var margin_x = grid.cell_size.x * cell_margin
-	var margin_y = grid.cell_size.y * cell_margin
+	var safe_width = grid.cell_size.x * (1.0 - 2 * safe_cell_margin)
+	var safe_height = grid.cell_size.y * (1.0 - 2 * safe_cell_margin)
+	var margin_x = grid.cell_size.x * safe_cell_margin
+	var margin_y = grid.cell_size.y * safe_cell_margin
 	
-	var num_asteroids = min_asteroids_per_cell
+	var num_asteroids = safe_min_asteroids_per_cell
 	
 	# Calculate how many of each size based on percentages
-	var large_count = int(num_asteroids * large_percentage / 100.0)
-	var medium_count = int(num_asteroids * medium_percentage / 100.0)
+	var large_count = int(num_asteroids * safe_large_percentage / 100.0)
+	var medium_count = int(num_asteroids * safe_medium_percentage / 100.0)
 	var small_count = num_asteroids - large_count - medium_count
 	
 	# Create distribution of sizes
@@ -229,7 +245,7 @@ func _generate_asteroids_for_field(grid_x, grid_y, _center_pos, _rng):
 			"small": pixel_size = RandomAsteroidGenerator.ASTEROID_SIZE_SMALL
 		
 		# Scale variation based on size category
-		var base_scale = asteroid_rng.randf_range(asteroid_scale_min, asteroid_scale_max)
+		var base_scale = asteroid_rng.randf_range(safe_asteroid_scale_min, safe_asteroid_scale_max)
 		
 		# Random rotation angle
 		var rotation = asteroid_rng.randf_range(0, TAU)
@@ -248,7 +264,7 @@ func _generate_asteroids_for_field(grid_x, grid_y, _center_pos, _rng):
 		var collision_radius = pixel_size * 0.5 * base_scale
 		
 		# Determine if this asteroid should be part of a cluster
-		var in_cluster = asteroid_rng.randf() * 100 < cluster_percentage
+		var in_cluster = asteroid_rng.randf() * 100 < safe_cluster_percentage
 		var pos_offset = Vector2.ZERO
 		var valid_position = false
 		var attempts = 0

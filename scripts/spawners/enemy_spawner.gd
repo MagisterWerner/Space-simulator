@@ -7,7 +7,7 @@ extends Node
 var grid = null
 
 # Path to the enemy scene
-var enemy_scene_path = "res://enemy.tscn"
+var enemy_scene_path = "res://scenes/enemy.tscn"
 
 # Array to track spawned enemies
 var spawned_enemies = []

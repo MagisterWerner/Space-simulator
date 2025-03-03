@@ -64,28 +64,9 @@ script = ExtResource("4_bfxvw")
 
 [node name="PlanetSpawner" type="Node" parent="."]
 script = ExtResource("5_oha7o")
-planet_percentage = null
-minimum_planets = null
-moon_chance = null
-max_moons = null
-moon_orbit_factor = null
-cell_margin = null
-min_moon_distance_factor = null
-max_moon_distance_factor = null
-max_orbit_deviation = null
 
 [node name="AsteroidSpawner" type="Node" parent="."]
 script = ExtResource("6_lenuj")
-asteroid_percentage = 30
-minimum_asteroids = null
-min_asteroids_per_cell = null
-max_asteroids_per_cell = null
-asteroid_scale_min = null
-asteroid_scale_max = null
-cell_margin = null
-cluster_percentage = null
-large_percentage = null
-medium_percentage = null
 
 [node name="CombatManager" type="Node" parent="."]
 script = ExtResource("7_suh4m")
