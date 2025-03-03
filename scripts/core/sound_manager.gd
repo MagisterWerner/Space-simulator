@@ -133,7 +133,7 @@ func _get_audio_player() -> AudioStreamPlayer:
 	return player
 
 # Play a laser sound effect
-func play_laser(position: Vector2 = Vector2.ZERO) -> String:
+func play_laser(_position: Vector2 = Vector2.ZERO) -> String:
 	if laser_sound == null:
 		print_debug("Cannot play laser sound: not loaded")
 		return ""

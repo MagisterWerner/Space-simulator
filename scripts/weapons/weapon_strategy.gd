@@ -11,16 +11,16 @@ extends Resource
 @export var icon: Texture2D
 
 # Virtual function to be implemented by each weapon strategy
-func fire(entity, spawn_position: Vector2, direction: Vector2) -> Array:
+func fire(_entity, _spawn_position: Vector2, _direction: Vector2) -> Array:
 	# Return an array of projectiles created
 	return []
 	
 # Virtual function for any weapon update logic
-func process(delta: float) -> void:
+func process(_delta: float) -> void:
 	pass
 	
 # Virtual function for weapon charge mechanics
-func charge(amount: float) -> float:
+func charge(_amount: float) -> float:
 	# Return charge progress (0-1)
 	return 0.0
 	

@@ -22,6 +22,6 @@ func enter() -> void:
 	if main and main.has_method("show_message") and entity.respawn_timer > 4.9:
 		main.show_message("You are immobilized. Respawning in 5 seconds...")
 
-func process(delta: float) -> void:
+func process(_delta: float) -> void:
 	# Update the respawn timer is handled in the player script
 	pass

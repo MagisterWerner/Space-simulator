@@ -44,7 +44,7 @@ func _ready():
 	if state_machine:
 		call_deferred("_check_for_player")
 
-func _process(delta):
+func _process(_delta):
 	# Update thruster sound
 	update_thruster_sound()
 

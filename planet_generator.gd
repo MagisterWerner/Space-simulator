@@ -55,7 +55,7 @@ static func get_planet_texture(seed_value: int) -> Array:
 	return textures
 
 # Get planet size - always returns PLANET_SIZE_LARGE (256)
-func get_planet_size(seed_value: int) -> int:
+func get_planet_size(_seed_value: int) -> int:
 	# Always return the large size (256x256) for consistent planet rendering
 	return PLANET_SIZE_LARGE
 

@@ -368,7 +368,7 @@ func _on_weapon_changed(new_weapon):
 	if main and main.has_method("show_message"):
 		main.show_message("Weapon switched to: " + new_weapon.weapon_name)
 
-func _on_weapon_fired(position, direction):
+func _on_weapon_fired(position, _direction):
 	# Play laser sound when weapon is fired
 	if sound_system:
 		sound_system.play_laser(position)

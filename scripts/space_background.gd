@@ -64,7 +64,7 @@ func find_camera_in_tree(node: Node) -> Camera2D:
 	
 	return null
 
-func create_star_layer(name: String, scroll_factor: float, count: int, star_color: Color, max_size: Vector2):
+func create_star_layer(_name: String, scroll_factor: float, count: int, star_color: Color, max_size: Vector2):
 	# Create parallax layer
 	var layer = ParallaxLayer.new()
 	layer.name = name

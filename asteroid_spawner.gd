@@ -185,7 +185,7 @@ func generate_asteroids():
 	grid.queue_redraw()
 
 # Generate asteroid data for a specific field
-func _generate_asteroids_for_field(grid_x, grid_y, center_pos, rng):
+func _generate_asteroids_for_field(grid_x, grid_y, _center_pos, _rng):
 	var field_asteroids = []
 	
 	# Apply cell margins for this field
@@ -705,7 +705,7 @@ func _on_cell_unloaded(cell_x, cell_y):
 
 # IMPROVED FRAGMENTS: Handles asteroid fragments when asteroids are destroyed
 # This function is called by the asteroid.gd script when asteroids are destroyed
-func _spawn_fragments(position, size_category, fragment_count=3, base_scale=1.0):
+func _spawn_fragments(position, size_category, _fragment_count=3, base_scale=1.0):
 	# Skip if this is a small asteroid - they don't spawn fragments
 	if size_category == "small":
 		return
