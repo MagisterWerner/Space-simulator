@@ -68,7 +68,7 @@ func _load_sound_resources() -> void:
 		print_debug("Warning: Could not load thruster.wav")
 	
 	# Load background music
-	var music_path = "res://music/safety2.ogg"
+	var music_path = "res://music/space.ogg"
 	if ResourceLoader.exists(music_path):
 		music_track = load(music_path)
 	else:
