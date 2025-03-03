@@ -1,3 +1,4 @@
+# scripts/states/player_state_normal.gd
 extends State
 class_name PlayerStateNormal
 
@@ -13,6 +14,10 @@ func enter() -> void:
 	
 	# Ensure player is not immobilized
 	entity.is_immobilized = false
+	
+	# Make sure RigidBody2D isn't frozen
+	if entity is RigidBody2D:
+		entity.freeze = false
 	
 	# Set speed through the component
 	if movement_component:

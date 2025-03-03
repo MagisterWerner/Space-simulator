@@ -1,3 +1,4 @@
+# main.gd
 extends Node2D
 
 # Node references
@@ -184,11 +185,17 @@ func respawn_player_at_initial_planet():
 			elif player.has_node("MovementComponent"):
 				player.get_node("MovementComponent").speed = 300
 		
-		# Reset position and other player properties that exist on Player class
+		# Reset position and other player properties
 		player.global_position = initial_planet_position
 		player.last_valid_position = initial_planet_position
 		
-		# Reset all player state variables that might be used in Player class
+		# Reset RigidBody2D physics properties
+		if player is RigidBody2D:
+			player.linear_velocity = Vector2.ZERO
+			player.angular_velocity = 0.0
+			player.freeze = false
+		
+		# Reset all player state variables
 		if "is_immobilized" in player:
 			player.is_immobilized = false
 		if "respawn_timer" in player:
@@ -252,6 +259,11 @@ func place_player_at_random_planet():
 		# Set player position
 		player.global_position = chosen_planet.position
 		
+		# Reset RigidBody2D physics properties
+		if player is RigidBody2D:
+			player.linear_velocity = Vector2.ZERO
+			player.angular_velocity = 0.0
+		
 		# Store initial spawn position
 		initial_planet_position = chosen_planet.position
 		initial_planet_cell_x = chosen_planet.grid_x
@@ -280,6 +292,11 @@ func place_player_at_random_planet():
 			grid.grid_size.y * grid.cell_size.y / 2
 		)
 		player.global_position = center
+		
+		# Reset physics
+		if player is RigidBody2D:
+			player.linear_velocity = Vector2.ZERO
+			player.angular_velocity = 0.0
 		
 		# Store initial spawn position
 		initial_planet_position = center
@@ -326,6 +343,13 @@ func _deferred_create_player():
 	# Make sure camera zoom is set to exactly 1.0
 	if player.has_node("Camera2D"):
 		player.get_node("Camera2D").zoom = Vector2.ONE
+	
+	# Initialize RigidBody2D parameters
+	if player is RigidBody2D:
+		player.gravity_scale = 0.0
+		player.linear_damp = 0.1
+		player.angular_damp = 1.0
+		player.can_sleep = false
 	
 	# Add to scene and position
 	add_child(player)

@@ -1,4 +1,5 @@
-extends Node2D
+# scripts/entities/player.gd
+extends RigidBody2D
 class_name Player
 
 # Component references
@@ -155,15 +156,13 @@ func initialize_weapons():
 
 func shoot():
 	if combat_component and not is_immobilized:
-		# Get the facing direction either from movement component or sprite
+		# Get the facing direction from movement component or sprite
 		var direction = Vector2.RIGHT
 		if movement_component:
 			direction = movement_component.facing_direction
 		else:
-			# If no movement component, use sprite rotation
-			var sprite = get_node_or_null("Sprite2D")
-			if sprite:
-				direction = Vector2.RIGHT.rotated(sprite.rotation)
+			# If no movement component, use body rotation
+			direction = Vector2.RIGHT.rotated(rotation)
 		
 		combat_component.fire(direction)
 
@@ -241,6 +240,10 @@ func check_boundaries() -> bool:
 			# Revert to last valid position
 			global_position = last_valid_position
 			
+			# Reset physics state
+			linear_velocity = Vector2.ZERO
+			angular_velocity = 0.0
+			
 			return false
 	
 	# We're in a valid position
@@ -253,6 +256,21 @@ func check_laser_hit(laser) -> bool:
 	return false
 
 func get_collision_rect() -> Rect2:
+	# Check if we have a collision shape
+	var shape = get_node_or_null("CollisionShape2D")
+	if shape and shape.shape:
+		var shape_extents
+		
+		# Handle different shape types
+		if shape.shape is CircleShape2D:
+			shape_extents = Vector2(shape.shape.radius, shape.shape.radius)
+			return Rect2(-shape_extents, shape_extents * 2)
+		elif shape.shape is RectangleShape2D:
+			shape_extents = shape.shape.extents
+			return Rect2(-shape_extents, shape_extents * 2)
+		# Add more shape types as needed
+	
+	# Fallback to Sprite2D size
 	var sprite = $Sprite2D
 	if sprite and sprite.texture:
 		var texture_size = sprite.texture.get_size()
@@ -309,7 +327,7 @@ func update_thruster_sound():
 	# Check if player is moving
 	var is_moving = false
 	if movement_component:
-		is_moving = movement_component.velocity.length() > 0
+		is_moving = movement_component.velocity.length() > 30  # Add threshold to prevent sound when drifting slowly
 	
 	# Start or stop thruster sound based on movement
 	if is_moving and not thruster_active:

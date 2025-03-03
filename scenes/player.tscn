@@ -1,4 +1,4 @@
-[gd_scene load_steps=11 format=3 uid="uid://bqf1ewcvnbx7q"]
+[gd_scene load_steps=12 format=3 uid="uid://bqf1ewcvnbx7q"]
 
 [ext_resource type="Script" path="res://scripts/entities/player.gd" id="1_pv8nj"]
 [ext_resource type="Script" path="res://scripts/components/resource_component.gd" id="2_3e0d2"]
@@ -11,8 +11,32 @@
 [ext_resource type="Script" path="res://scripts/states/player_state_immobilized.gd" id="5_b30eq"]
 [ext_resource type="Script" path="res://scripts/components/explode_fire_component.gd" id="10_8xkhj"]
 
-[node name="Player" type="Node2D"]
+[sub_resource type="CircleShape2D" id="CircleShape2D_6hru3"]
+radius = 15.0
+
+[node name="Player" type="RigidBody2D"]
+collision_mask = 32
+mass = 4.0
+gravity_scale = 0.0
+can_sleep = false
+linear_damp = 0.1
+angular_damp = 1.0
 script = ExtResource("1_pv8nj")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("CircleShape2D_6hru3")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+texture = ExtResource("2_j8p5k")
+
+[node name="Camera2D" type="Camera2D" parent="."]
+
+[node name="HealthBar" type="ColorRect" parent="."]
+offset_left = -20.0
+offset_top = -30.0
+offset_right = 20.0
+offset_bottom = -26.0
+color = Color(0, 0.8, 0, 1)
 
 [node name="ResourceComponent" type="Node" parent="."]
 script = ExtResource("2_3e0d2")
@@ -34,18 +58,6 @@ explosion_scale = 1.5
 explosion_duration_multiplier = 1.2
 screen_shake_intensity = 10.0
 screen_shake_duration = 0.4
-
-[node name="Sprite2D" type="Sprite2D" parent="."]
-texture = ExtResource("2_j8p5k")
-
-[node name="Camera2D" type="Camera2D" parent="."]
-
-[node name="HealthBar" type="ColorRect" parent="."]
-offset_left = -20.0
-offset_top = -30.0
-offset_right = 20.0
-offset_bottom = -26.0
-color = Color(0, 0.8, 0, 1)
 
 [node name="StateMachine" type="Node" parent="."]
 script = ExtResource("3_lkmbh")
