@@ -1,8 +1,9 @@
-[gd_scene load_steps=10 format=3 uid="uid://dl7etmw31qnof"]
+[gd_scene load_steps=11 format=3 uid="uid://dl7etmw31qnof"]
 
 [ext_resource type="Script" path="res://main.gd" id="1_brldc"]
 [ext_resource type="Script" path="res://scripts/space_background.gd" id="2_doega"]
 [ext_resource type="Script" path="res://managers/grid.gd" id="2_lvljp"]
+[ext_resource type="PackedScene" uid="uid://bqf1ewcvnbx7q" path="res://scenes/player.tscn" id="3_4h0bx"]
 [ext_resource type="Script" path="res://scripts/spawners/enemy_spawner.gd" id="4_bfxvw"]
 [ext_resource type="Script" path="res://scripts/spawners/planet_spawner.gd" id="5_oha7o"]
 [ext_resource type="Script" path="res://scripts/spawners/asteroid_spawner.gd" id="6_lenuj"]
@@ -54,6 +55,8 @@ text = "Warning Message"
 label_settings = SubResource("LabelSettings_tjo1m")
 horizontal_alignment = 1
 vertical_alignment = 1
+
+[node name="Player" parent="." instance=ExtResource("3_4h0bx")]
 
 [node name="EnemySpawner" type="Node" parent="."]
 script = ExtResource("4_bfxvw")

@@ -3,7 +3,7 @@ class_name ResourceManager
 
 # Preload scenes
 var laser_scene = preload("res://scenes/laser.tscn")
-var player_scene = preload("res://player_one.tscn")  # Updated to use player_one
+var player_scene = preload("res://scenes/player.tscn")
 var enemy_scene = preload("res://scenes/enemy.tscn")
 
 # Keep track of resource load status
