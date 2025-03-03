@@ -14,7 +14,7 @@ const RandomAsteroidGenerator = preload("res://random_asteroid.gd")
 @export var cell_margin = 0.15
 @export var cluster_percentage = 60
 
-# Size distribution
+# Size distribution - as requested
 @export var large_percentage = 70
 @export var medium_percentage = 20
 # Small percentage is implied as the remaining 10%
@@ -703,27 +703,52 @@ func _on_cell_unloaded(cell_x, cell_y):
 				if idx != -1:
 					current_active_asteroids.remove_at(idx)
 
-# BACKWARD COMPATIBILITY: Handles asteroid fragments
-# This function is called by the original asteroid.gd script when asteroids are destroyed
+# IMPROVED FRAGMENTS: Handles asteroid fragments when asteroids are destroyed
+# This function is called by the asteroid.gd script when asteroids are destroyed
 func _spawn_fragments(position, size_category, fragment_count=3, base_scale=1.0):
-	# Determine the next smaller size category for fragments
-	var fragment_size = "small"
-	if size_category == "large":
-		fragment_size = "medium"
-	
-	# Get actual size values from the RandomAsteroidGenerator
-	var fragment_actual_size = RandomAsteroidGenerator.ASTEROID_SIZE_SMALL
-	if fragment_size == "medium":
-		fragment_actual_size = RandomAsteroidGenerator.ASTEROID_SIZE_MEDIUM
+	# Skip if this is a small asteroid - they don't spawn fragments
+	if size_category == "small":
+		return
 	
 	# Create a random generator
 	var rng = RandomNumberGenerator.new()
 	rng.randomize()
 	
-	# Spawn fragments
-	for i in range(fragment_count):
+	# Configure fragments based on asteroid size
+	var fragments = []
+	
+	if size_category == "large":
+		# Large asteroids split into either 2 medium or 1 medium + 1 small
+		if rng.randf() < 0.5:
+			# 2 medium fragments
+			fragments = [
+				{"size": "medium", "scale": base_scale * rng.randf_range(0.7, 0.9)},
+				{"size": "medium", "scale": base_scale * rng.randf_range(0.7, 0.9)}
+			]
+		else:
+			# 1 medium + 1 small fragment
+			fragments = [
+				{"size": "medium", "scale": base_scale * rng.randf_range(0.7, 0.9)},
+				{"size": "small", "scale": base_scale * rng.randf_range(0.5, 0.7)}
+			]
+	else: # medium asteroid
+		# Medium asteroids split into 1 or 2 small fragments
+		if rng.randf() < 0.6:
+			# 2 small fragments
+			fragments = [
+				{"size": "small", "scale": base_scale * rng.randf_range(0.6, 0.8)},
+				{"size": "small", "scale": base_scale * rng.randf_range(0.6, 0.8)}
+			]
+		else:
+			# 1 small fragment
+			fragments = [
+				{"size": "small", "scale": base_scale * rng.randf_range(0.6, 0.8)}
+			]
+	
+	# Spawn the configured fragments
+	for fragment in fragments:
 		# Create unique seed for this fragment
-		var fragment_seed = int(position.x * 1000) + int(position.y * 1000) + rng.randi() + i * 12345
+		var fragment_seed = int(position.x * 1000) + int(position.y * 1000) + rng.randi()
 		
 		# Randomize position with offset
 		var angle = rng.randf_range(0, TAU)
@@ -731,16 +756,15 @@ func _spawn_fragments(position, size_category, fragment_count=3, base_scale=1.0)
 		var offset = Vector2(cos(angle), sin(angle)) * distance
 		var fragment_pos = position + offset
 		
-		# Random scale and rotation
-		var fragment_scale = base_scale * rng.randf_range(0.6, 0.9)
-		var rot_speed = rng.randf_range(-2.0, 2.0)  # Faster rotation for fragments
+		# Faster rotation for fragments
+		var rot_speed = rng.randf_range(-2.0, 2.0)
 		
 		# Spawn the procedurally generated fragment
 		spawn_procedural_asteroid(
 			fragment_pos,
-			fragment_size,
+			fragment.size,
 			fragment_seed,
-			fragment_scale,
+			fragment.scale,
 			rot_speed,
 			rng.randf_range(0, TAU)
 		)

@@ -86,8 +86,16 @@ func get_collision_rect() -> Rect2:
 		return Rect2(-size/2, -size/2, size, size)
 
 func _on_destroyed():
-	# Spawn smaller asteroids if this was a large or medium asteroid
-	_spawn_fragments()
+	# Get the spawner
+	var asteroid_spawner = get_node_or_null("/root/Main/AsteroidSpawner")
+	if asteroid_spawner:
+		# Use the spawner's method to create procedural fragments
+		asteroid_spawner._spawn_fragments(
+			global_position,
+			size_category,
+			2, # Default fragment count (will be overridden in spawner)
+			base_scale
+		)
 	
 	# Chance to spawn resources
 	_spawn_resources()
@@ -97,71 +105,6 @@ func _on_destroyed():
 	
 	# Remove asteroid
 	queue_free()
-
-func _spawn_fragments():
-	# Only spawn fragments for medium and large asteroids
-	if size_category == "small":
-		return
-	
-	var spawner = get_node_or_null("/root/Main/AsteroidSpawner")
-	if not spawner:
-		return
-	
-	# Number of fragments to spawn
-	var fragment_count = 2
-	if size_category == "large":
-		fragment_count = 3
-	
-	# Determine smaller size for fragments
-	var fragment_size = "small"
-	if size_category == "large":
-		fragment_size = "medium"
-	
-	# Get the fragment sprites
-	var fragment_sprites
-	match fragment_size:
-		"small": fragment_sprites = spawner.small_asteroid_sprites
-		"medium": fragment_sprites = spawner.medium_asteroid_sprites
-	
-	# If no sprites, exit
-	if fragment_sprites.size() == 0:
-		return
-	
-	# Create a random generator
-	var rng = RandomNumberGenerator.new()
-	rng.randomize()
-	
-	# Spawn fragments
-	for i in range(fragment_count):
-		# Create asteroid scene
-		var asteroid_scene = load("res://scenes/asteroid.tscn")
-		var fragment = asteroid_scene.instantiate()
-		
-		# Set fragment position with offset
-		var angle = rng.randf_range(0, TAU)
-		var distance = 20 * base_scale
-		var offset = Vector2(cos(angle), sin(angle)) * distance
-		fragment.global_position = global_position + offset
-		
-		# Configure fragment
-		var sprite_idx = rng.randi() % fragment_sprites.size()
-		var fragment_scale = base_scale * rng.randf_range(0.6, 0.9)
-		var rot_speed = rng.randf_range(-2.0, 2.0)  # Faster rotation for fragments
-		fragment.setup(fragment_size, sprite_idx, fragment_scale, rot_speed)
-		
-		# Add sprite
-		var sprite = Sprite2D.new()
-		sprite.name = "Sprite2D"
-		sprite.texture = fragment_sprites[sprite_idx]
-		fragment.add_child(sprite)
-		
-		# Add health component
-		var health_comp = load("res://scripts/components/health_component.gd").new()
-		health_comp.name = "HealthComponent"
-		fragment.add_child(health_comp)
-		
-		# Add fragment to scene
-		get_tree().current_scene.add_child(fragment)
 
 func _spawn_resources():
 	# Chance to spawn resources based on size
@@ -179,5 +122,50 @@ func _spawn_resources():
 		pass
 
 func _create_explosion():
-	# Create explosion effect if implemented
-	pass
+	# Use the explosion effect scene if it exists
+	var explosion_scene_path = "res://scenes/explosion_effect.tscn"
+	
+	if ResourceLoader.exists(explosion_scene_path):
+		var explosion_scene = load(explosion_scene_path)
+		var explosion = explosion_scene.instantiate()
+		explosion.global_position = global_position
+		
+		# Scale explosion based on asteroid size
+		var explosion_scale = 1.0
+		match size_category:
+			"small": explosion_scale = 0.5
+			"medium": explosion_scale = 1.0
+			"large": explosion_scale = 1.5
+		
+		explosion.scale = Vector2(explosion_scale, explosion_scale)
+		
+		# Add to scene
+		get_tree().current_scene.add_child(explosion)
+	else:
+		# Simple fallback explosion
+		var explosion_particles = CPUParticles2D.new()
+		explosion_particles.emitting = true
+		explosion_particles.one_shot = true
+		explosion_particles.explosiveness = 1.0
+		explosion_particles.amount = 30
+		explosion_particles.lifetime = 0.6
+		explosion_particles.local_coords = false
+		explosion_particles.position = global_position
+		explosion_particles.direction = Vector2(0, 0)
+		explosion_particles.spread = 180.0
+		explosion_particles.gravity = Vector2(0, 0)
+		explosion_particles.initial_velocity_min = 100.0
+		explosion_particles.initial_velocity_max = 150.0
+		explosion_particles.scale_amount_min = 2.0
+		explosion_particles.scale_amount_max = 4.0
+		
+		# Add to scene
+		get_tree().current_scene.add_child(explosion_particles)
+		
+		# Remove after the particles complete
+		var timer = Timer.new()
+		explosion_particles.add_child(timer)
+		timer.wait_time = 0.8
+		timer.one_shot = true
+		timer.timeout.connect(func(): explosion_particles.queue_free())
+		timer.start()
