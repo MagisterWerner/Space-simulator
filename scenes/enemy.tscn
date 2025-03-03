@@ -6,8 +6,8 @@
 [ext_resource type="Script" path="res://scripts/components/movement_component.gd" id="3_jk5l2"]
 [ext_resource type="Script" path="res://scripts/components/combat_component.gd" id="4_f3xcd"]
 [ext_resource type="Script" path="res://scripts/core/state_machine.gd" id="4_s1ji4"]
-[ext_resource type="Script" path="res://enemy_state_idle.gd" id="5_d48bf"]
-[ext_resource type="Script" path="res://enemy_state_follow.gd" id="6_vh6ub"]
+[ext_resource type="Script" path="res://scripts/states/enemy_state_idle.gd" id="5_d48bf"]
+[ext_resource type="Script" path="res://scripts/states/enemy_state_follow.gd" id="6_vh6ub"]
 [ext_resource type="Script" path="res://scripts/components/explode_fire_component.gd" id="9_n82mv"]
 
 [node name="Enemy" type="Node2D"]

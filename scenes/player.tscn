@@ -7,8 +7,8 @@
 [ext_resource type="Script" path="res://scripts/components/movement_component.gd" id="3_d3f7g"]
 [ext_resource type="Script" path="res://scripts/core/state_machine.gd" id="3_lkmbh"]
 [ext_resource type="Script" path="res://scripts/components/combat_component.gd" id="4_1m3nr"]
-[ext_resource type="Script" path="res://player_state_normal.gd" id="4_7s3qe"]
-[ext_resource type="Script" path="res://player_state_immobilized.gd" id="5_b30eq"]
+[ext_resource type="Script" path="res://scripts/states/player_state_normal.gd" id="4_7s3qe"]
+[ext_resource type="Script" path="res://scripts/states/player_state_immobilized.gd" id="5_b30eq"]
 [ext_resource type="Script" path="res://scripts/components/explode_fire_component.gd" id="10_8xkhj"]
 
 [node name="Player" type="Node2D"]
