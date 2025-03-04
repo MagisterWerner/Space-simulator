@@ -1,5 +1,5 @@
 # name_component.gd
-extends Node
+extends Node2D
 class_name NameComponent
 
 @export_enum("planet", "moon") var entity_type: String = "planet"
@@ -42,7 +42,7 @@ func initialize(seed_value: int, grid_x: int = 0, grid_y: int = 0, parent: Strin
 	else:
 		entity_name = _generate_moon_name(seed_value, parent)
 
-func get_name() -> String:
+func get_entity_name() -> String:
 	return entity_name
 
 func _generate_planet_name(seed_value: int, x: int, y: int) -> String:

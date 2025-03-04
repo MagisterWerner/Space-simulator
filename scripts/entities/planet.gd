@@ -3,8 +3,6 @@ extends Node2D
 
 signal planet_loaded(planet)
 
-const MoonScene = preload("res://moon.tscn")
-
 @export var max_moons: int = 2
 @export var moon_chance: int = 40
 @export var min_moon_distance_factor: float = 1.8
@@ -26,7 +24,7 @@ var grid_y: int = 0
 var name_component
 
 func _ready():
-	name_component = $NameComponent
+	name_component = get_node_or_null("NameComponent")
 
 func _process(delta):
 	queue_redraw()
@@ -59,6 +57,13 @@ func initialize(params: Dictionary):
 	grid_x = params.grid_x
 	grid_y = params.grid_y
 	
+	if "max_moons" in params: max_moons = params.max_moons
+	if "moon_chance" in params: moon_chance = params.moon_chance
+	if "min_moon_distance_factor" in params: min_moon_distance_factor = params.min_moon_distance_factor
+	if "max_moon_distance_factor" in params: max_moon_distance_factor = params.max_moon_distance_factor
+	if "max_orbit_deviation" in params: max_orbit_deviation = params.max_orbit_deviation
+	if "moon_orbit_factor" in params: moon_orbit_factor = params.moon_orbit_factor
+	
 	var planet_gen_params = _generate_planet_data(seed_value)
 	theme_id = planet_gen_params.theme
 	pixel_size = planet_gen_params.pixel_size
@@ -66,10 +71,14 @@ func initialize(params: Dictionary):
 	atmosphere_data = planet_gen_params.atmosphere
 	atmosphere_texture = planet_gen_params.atmosphere_texture
 	
-	name_component.initialize(seed_value, grid_x, grid_y)
-	planet_name = name_component.get_name()
+	name_component = get_node_or_null("NameComponent")
+	if name_component:
+		name_component.initialize(seed_value, grid_x, grid_y)
+		planet_name = name_component.get_entity_name()
+	else:
+		planet_name = "Planet-" + str(seed_value % 1000)
 	
-	_create_moons()
+	call_deferred("_create_moons")
 	z_index = 6
 	
 	emit_signal("planet_loaded", self)
@@ -97,6 +106,11 @@ func _generate_planet_data(seed_value: int) -> Dictionary:
 	}
 
 func _create_moons():
+	var moon_scene = load("res://scenes/moon.tscn")
+	if not moon_scene:
+		print("Error: Moon scene couldn't be loaded")
+		return
+	
 	var rng = RandomNumberGenerator.new()
 	rng.seed = seed_value
 	
@@ -106,7 +120,10 @@ func _create_moons():
 	for m in range(num_moons):
 		var moon_seed = seed_value + m * 100
 		
-		var moon_instance = MoonScene.instantiate()
+		var moon_instance = moon_scene.instantiate()
+		if not moon_instance:
+			continue
+			
 		var min_distance = pixel_size / 2.0 * min_moon_distance_factor
 		var max_distance = pixel_size / 2.0 * max_moon_distance_factor
 		
@@ -121,6 +138,6 @@ func _create_moons():
 			"parent_name": planet_name
 		}
 		
-		moon_instance.initialize(moon_params)
 		add_child(moon_instance)
+		moon_instance.initialize(moon_params)
 		moons.append(moon_instance)

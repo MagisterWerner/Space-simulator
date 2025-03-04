@@ -15,7 +15,7 @@ var moon_name: String
 var name_component
 
 func _ready():
-	name_component = $NameComponent
+	name_component = get_node_or_null("NameComponent")
 
 func _process(_delta):
 	queue_redraw()
@@ -37,8 +37,12 @@ func initialize(params: Dictionary):
 	moon_texture = moon_data.texture
 	pixel_size = moon_data.pixel_size
 	
-	name_component.initialize(seed_value, 0, 0, params.parent_name)
-	moon_name = name_component.get_name()
+	name_component = get_node_or_null("NameComponent")
+	if name_component:
+		name_component.initialize(seed_value, 0, 0, params.parent_name)
+		moon_name = name_component.get_entity_name()
+	else:
+		moon_name = "Moon-" + str(seed_value % 1000)
 
 func _generate_moon_data(seed_value: int) -> Dictionary:
 	var moon_generator = MoonGenerator.new()

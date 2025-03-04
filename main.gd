@@ -31,18 +31,19 @@ func initialize_world():
 	grid.regenerate()
 	await get_tree().process_frame
 	
-	if planet_spawner:
-		if planet_spawner.has_method("generate_planets"):
-			planet_spawner.generate_planets()
+	if planet_spawner and planet_spawner.has_method("generate_planets"):
+		planet_spawner.generate_planets()
 	await get_tree().process_frame
 	
-	asteroid_spawner.generate_asteroids()
+	if asteroid_spawner and asteroid_spawner.has_method("generate_asteroids"):
+		asteroid_spawner.generate_asteroids()
 	await get_tree().process_frame
 	
 	create_player()
 	await get_tree().process_frame
 	
-	enemy_spawner.spawn_enemies()
+	if enemy_spawner and enemy_spawner.has_method("spawn_enemies"):
+		enemy_spawner.spawn_enemies()
 	force_grid_update()
 
 func _process(delta):
@@ -76,7 +77,8 @@ func handle_random_seed_input():
 		grid.set_seed(new_seed)
 		update_seed_label()
 		create_player()
-		enemy_spawner.reset_enemies()
+		if enemy_spawner and enemy_spawner.has_method("reset_enemies"):
+			enemy_spawner.reset_enemies()
 		
 		show_message("Generated new random seed: %s" % new_seed)
 
@@ -218,12 +220,24 @@ func create_player():
 	call_deferred("_deferred_create_player")
 
 func _deferred_create_player():
-	var player_scene = load("res://player.tscn")
+	if not ResourceLoader.exists("res://player.tscn") and not ResourceLoader.exists("res://scenes/player.tscn"):
+		push_error("ERROR: Player scene not found")
+		return
+		
+	var player_scene_path = "res://player.tscn"
+	if not ResourceLoader.exists(player_scene_path):
+		player_scene_path = "res://scenes/player.tscn"
+		
+	var player_scene = load(player_scene_path)
 	player = player_scene.instantiate()
 	
 	if not player.get_script():
-		var player_script = load("res://player.gd")
-		player.set_script(player_script)
+		if ResourceLoader.exists("res://player.gd"):
+			var player_script = load("res://player.gd")
+			player.set_script(player_script)
+		elif ResourceLoader.exists("res://scripts/entities/player.gd"):
+			var player_script = load("res://scripts/entities/player.gd")
+			player.set_script(player_script)
 	
 	player.scale = Vector2.ONE
 	
@@ -254,7 +268,6 @@ func get_planet_name(x, y):
 	if planet_spawner and planet_spawner.has_method("get_planet_name"):
 		return planet_spawner.get_planet_name(x, y)
 	
-	# Fallback implementation
 	var consonants = ["b", "c", "d", "f", "g", "h", "j", "k", "l", "m", "n", "p", "r", "s", "t", "v", "z"]
 	var vowels = ["a", "e", "i", "o", "u"]
 	
@@ -277,6 +290,9 @@ func get_planet_name(x, y):
 	return name
 	
 func force_grid_update():
+	if not player or not grid:
+		return
+		
 	var cell_x = int(floor(player.global_position.x / grid.cell_size.x))
 	var cell_y = int(floor(player.global_position.y / grid.cell_size.y))
  

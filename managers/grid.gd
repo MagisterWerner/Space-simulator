@@ -2,7 +2,6 @@
 class_name Grid
 extends Node2D
 
-# Grid properties
 @export var cell_size: Vector2 = Vector2(512, 512)
 @export var grid_size: Vector2 = Vector2(10, 10)
 @export var grid_color: Color = Color(0.2, 0.2, 0.2, 0.5)
@@ -85,7 +84,6 @@ func check_player_position(player, delta):
 	handle_boundary_warnings(is_in_boundary)
 	was_in_boundary_cell = is_in_boundary
 	
-	# Update loaded chunks if player moved to a new cell
 	if cell_x != current_player_cell_x or cell_y != current_player_cell_y:
 		update_loaded_chunks(cell_x, cell_y)
 
@@ -115,7 +113,7 @@ func handle_player_immobilized(player, delta):
 			player.set_immobilized(false)
 		
 		var main = get_tree().current_scene
-		if main.has_method("respawn_player_at_initial_planet"):
+		if main and main.has_method("respawn_player_at_initial_planet"):
 			main.respawn_player_at_initial_planet()
 		
 		was_outside_grid = false
@@ -124,7 +122,7 @@ func handle_player_immobilized(player, delta):
 func handle_boundary_warnings(is_in_boundary):
 	if is_in_boundary and not was_in_boundary_cell and not boundary_warning_active:
 		var main = get_tree().current_scene
-		if main.has_method("show_message"):
+		if main and main.has_method("show_message"):
 			main.show_message("WARNING: You are leaving known space!")
 			boundary_warning_active = true
 		
@@ -132,13 +130,16 @@ func handle_boundary_warnings(is_in_boundary):
 	
 	if not is_in_boundary and was_in_boundary_cell:
 		var main = get_tree().current_scene
-		if main.has_method("hide_message"):
+		if main and main.has_method("hide_message"):
 			main.hide_message()
 			boundary_warning_active = false
 		
 		emit_signal("_player_left_boundary")
 
 func update_loaded_chunks(center_x, center_y):
+	if center_x < 0 or center_y < 0 or center_x >= int(grid_size.x) or center_y >= int(grid_size.y):
+		return
+		
 	current_player_cell_x = center_x
 	current_player_cell_y = center_y
 	
@@ -169,11 +170,19 @@ func update_enemy_visibility():
 			var enemy_cell_y = int(floor(enemy.global_position.y / cell_size.y))
 			
 			var is_cell_loaded = loaded_cells.has(Vector2i(enemy_cell_x, enemy_cell_y))
-			enemy.update_active_state(is_cell_loaded)
+			
+			if enemy.has_method("update_active_state"):
+				enemy.update_active_state(is_cell_loaded)
+			else:
+				enemy.visible = is_cell_loaded
+				enemy.process_mode = Node.PROCESS_MODE_INHERIT if is_cell_loaded else Node.PROCESS_MODE_DISABLED
 
 func _draw():
 	draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
 	
+	if loaded_cells.is_empty():
+		return
+		
 	for cell_pos in loaded_cells.keys():
 		var x = int(cell_pos.x)
 		var y = int(cell_pos.y)
@@ -187,7 +196,6 @@ func _draw():
 			line_color = boundary_color
 			line_width = 2.0
 		
-		# Draw all 4 sides of the cell
 		draw_line(rect_pos, rect_pos + Vector2(cell_size.x, 0), line_color, line_width)
 		draw_line(rect_pos + Vector2(0, cell_size.y), rect_pos + cell_size, line_color, line_width)
 		draw_line(rect_pos, rect_pos + Vector2(0, cell_size.y), line_color, line_width)
@@ -195,7 +203,7 @@ func _draw():
 		
 		draw_cell_coordinates(x, y)
 	
-	if asteroid_spawner:
+	if asteroid_spawner and asteroid_spawner.has_method("draw_asteroids"):
 		draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
 		asteroid_spawner.draw_asteroids(self, loaded_cells)
 

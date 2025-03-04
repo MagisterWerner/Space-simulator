@@ -4,9 +4,15 @@ extends Node
 @export var planet_percentage: int = 10
 @export var minimum_planets: int = 5
 @export var cell_margin: float = 0.2
+@export var moon_chance: int = 40
+@export var max_moons: int = 2
+@export var min_moon_distance_factor: float = 1.8
+@export var max_moon_distance_factor: float = 2.5
+@export var max_orbit_deviation: float = 0.15
+@export var moon_orbit_factor: float = 0.05
 
 var grid = null
-var planet_scene = preload("res://planet.tscn")
+var planet_scene = null
 var spawned_planets = []
 var planet_positions = []
 var planet_data = []
@@ -17,6 +23,12 @@ func _ready():
 		push_error("ERROR: Grid not found for planet spawning!")
 		return
 	
+	if not ResourceLoader.exists("res://scenes/planet.tscn"):
+		push_error("ERROR: Planet scene not found at res://scenes/planet.tscn")
+		return
+	else:
+		planet_scene = load("res://scenes/planet.tscn")
+	
 	if grid.has_signal("_seed_changed"):
 		grid.connect("_seed_changed", _on_grid_seed_changed)
 	
@@ -26,15 +38,20 @@ func _ready():
 		grid.connect("_cell_unloaded", _on_cell_unloaded)
 
 func generate_planets():
-	# Clear existing data
 	clear_planets()
 	planet_positions.clear()
 	planet_data.clear()
 	
-	if grid.cell_contents.size() == 0:
+	if not planet_scene:
+		if ResourceLoader.exists("res://scenes/planet.tscn"):
+			planet_scene = load("res://scenes/planet.tscn")
+		else:
+			push_error("ERROR: Planet scene not found for generation")
+			return
+			
+	if not grid or grid.cell_contents.size() == 0:
 		return
 	
-	# Get available cells
 	var available_cells = []
 	for y in range(1, int(grid.grid_size.y) - 1):
 		for x in range(1, int(grid.grid_size.x) - 1):
@@ -43,21 +60,17 @@ func generate_planets():
 			
 			available_cells.append(Vector2i(x, y))
 	
-	# Track reserved cells
 	var reserved_cells = {}
 	
-	# Calculate planet count
 	var non_boundary_count = available_cells.size()
 	var planet_count = max(minimum_planets, int(non_boundary_count * planet_percentage / 100.0))
 	planet_count = min(planet_count, non_boundary_count)
 	
-	# Set up RNG
 	var rng = RandomNumberGenerator.new()
 	rng.seed = grid.seed_value
 	
 	var actual_planet_count = 0
 	
-	# Generate planets
 	for i in range(planet_count * 3):
 		var avail_indices = []
 		for j in range(available_cells.size()):
@@ -73,20 +86,16 @@ func generate_planets():
 		var x = planet_pos.x
 		var y = planet_pos.y
 		
-		# Mark as planet
 		grid.cell_contents[y][x] = grid.CellContent.PLANET
 		actual_planet_count += 1
 		
-		# Generate planet seed
 		var planet_seed = grid.seed_value + x * 10000 + y * 1000
 		
-		# Calculate world position
 		var world_pos = Vector2(
 			x * grid.cell_size.x + grid.cell_size.x / 2,
 			y * grid.cell_size.y + grid.cell_size.y / 2
 		)
 		
-		# Store planet position
 		planet_positions.append({
 			"position": world_pos,
 			"grid_x": x,
@@ -94,7 +103,6 @@ func generate_planets():
 			"seed": planet_seed
 		})
 		
-		# Reserve cells
 		for dy in range(-1, 2):
 			for dx in range(-1, 2):
 				var nx = x + dx
@@ -106,24 +114,24 @@ func generate_planets():
 		if actual_planet_count >= planet_count:
 			break
 	
-	# Create planets for cells that are already loaded
-	for cell_pos in grid.loaded_cells.keys():
-		var x = int(cell_pos.x)
-		var y = int(cell_pos.y)
-		
-		if y >= grid.cell_contents.size() or x >= grid.cell_contents[y].size():
-			continue
+	if grid.loaded_cells:
+		for cell_pos in grid.loaded_cells.keys():
+			var x = int(cell_pos.x)
+			var y = int(cell_pos.y)
 			
-		if grid.cell_contents[y][x] == grid.CellContent.PLANET:
-			for planet_pos in planet_positions:
-				if planet_pos.grid_x == x and planet_pos.grid_y == y:
-					spawn_planet(
-						planet_pos.position,
-						planet_pos.grid_x,
-						planet_pos.grid_y, 
-						planet_pos.seed
-					)
-					break
+			if y >= grid.cell_contents.size() or x >= grid.cell_contents[y].size():
+				continue
+				
+			if grid.cell_contents[y][x] == grid.CellContent.PLANET:
+				for planet_pos in planet_positions:
+					if planet_pos.grid_x == x and planet_pos.grid_y == y:
+						spawn_planet(
+							planet_pos.position,
+							planet_pos.grid_x,
+							planet_pos.grid_y, 
+							planet_pos.seed
+						)
+						break
 	
 	grid.queue_redraw()
 
@@ -135,27 +143,63 @@ func clear_planets():
 	spawned_planets.clear()
 
 func spawn_planet(position, grid_x, grid_y, seed_value):
+	if not planet_scene:
+		if ResourceLoader.exists("res://scenes/planet.tscn"):
+			planet_scene = load("res://scenes/planet.tscn")
+		else:
+			push_error("ERROR: Planet scene not found for spawn")
+			return null
+			
 	var planet_instance = planet_scene.instantiate()
-	
-	planet_instance.initialize({
+	if not planet_instance:
+		push_error("ERROR: Failed to instantiate planet")
+		return null
+		
+	var params = {
 		"seed_value": seed_value,
 		"grid_x": grid_x,
-		"grid_y": grid_y
-	})
+		"grid_y": grid_y,
+		"max_moons": max_moons,
+		"moon_chance": moon_chance,
+		"min_moon_distance_factor": min_moon_distance_factor,
+		"max_moon_distance_factor": max_moon_distance_factor,
+		"max_orbit_deviation": max_orbit_deviation,
+		"moon_orbit_factor": moon_orbit_factor
+	}
 	
+	planet_instance.initialize(params)
 	planet_instance.global_position = position
 	get_parent().add_child(planet_instance)
 	spawned_planets.append(planet_instance)
 	
-	# Update planet_data for compatibility with old code
+	var planet_name = ""
+	if "planet_name" in planet_instance:
+		planet_name = planet_instance.planet_name
+	
+	var pixel_size = 256
+	if "pixel_size" in planet_instance:
+		pixel_size = planet_instance.pixel_size
+	
+	var theme_id = 0
+	if "theme_id" in planet_instance:
+		theme_id = planet_instance.theme_id
+	
+	var atmosphere_data = {}
+	if "atmosphere_data" in planet_instance:
+		atmosphere_data = planet_instance.atmosphere_data
+	
+	var moons = []
+	if "moons" in planet_instance:
+		moons = planet_instance.moons
+		
 	var planet_data_entry = {
 		"seed": seed_value,
 		"scale": 1.0,
-		"pixel_size": planet_instance.pixel_size,
-		"moons": planet_instance.moons,
-		"name": planet_instance.planet_name,
-		"theme": planet_instance.theme_id,
-		"atmosphere": planet_instance.atmosphere_data
+		"pixel_size": pixel_size,
+		"moons": moons,
+		"name": planet_name,
+		"theme": theme_id,
+		"atmosphere": atmosphere_data
 	}
 	
 	planet_data.append(planet_data_entry)
@@ -163,13 +207,15 @@ func spawn_planet(position, grid_x, grid_y, seed_value):
 	return planet_instance
 
 func _on_cell_loaded(cell_x, cell_y):
+	if not grid:
+		return
+		
 	if cell_x < 0 or cell_y < 0 or cell_y >= grid.cell_contents.size() or cell_x >= grid.cell_contents[cell_y].size():
 		return
 	
 	if grid.cell_contents[cell_y][cell_x] == grid.CellContent.PLANET:
 		for planet_pos in planet_positions:
 			if planet_pos.grid_x == cell_x and planet_pos.grid_y == cell_y:
-				# Check if planet already exists
 				var planet_exists = false
 				for planet in spawned_planets:
 					if is_instance_valid(planet) and planet.grid_x == cell_x and planet.grid_y == cell_y:
@@ -200,11 +246,12 @@ func get_planet_name(x, y):
 		if is_instance_valid(planet) and planet.grid_x == x and planet.grid_y == y:
 			return planet.planet_name
 	
-	# Fallback to generating a name
 	var name_component = NameComponent.new()
 	var seed_value = grid.seed_value + x * 10000 + y * 1000
 	name_component.initialize(seed_value, x, y)
-	return name_component.get_name()
+	var planet_name = name_component.get_entity_name()
+	name_component.queue_free()
+	return planet_name
 
 func reset_planets():
 	call_deferred("generate_planets")
@@ -212,7 +259,5 @@ func reset_planets():
 func _on_grid_seed_changed(_new_seed = null):
 	call_deferred("reset_planets")
 
-# For compatibility with old code
 func draw_planets(_canvas: CanvasItem, _loaded_cells: Dictionary):
-	# This function is intentionally empty for backwards compatibility
 	pass

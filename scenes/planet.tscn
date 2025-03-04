@@ -5,14 +5,7 @@
 
 [node name="Planet" type="Node2D"]
 script = ExtResource("1_yrfm8")
-max_moons = null
-moon_chance = null
-min_moon_distance_factor = null
-max_moon_distance_factor = null
-max_orbit_deviation = null
-moon_orbit_factor = null
 
-[node name="NameComponent" type="Node" parent="."]
+[node name="NameComponent" type="Node2D" parent="."]
 script = ExtResource("2_8pdgf")
-entity_type = "planet"
 name_color = Color(0, 0.8, 1, 1)

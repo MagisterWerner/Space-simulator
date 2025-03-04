@@ -6,7 +6,7 @@
 [node name="Moon" type="Node2D"]
 script = ExtResource("1_5p682")
 
-[node name="NameComponent" type="Node" parent="."]
+[node name="NameComponent" type="Node2D" parent="."]
 script = ExtResource("2_gjc6d")
 entity_type = "moon"
 name_color = Color(0.8, 0.8, 0.8, 1)
