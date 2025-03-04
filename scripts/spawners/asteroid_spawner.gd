@@ -7,8 +7,8 @@ const RandomAsteroidGenerator = preload("res://scripts/generators/asteroid_gener
 # Asteroid generation parameters - explicitly typed
 @export var asteroid_percentage: int = 30
 @export var minimum_asteroids: int = 8
-@export var min_asteroids_per_cell: int = 50
-@export var max_asteroids_per_cell: int = 50
+@export var min_asteroids_per_cell: int = 5
+@export var max_asteroids_per_cell: int = 10
 @export var asteroid_scale_min: float = 0.9
 @export var asteroid_scale_max: float = 1.1
 @export var cell_margin: float = 0.15
