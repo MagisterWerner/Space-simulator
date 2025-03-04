@@ -4,8 +4,9 @@ class_name NameComponent
 
 @export_enum("planet", "moon") var entity_type: String = "planet"
 @export var name_color: Color = Color(1, 1, 1, 1)
-@export var display_height: float = 30.0
-@export var font_size: int = 16
+@export var font_size_planet: int = 20
+@export var font_size_moon: int = 16
+@export var offset_above_entity: float = 10.0
 
 var entity_name: String = ""
 var parent_name: String = ""
@@ -21,8 +22,38 @@ func _draw():
 		return
 	
 	var text = entity_name
-	var text_size = ThemeDB.fallback_font.get_string_size(text, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size)
+	var current_font_size = font_size_planet if entity_type == "planet" else font_size_moon
+	
+	var parent_entity = get_parent()
+	var display_height = 0.0
+	
+	# Calculate appropriate height based on parent entity size
+	if parent_entity:
+		if "pixel_size" in parent_entity:
+			display_height = parent_entity.pixel_size / 2.0 + offset_above_entity
+		else:
+			# Default fallback heights if pixel_size isn't available
+			display_height = 138.0 if entity_type == "planet" else 26.0
+	
+	var text_size = ThemeDB.fallback_font.get_string_size(text, HORIZONTAL_ALIGNMENT_CENTER, -1, current_font_size)
 	var text_pos = Vector2(-text_size.x / 2, -display_height)
+	
+	# Draw text with outline for better visibility
+	var outline_color = Color(0, 0, 0, 0.5)
+	var outline_width = 1
+	
+	for dx in range(-outline_width, outline_width + 1):
+		for dy in range(-outline_width, outline_width + 1):
+			if dx != 0 or dy != 0:
+				draw_string(
+					ThemeDB.fallback_font,
+					text_pos + Vector2(dx, dy),
+					text,
+					HORIZONTAL_ALIGNMENT_CENTER,
+					-1,
+					current_font_size,
+					outline_color
+				)
 	
 	draw_string(
 		ThemeDB.fallback_font,
@@ -30,7 +61,7 @@ func _draw():
 		text,
 		HORIZONTAL_ALIGNMENT_CENTER,
 		-1,
-		font_size,
+		current_font_size,
 		name_color
 	)
 
