@@ -1,7 +1,6 @@
-[gd_scene load_steps=12 format=3 uid="uid://bqf1ewcvnbx7q"]
+[gd_scene load_steps=11 format=3 uid="uid://bqf1ewcvnbx7q"]
 
 [ext_resource type="Script" path="res://scripts/entities/player.gd" id="1_pv8nj"]
-[ext_resource type="Script" path="res://scripts/components/resource_component.gd" id="2_3e0d2"]
 [ext_resource type="Script" path="res://scripts/components/health_component.gd" id="2_gy05w"]
 [ext_resource type="Texture2D" uid="uid://p0xsi4shtxjd" path="res://sprites/ships_player/player_ship_1.png" id="2_j8p5k"]
 [ext_resource type="Script" path="res://scripts/components/movement_component.gd" id="3_d3f7g"]
@@ -37,9 +36,6 @@ offset_top = -30.0
 offset_right = 20.0
 offset_bottom = -26.0
 color = Color(0, 0.8, 0, 1)
-
-[node name="ResourceComponent" type="Node" parent="."]
-script = ExtResource("2_3e0d2")
 
 [node name="HealthComponent" type="Node" parent="."]
 script = ExtResource("2_gy05w")

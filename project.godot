@@ -31,6 +31,18 @@ window/size/window_height_override=1080
 
 enabled=PackedStringArray("res://addons/gdfxr/plugin.cfg")
 
+[file_customization]
+
+folder_colors={
+"res://addons/": "red",
+"res://managers/": "blue",
+"res://music/": "orange",
+"res://scenes/": "green",
+"res://scripts/": "blue",
+"res://sounds/": "orange",
+"res://sprites/": "yellow"
+}
+
 [input]
 
 ui_accept={

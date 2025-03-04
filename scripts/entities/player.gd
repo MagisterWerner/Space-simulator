@@ -29,7 +29,6 @@ func _ready():
 	health_component = $HealthComponent
 	combat_component = $CombatComponent
 	movement_component = $MovementComponent
-	resource_component = $ResourceComponent
 	state_machine = $StateMachine
 	camera_2d = $Camera2D
 	sound_system = get_node_or_null("/root/SoundSystem")
