@@ -1,0 +1,49 @@
+[gd_scene load_steps=5 format=2]
+
+[ext_resource path="res://Resources/Shaders/highlight2D.gdshader" type="Shader" id=1]
+[ext_resource path="res://Resources/Images/Asteroids/AsteroidS1.png" type="Texture2D" id=2]
+[ext_resource path="res://Objects/Asteroids/AsteroidSmall.gd" type="Script" id=3]
+
+[sub_resource type="ShaderMaterial" id=1]
+shader = ExtResource( 1 )
+shader_param/color = Color( 0.25098, 0.25098, 0.25098, 0.501961 )
+shader_param/width = 2.0
+shader_param/pattern = 0
+shader_param/inside = true
+shader_param/add_margins = false
+
+[node name="AsteroidSmall" type="RigidBody2D" groups=["ASTEROIDS"]]
+collision_layer = 2
+collision_mask = 23
+gravity_scale = 0.0
+max_contacts_reported = 5
+contact_monitor = true
+sleeping = true
+linear_damp = 0.05
+angular_damp = 0.0
+script = ExtResource( 3 )
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+modulate = Color( 0.784314, 0.784314, 0.784314, 1 )
+material = SubResource( 1 )
+texture = ExtResource( 2 )
+
+[node name="CollisionPolygon1" type="CollisionPolygon2D" parent="."]
+polygon = PackedVector2Array( 7, 4.5, -7, 4.5, -7, -4.5, 7, -4.5 )
+disabled = true
+
+[node name="CollisionPolygon2" type="CollisionPolygon2D" parent="."]
+polygon = PackedVector2Array( 11.5, -9.1, 11.5, 6.5, 7.3, 6.5, 3.3, 10.5, -1.5, 10.5, -2.5, 9.7, -4.2, 10.5, -11.5, 10.5, -11.5, -4.4, -9.5, -9.9, -9.5, -10.5, 7.5, -10.5 )
+disabled = true
+
+[node name="CollisionPolygon3" type="CollisionPolygon2D" parent="."]
+polygon = PackedVector2Array( 9, 6.5, -6.8, 6.5, -9, 4.3, -9, -6.5, 9, -6.5 )
+disabled = true
+
+[node name="CollisionPolygon4" type="CollisionPolygon2D" parent="."]
+polygon = PackedVector2Array( 8, -5.4, 8, 6, -8, 6, -8, -6, 7.1, -6 )
+disabled = true
+
+[node name="CollisionPolygon5" type="CollisionPolygon2D" parent="."]
+polygon = PackedVector2Array( 6.5, 5, -6.5, 5, -6.5, -5, 6.5, -5 )
+disabled = true

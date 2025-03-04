@@ -1,0 +1,14 @@
+[remap]
+
+importer="com.timothyqiu.gdfxr.importer"
+type="AudioStreamSample"
+path="res://.import/laser.sfxr-d2cb798f24edec36fa21dba4952cf77d.sample"
+
+[deps]
+
+source_file="res://Resources/Sounds/laser.sfxr"
+dest_files=[ "res://.import/laser.sfxr-d2cb798f24edec36fa21dba4952cf77d.sample" ]
+
+[params]
+
+loop=false
