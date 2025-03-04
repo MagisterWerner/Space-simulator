@@ -37,18 +37,18 @@ offset_right = 20.0
 offset_bottom = -26.0
 color = Color(0, 0.8, 0, 1)
 
-[node name="HealthComponent" type="Node" parent="."]
+[node name="HealthComponent" type="Node2D" parent="."]
 script = ExtResource("2_gy05w")
 invulnerability_time = 1.5
 
-[node name="MovementComponent" type="Node" parent="."]
+[node name="MovementComponent" type="Node2D" parent="."]
 script = ExtResource("3_d3f7g")
 
-[node name="CombatComponent" type="Node" parent="."]
+[node name="CombatComponent" type="Node2D" parent="."]
 script = ExtResource("4_1m3nr")
 is_player_weapon = true
 
-[node name="ExplodeFireComponent" type="Node" parent="."]
+[node name="ExplodeFireComponent" type="Node2D" parent="."]
 script = ExtResource("10_8xkhj")
 explosion_scale = 1.5
 explosion_duration_multiplier = 1.2
