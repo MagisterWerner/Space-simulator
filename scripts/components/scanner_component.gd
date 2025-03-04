@@ -1,121 +1,95 @@
+# shield_component.gd
 extends Component
-class_name ScannerComponent
+class_name ShieldComponent
 
-signal object_detected(object, distance, direction)
-signal object_lost(object)
-signal scan_pulse_sent(radius)
+signal shield_damaged(current, maximum)
+signal shield_depleted()
+signal shield_recharged()
+signal shield_hit(damage, position)
 
-@export var scan_radius: float = 500.0
-@export var scan_interval: float = 1.0
-@export var automatic_scanning: bool = true
-@export var scan_layers: Array[String] = ["enemies", "asteroids", "planets", "items"]
+@export var max_shield: float = 100.0
+@export var recharge_rate: float = 5.0
+@export var recharge_delay: float = 3.0
+@export var damage_reduction: float = 0.2
+@export var shield_color: Color = Color(0.2, 0.5, 1.0, 0.7)
+@export var hit_flash_duration: float = 0.2
 
-var scan_timer: float = 0.0
-var detected_objects = {}  # Dictionary of detected objects and their properties
-var detection_visual: Node2D = null
-var scan_pulse_visual: Node2D = null
-var scan_pulse_radius: float = 0.0
-var is_pulse_active: bool = false
+var current_shield: float = max_shield
+var recharge_timer: float = 0.0
+var is_recharging: bool = true
+var is_depleted: bool = false
+var hit_flash_timer: float = 0.0
+var shield_visual: Node2D
 
 func _initialize():
-	# Create scanner visuals
-	create_scan_visuals()
-	
-	# Start with a scan if automatic
-	if automatic_scanning:
-		scan_timer = 0.0
+	create_shield_visual()
 
 func _process(delta):
-	# Handle automatic scanning
-	if automatic_scanning:
-		scan_timer -= delta
-		if scan_timer <= 0:
-			perform_scan()
-			scan_timer = scan_interval
+	if !is_recharging and recharge_timer > 0:
+		recharge_timer -= delta
+		if recharge_timer <= 0:
+			is_recharging = true
 	
-	# Animate the scan pulse if active
-	if is_pulse_active:
-		scan_pulse_radius += 200.0 * delta  # Speed of pulse animation
-		if scan_pulse_radius > scan_radius:
-			is_pulse_active = false
-		update_scan_pulse()
+	if is_recharging and current_shield < max_shield:
+		current_shield = min(current_shield + recharge_rate * delta, max_shield)
+		emit_signal("shield_damaged", current_shield, max_shield)
+		
+		if is_depleted and current_shield > 0:
+			is_depleted = false
+			emit_signal("shield_recharged")
+	
+	update_shield_visual(delta)
 
-func perform_scan():
-	# Reset the scan pulse
-	scan_pulse_radius = 0.0
-	is_pulse_active = true
-	emit_signal("scan_pulse_sent", scan_radius)
+func absorb_damage(damage: float, impact_position: Vector2 = Vector2.ZERO) -> float:
+	if current_shield <= 0:
+		return damage
 	
-	# Keep track of previously detected objects to check what was lost
-	var previously_detected = detected_objects.duplicate()
-	detected_objects.clear()
+	var absorbed = min(damage * (1.0 - damage_reduction), current_shield)
+	var remaining_damage = damage - absorbed
 	
-	# Scan for objects in each layer
-	for layer in scan_layers:
-		var objects = get_tree().get_nodes_in_group(layer)
-		for obj in objects:
-			if obj == entity:  # Skip self
-				continue
-				
-			var distance = entity.global_position.distance_to(obj.global_position)
-			if distance <= scan_radius:
-				var direction = (obj.global_position - entity.global_position).normalized()
-				
-				# Add to detected objects
-				detected_objects[obj] = {
-					"distance": distance,
-					"direction": direction,
-					"type": layer
-				}
-				
-				# Emit signal for newly detected objects
-				if not previously_detected.has(obj):
-					emit_signal("object_detected", obj, distance, direction)
+	current_shield -= absorbed
+	recharge_timer = recharge_delay
+	is_recharging = false
+	hit_flash_timer = hit_flash_duration
 	
-	# Check for objects that are no longer detected
-	for obj in previously_detected:
-		if not detected_objects.has(obj):
-			emit_signal("object_lost", obj)
+	emit_signal("shield_damaged", current_shield, max_shield)
+	emit_signal("shield_hit", absorbed, impact_position)
 	
-	# Update detection visual
-	update_detection_visual()
+	if current_shield <= 0 and !is_depleted:
+		is_depleted = true
+		emit_signal("shield_depleted")
+	
+	return remaining_damage
 
-func is_object_detected(obj) -> bool:
-	return detected_objects.has(obj)
-
-func get_detected_objects() -> Dictionary:
-	return detected_objects
-
-func get_nearest_object_of_type(type: String):
-	var nearest = null
-	var nearest_distance = INF
+func create_shield_visual():
+	if shield_visual != null:
+		shield_visual.queue_free()
 	
-	for obj in detected_objects:
-		if detected_objects[obj].type == type:
-			var distance = detected_objects[obj].distance
-			if distance < nearest_distance:
-				nearest = obj
-				nearest_distance = distance
+	shield_visual = Node2D.new()
+	shield_visual.name = "ShieldVisual"
+	shield_visual.z_index = 10
+	entity.add_child(shield_visual)
 	
-	return nearest
+	shield_visual.modulate = shield_color
+	shield_visual.modulate.a = current_shield / max_shield * shield_color.a
 
-func create_scan_visuals():
-	# Create detection visual node
-	detection_visual = Node2D.new()
-	detection_visual.name = "DetectionVisual"
-	detection_visual.z_index = -1  # Draw behind entity
-	entity.add_child(detection_visual)
+func update_shield_visual(delta):
+	if !shield_visual:
+		return
 	
-	# Create scan pulse visual node
-	scan_pulse_visual = Node2D.new()
-	scan_pulse_visual.name = "ScanPulseVisual"
-	scan_pulse_visual.z_index = -2  # Draw behind detection visual
-	entity.add_child(scan_pulse_visual)
+	var target_alpha = (current_shield / max_shield) * shield_color.a
+	
+	if hit_flash_timer > 0:
+		hit_flash_timer -= delta
+		target_alpha = min(1.0, target_alpha * 2.0)
+	
+	shield_visual.modulate.a = lerp(shield_visual.modulate.a, target_alpha, 10 * delta)
 
-func update_detection_visual():
-	# This would be implemented to show detected objects
-	detection_visual.queue_redraw()
-
-func update_scan_pulse():
-	# This would be implemented to animate the scan pulse
-	scan_pulse_visual.queue_redraw()
+func _draw_shield():
+	var radius = 30.0
+	var sprite = entity.get_node_or_null("Sprite2D")
+	if sprite and sprite.texture:
+		var texture_size = sprite.texture.get_size()
+		radius = max(texture_size.x, texture_size.y) * sprite.scale.x / 2.0 + 5.0
+	
+	shield_visual.draw_circle(Vector2.ZERO, radius, shield_color)
