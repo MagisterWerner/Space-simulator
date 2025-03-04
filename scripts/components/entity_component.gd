@@ -2,131 +2,83 @@
 class_name EntityComponent
 extends Node
 
-# --- Common properties for all entities ---
 @export var movement_speed: float = 300.0
 @export var max_health: float = 100.0
-@export var fire_cooldown: float = 0.5  # Seconds between shots
+@export var fire_cooldown: float = 0.5
 
-# Runtime variables
 var current_health: float = 100.0
 var current_cooldown: float = 0.0
 var is_invulnerable: bool = false
 var invulnerability_timer: float = 0.0
 var hit_flash_timer: float = 0.0
-var hit_flash_duration: float = 0.2
 var is_hit: bool = false
 
-# Owner entity (parent node)
-var owner_entity = null
-
 func _ready():
-	# Get reference to owner entity
-	owner_entity = get_parent()
-	if not owner_entity:
-		push_error("EntityComponent must be a child of a Node2D")
-		return
-	
-	# Initialize health
 	current_health = max_health
-	print("EntityComponent initialized for: " + owner_entity.name)
 
 func _process(delta):
-	# Update shooting cooldown
-	if current_cooldown > 0:
-		current_cooldown -= delta
+	current_cooldown = max(0, current_cooldown - delta)
 	
-	# Update invulnerability timer
 	if is_invulnerable:
 		invulnerability_timer -= delta
-		if invulnerability_timer <= 0:
-			is_invulnerable = false
-			
-	# Update hit flash effect
+		is_invulnerable = invulnerability_timer > 0
+	
 	if is_hit:
 		hit_flash_timer -= delta
 		if hit_flash_timer <= 0:
 			is_hit = false
-			if owner_entity.has_node("Sprite2D"):
-				owner_entity.get_node("Sprite2D").modulate = Color.WHITE
+			var sprite = get_parent().get_node_or_null("Sprite2D")
+			if sprite:
+				sprite.modulate = Color.WHITE
 
-# Handle taking damage
 func take_damage(amount: float) -> void:
-	# No damage if invulnerable
 	if is_invulnerable:
 		return
 	
-	# Apply damage
 	current_health -= amount
-	print(owner_entity.name + " took " + str(amount) + " damage. Health: " + str(current_health))
-	
-	# Visual feedback
 	is_hit = true
-	hit_flash_timer = hit_flash_duration
-	if owner_entity.has_node("Sprite2D"):
-		owner_entity.get_node("Sprite2D").modulate = Color.RED
+	hit_flash_timer = 0.2
 	
-	# Check for death
+	var sprite = get_parent().get_node_or_null("Sprite2D")
+	if sprite:
+		sprite.modulate = Color.RED
+	
 	if current_health <= 0:
-		# Call the owner's on_death method if it exists
-		if owner_entity.has_method("on_death"):
-			owner_entity.on_death()
+		get_parent().on_death() if get_parent().has_method("on_death") else null
 	else:
-		# Set temporary invulnerability
 		is_invulnerable = true
-		invulnerability_timer = 1.0  # Default value, can be overridden
+		invulnerability_timer = 1.0
 
-# Shooting helper function
 func shoot(position: Vector2, direction: Vector2, is_player_laser: bool = false, damage: float = 10.0) -> void:
-	# Create the laser instance
-	var resource_manager = owner_entity.get_node_or_null("/root/Main/ResourceManager")
-	var laser = null
-	
-	if resource_manager:
-		laser = resource_manager.create_laser(is_player_laser)
-	else:
-		# Fallback if resource manager not found
-		var laser_scene = load("res://laser.tscn")
-		laser = laser_scene.instantiate()
-	
-	if not laser:
-		push_error("Failed to create laser")
+	if current_cooldown > 0:
 		return
 	
-	# Set position slightly in front of the entity
-	var spawn_offset = direction * 30
-	laser.global_position = position + spawn_offset
+	var resource_manager = get_node_or_null("/root/Main/ResourceManager")
+	var laser = resource_manager.create_laser(is_player_laser) if resource_manager else load("res://laser.tscn").instantiate()
 	
-	# Set laser direction and rotation
+	if not laser:
+		return
+	
+	laser.global_position = position + direction * 30
 	laser.direction = direction
 	laser.rotation = direction.angle()
-	
-	# Configure the laser
 	laser.is_player_laser = is_player_laser
 	laser.damage = damage
 	
-	# Add laser to scene
-	owner_entity.get_tree().current_scene.add_child(laser)
-	
-	# Reset cooldown
+	get_tree().current_scene.add_child(laser)
 	current_cooldown = fire_cooldown
 
-# Helper function to check laser hit
 func check_laser_hit(laser, collision_rect: Rect2, is_player: bool) -> bool:
-	# Skip if invulnerable
-	if is_invulnerable:
-		return false
-	
-	# Check if this is an appropriate laser type to hit us
-	if (is_player and laser.is_player_laser) or \
+	if is_invulnerable or \
+	   (is_player and laser.is_player_laser) or \
 	   (not is_player and not laser.is_player_laser):
 		return false
 	
-	# Get laser collision rect
+	var owner_pos = get_parent().global_position
+	var laser_pos = laser.global_position
+	
+	collision_rect.position += owner_pos
 	var laser_rect = laser.get_collision_rect()
+	laser_rect.position += laser_pos
 	
-	# Offset to global coordinates
-	collision_rect.position += owner_entity.global_position
-	laser_rect.position += laser.global_position
-	
-	# Check for intersection
 	return collision_rect.intersects(laser_rect)
