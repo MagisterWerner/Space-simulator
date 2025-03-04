@@ -1,7 +1,0 @@
-[gd_resource type="ShaderMaterial" load_steps=2 format=3 uid="uid://rlgtx6uy16gb"]
-
-[ext_resource type="Shader" path="res://assets/shaders/pixelate.gdshader" id="1_rkogp"]
-
-[resource]
-shader = ExtResource("1_rkogp")
-shader_parameter/amount = 640

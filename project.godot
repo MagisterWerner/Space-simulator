@@ -10,23 +10,17 @@ config_version=5
 
 [application]
 
-config/name="Supreme Diversity"
+config/name="Space Game"
 config/version="0.0.1"
-run/main_scene="res://scenes/menu/menu.tscn"
+run/main_scene="res://gameplay.tscn"
 config/features=PackedStringArray("4.3")
 boot_splash/bg_color=Color(0.0862745, 0.0862745, 0.0862745, 1)
-boot_splash/image="res://assets/splash.png"
-config/icon="res://assets/sprites/icon.png"
+config/icon="res://player_ship.png"
 
 [autoload]
 
-DebugShortcuts="*res://addons/ggt-debug-shortcuts/autoload/debug_shortcuts.tscn"
-Game="*res://addons/ggt-core/game.gd"
-Transitions="*res://addons/ggt-core/transitions/transitions.tscn"
-Scenes="*res://addons/ggt-core/scenes/scenes.gd"
-Utils="*res://addons/ggt-core/utils/utils.gd"
 Globals="*res://autoload/globals.gd"
-ObjectRegistry="*res://autoload/object_registry.tscn"
+ObjectRegistry="*res://autoload/object_registry.gd"
 Events="*res://autoload/events.gd"
 
 [category]
@@ -35,8 +29,8 @@ property_name=1
 
 [display]
 
-window/size/viewport_width=640
-window/size/viewport_height=360
+window/size/viewport_width=1280
+window/size/viewport_height=720
 window/size/always_on_top=true
 window/size/window_width_override=1280
 window/size/window_height_override=720
@@ -47,7 +41,7 @@ window/per_pixel_transparency/allowed=true
 
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/gaea/plugin.cfg", "res://addons/ggt-core/plugin.cfg", "res://addons/ggt-debug-shortcuts/plugin.cfg")
+enabled=PackedStringArray()
 
 [filesystem]
 

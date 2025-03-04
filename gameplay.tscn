@@ -1,0 +1,17 @@
+[gd_scene load_steps=5 format=3 uid="uid://4fyoq8npekf0"]
+
+[ext_resource type="Script" path="res://gameplay.gd" id="1_r5t7a"]
+[ext_resource type="PackedScene" uid="uid://ddvglltbr24s5" path="res://scenes/world/parallax_background.tscn" id="2_ek37q"]
+[ext_resource type="PackedScene" path="res://autoload/globals.tscn" id="2_fqqji"]
+[ext_resource type="PackedScene" uid="uid://rhas31gnv33u" path="res://player_one.tscn" id="5_mdcg7"]
+
+[node name="Gameplay" type="Node2D"]
+script = ExtResource("1_r5t7a")
+
+[node name="Globals" parent="." instance=ExtResource("2_fqqji")]
+random_seed = true
+
+[node name="ParallaxBackground" parent="." instance=ExtResource("2_ek37q")]
+unique_name_in_owner = true
+
+[node name="PlayerShip" parent="." instance=ExtResource("5_mdcg7")]

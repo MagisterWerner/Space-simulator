@@ -1,6 +1,0 @@
-[gd_scene format=3 uid="uid://l6ndkgkm3tj5"]
-
-[node name="Label" type="Label"]
-z_index = 5
-offset_right = 40.0
-offset_bottom = 28.0
