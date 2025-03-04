@@ -19,71 +19,54 @@ var previous_key_states = {}
 
 func _ready():
 	scale = Vector2.ONE
-	
-	if grid:
-		grid.scale = Vector2.ONE
-		update_seed_label()
-		call_deferred("initialize_world")
+	grid.scale = Vector2.ONE
 	
 	for i in range(10):
 		previous_key_states[KEY_0 + i] = false
+	
+	update_seed_label()
+	call_deferred("initialize_world")
 
 func initialize_world():
-	if not grid:
-		return
-		
 	grid.regenerate()
 	await get_tree().process_frame
 	
-	if planet_spawner:
-		planet_spawner.generate_planets()
-		await get_tree().process_frame
+	planet_spawner.generate_planets()
+	await get_tree().process_frame
 	
-	if asteroid_spawner:
-		asteroid_spawner.generate_asteroids()
-		await get_tree().process_frame
+	asteroid_spawner.generate_asteroids()
+	await get_tree().process_frame
 	
 	create_player()
 	await get_tree().process_frame
-	await get_tree().process_frame
 	
-	if enemy_spawner:
-		enemy_spawner.spawn_enemies()
-		await get_tree().process_frame
-	
-	if player and grid:
-		force_grid_update()
+	enemy_spawner.spawn_enemies()
+	force_grid_update()
 
 func _process(delta):
 	scale = Vector2.ONE
-	
-	if grid and grid.scale != Vector2.ONE:
-		grid.scale = Vector2.ONE
+	grid.scale = Vector2.ONE
 	
 	handle_seed_key_input()
 	handle_random_seed_input()
 	manage_message_timer(delta)
 	queue_redraw()
 
-func _draw():
-	pass
-
 func handle_seed_key_input():
 	for i in range(10):
 		var key_code = KEY_0 + i
 		var key_pressed = Input.is_physical_key_pressed(key_code)
 		
-		if key_pressed and not previous_key_states[key_code] and grid:
+		if key_pressed and not previous_key_states[key_code]:
 			grid.set_seed(i)
 			update_seed_label()
 			create_player()
-			if enemy_spawner:
-				enemy_spawner.reset_enemies()
+			enemy_spawner.reset_enemies()
 		
 		previous_key_states[key_code] = key_pressed
 
 func handle_random_seed_input():
-	if Input.is_action_just_pressed("ui_accept") and grid:
+	if Input.is_action_just_pressed("ui_accept"):
 		var rng = RandomNumberGenerator.new()
 		rng.randomize()
 		var new_seed = rng.randi_range(1, 9999)
@@ -91,11 +74,9 @@ func handle_random_seed_input():
 		grid.set_seed(new_seed)
 		update_seed_label()
 		create_player()
+		enemy_spawner.reset_enemies()
 		
-		if enemy_spawner:
-			enemy_spawner.reset_enemies()
-		
-		show_message("Generated new random seed: " + str(new_seed))
+		show_message("Generated new random seed: %s" % new_seed)
 
 func manage_message_timer(delta):
 	if message_timer > 0:
@@ -104,33 +85,30 @@ func manage_message_timer(delta):
 			hide_message()
 
 func update_seed_label():
-	seed_label.text = "Current Seed: " + str(grid.seed_value)
+	seed_label.text = "Current Seed: %s" % grid.seed_value
 
 func show_message(text):
-	if message_label:
-		message_label.text = text
-		message_label.visible = true
-		message_timer = MESSAGE_DURATION
+	message_label.text = text
+	message_label.visible = true
+	message_timer = MESSAGE_DURATION
 
 func hide_message():
-	if message_label:
-		message_label.visible = false
-		message_timer = 0.0
+	message_label.visible = false
 
 func respawn_player_at_initial_planet():
 	if not player or not initial_planet_position:
 		place_player_at_random_planet()
 		return
-		
+	
 	if player.has_method("set_immobilized"):
 		player.set_immobilized(false)
 		
-		var movement = player.get_node_or_null("MovementComponent")
-		if movement:
-			if movement.has_method("set_speed"):
-				movement.set_speed(300)
-			else:
-				movement.speed = 300
+	var movement = player.get_node_or_null("MovementComponent")
+	if movement:
+		if movement.has_method("set_speed"):
+			movement.set_speed(300)
+		else:
+			movement.speed = 300
 	
 	player.global_position = initial_planet_position
 	player.last_valid_position = initial_planet_position
@@ -143,7 +121,7 @@ func respawn_player_at_initial_planet():
 	if "is_immobilized" in player:
 		player.is_immobilized = false
 	if "respawn_timer" in player:
-		player.respawn_timer = 0.0  
+		player.respawn_timer = 0.0
 	if "was_in_boundary_cell" in player:
 		player.was_in_boundary_cell = false
 	if "was_outside_grid" in player:
@@ -159,15 +137,12 @@ func respawn_player_at_initial_planet():
 	grid.was_in_boundary_cell = false
 	grid.respawn_timer = 0.0
 	
-	if planet_spawner:
-		planet_spawner.draw_planets(grid, grid.loaded_cells)
-	if asteroid_spawner:
-		asteroid_spawner.draw_asteroids(grid, grid.loaded_cells)
-	if enemy_spawner:
-		enemy_spawner.initialize_enemy_visibility()
+	planet_spawner.draw_planets(grid, grid.loaded_cells)
+	asteroid_spawner.draw_asteroids(grid, grid.loaded_cells)
+	enemy_spawner.initialize_enemy_visibility()
 	
 	var planet_name = planet_spawner.get_planet_name(initial_planet_cell_x, initial_planet_cell_y)
-	show_message("You have been rescued and returned to planet " + planet_name + ".")
+	show_message("You have been rescued and returned to planet %s." % planet_name)
 	
 	call_deferred("force_grid_update")
 
@@ -201,7 +176,7 @@ func place_player_at_random_planet():
 		grid.update_loaded_chunks(cell_x, cell_y)
 		
 		var planet_name = planet_spawner.get_planet_name(chosen_planet.grid_x, chosen_planet.grid_y)
-		show_message("Welcome to planet " + planet_name + "!")
+		show_message("Welcome to planet %s!" % planet_name)
 		
 		await get_tree().create_timer(0.1).timeout
 		force_grid_update()
@@ -264,14 +239,13 @@ func _deferred_create_player():
 	call_deferred("place_player_at_random_planet")
 
 func get_planet_positions():
-	return planet_spawner.get_all_planet_positions() if planet_spawner else []
+	return planet_spawner.get_all_planet_positions()
 	
 func force_grid_update():
-	if player and grid:
-		var cell_x = int(floor(player.global_position.x / grid.cell_size.x))
-		var cell_y = int(floor(player.global_position.y / grid.cell_size.y))
-	 
-		grid.current_player_cell_x = -1
-		grid.current_player_cell_y = -1
-		grid.update_loaded_chunks(cell_x, cell_y)
-		grid.queue_redraw()
+	var cell_x = int(floor(player.global_position.x / grid.cell_size.x))
+	var cell_y = int(floor(player.global_position.y / grid.cell_size.y))
+ 
+	grid.current_player_cell_x = -1
+	grid.current_player_cell_y = -1
+	grid.update_loaded_chunks(cell_x, cell_y)
+	grid.queue_redraw()

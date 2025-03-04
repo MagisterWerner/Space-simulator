@@ -1,3 +1,4 @@
+# weapon_pickup.gd
 class_name WeaponPickup
 extends Node2D
 
@@ -12,34 +13,21 @@ var pickup_particles: CPUParticles2D
 var weapon_strategy: WeaponStrategy
 
 func _ready():
-	# Set properties
 	z_index = 5
 	add_to_group("pickups")
 	original_position = global_position
-	
-	# Create visual effects
 	_create_visual_effects()
-	
-	# Create the appropriate weapon strategy based on type
 	_initialize_weapon_strategy()
 
 func _process(delta):
-	# Rotate the pickup
 	rotation += rotation_speed * delta
-	
-	# Bob up and down
 	global_position.y = original_position.y + sin(Time.get_ticks_msec() / 1000.0 * bob_speed) * bob_height
-	
-	# Check for player collision
 	_check_player_collision()
 
 func _create_visual_effects():
-	# Create particles
 	pickup_particles = CPUParticles2D.new()
 	pickup_particles.amount = 16
 	pickup_particles.lifetime = 1.0
-	pickup_particles.explosiveness = 0.0
-	pickup_particles.local_coords = false
 	pickup_particles.emission_shape = 1  # EMISSION_SHAPE_SPHERE
 	pickup_particles.emission_sphere_radius = 20.0
 	pickup_particles.direction = Vector2(0, -1)
@@ -50,28 +38,19 @@ func _create_visual_effects():
 	pickup_particles.scale_amount_min = 2.0
 	pickup_particles.scale_amount_max = 2.0
 	
-	# Set particle color based on weapon type
 	match weapon_type:
-		"StandardLaser":
-			pickup_particles.color = Color(0.2, 0.5, 1.0)
-		"SpreadShot":
-			pickup_particles.color = Color(0.2, 0.8, 1.0)
-		"MissileLauncher":
-			pickup_particles.color = Color(1.0, 0.3, 0.2)
-		_:
-			pickup_particles.color = Color(0.7, 0.7, 1.0)
+		"StandardLaser": pickup_particles.color = Color(0.2, 0.5, 1.0)
+		"SpreadShot": pickup_particles.color = Color(0.2, 0.8, 1.0)
+		"MissileLauncher": pickup_particles.color = Color(1.0, 0.3, 0.2)
+		_: pickup_particles.color = Color(0.7, 0.7, 1.0)
 	
 	add_child(pickup_particles)
 
 func _initialize_weapon_strategy():
-	# Create the appropriate weapon strategy
 	match weapon_type:
-		"StandardLaser":
-			weapon_strategy = StandardLaser.new()
-		"SpreadShot":
-			weapon_strategy = SpreadShot.new()
-		"MissileLauncher":
-			weapon_strategy = MissileLauncher.new()
+		"StandardLaser": weapon_strategy = StandardLaser.new()
+		"SpreadShot": weapon_strategy = SpreadShot.new()
+		"MissileLauncher": weapon_strategy = MissileLauncher.new()
 		_:
 			weapon_strategy = StandardLaser.new()
 			weapon_type = "StandardLaser"
@@ -81,28 +60,20 @@ func _check_player_collision():
 	if not player:
 		return
 		
-	var distance = global_position.distance_to(player.global_position)
-	if distance <= pickup_radius:
+	if global_position.distance_to(player.global_position) <= pickup_radius:
 		give_weapon_to_player(player)
 
 func give_weapon_to_player(player):
-	# Get the player's combat component
 	var combat = player.get_node_or_null("CombatComponent")
 	if not combat:
 		return
 	
-	# Give the weapon to the player
 	combat.add_weapon(weapon_type, weapon_strategy)
 	combat.set_weapon(weapon_type)
-	
-	# Create pickup effect
 	_create_pickup_effect()
-	
-	# Remove the pickup
 	queue_free()
 
 func _create_pickup_effect():
-	# Create a flash effect
 	var flash = CPUParticles2D.new()
 	flash.position = global_position
 	flash.z_index = 10
@@ -112,29 +83,22 @@ func _create_pickup_effect():
 	flash.amount = 20
 	flash.lifetime = 0.5
 	flash.local_coords = false
-	flash.direction = Vector2(0, 0)
+	flash.direction = Vector2.ZERO
 	flash.spread = 180.0
-	flash.gravity = Vector2(0, 0)
+	flash.gravity = Vector2.ZERO
 	flash.initial_velocity_min = 100.0
 	flash.initial_velocity_max = 100.0
 	flash.scale_amount_min = 3.0
 	flash.scale_amount_max = 3.0
 	
-	# Set color based on weapon type
 	match weapon_type:
-		"StandardLaser":
-			flash.color = Color(0.2, 0.5, 1.0)
-		"SpreadShot":
-			flash.color = Color(0.2, 0.8, 1.0)
-		"MissileLauncher":
-			flash.color = Color(1.0, 0.3, 0.2)
-		_:
-			flash.color = Color(0.7, 0.7, 1.0)
+		"StandardLaser": flash.color = Color(0.2, 0.5, 1.0)
+		"SpreadShot": flash.color = Color(0.2, 0.8, 1.0)
+		"MissileLauncher": flash.color = Color(1.0, 0.3, 0.2)
+		_: flash.color = Color(0.7, 0.7, 1.0)
 	
-	# Add to the scene
 	get_tree().current_scene.add_child(flash)
 	
-	# Remove after animation completes
 	var timer = Timer.new()
 	flash.add_child(timer)
 	timer.wait_time = 0.6
@@ -143,36 +107,27 @@ func _create_pickup_effect():
 	timer.timeout.connect(func(): flash.queue_free())
 
 func _draw():
-	# Draw the pickup if there's no sprite
-	if not has_node("Sprite2D"):
-		var color = Color(1, 1, 1)
+	if has_node("Sprite2D"):
+		return
 		
-		# Set color based on weapon type
-		match weapon_type:
-			"StandardLaser":
-				color = Color(0.2, 0.5, 1.0)
-			"SpreadShot":
-				color = Color(0.2, 0.8, 1.0)
-			"MissileLauncher":
-				color = Color(1.0, 0.3, 0.2)
-		
-		# Draw weapon icon
-		draw_circle(Vector2.ZERO, 15, color)
-		
-		# Draw weapon symbol based on type
-		match weapon_type:
-			"StandardLaser":
-				# Draw laser line
-				draw_line(Vector2(-10, 0), Vector2(10, 0), Color.WHITE, 3)
-			"SpreadShot":
-				# Draw spread lines
-				draw_line(Vector2(-10, -5), Vector2(10, -10), Color.WHITE, 2)
-				draw_line(Vector2(-10, 0), Vector2(10, 0), Color.WHITE, 2)
-				draw_line(Vector2(-10, 5), Vector2(10, 10), Color.WHITE, 2)
-			"MissileLauncher":
-				# Draw missile
-				draw_rect(Rect2(-8, -3, 16, 6), Color.WHITE)
-				draw_triangle(Vector2(8, 0), 8, Color.WHITE)
+	var color = Color(1, 1, 1)
+	match weapon_type:
+		"StandardLaser": color = Color(0.2, 0.5, 1.0)
+		"SpreadShot": color = Color(0.2, 0.8, 1.0)
+		"MissileLauncher": color = Color(1.0, 0.3, 0.2)
+	
+	draw_circle(Vector2.ZERO, 15, color)
+	
+	match weapon_type:
+		"StandardLaser":
+			draw_line(Vector2(-10, 0), Vector2(10, 0), Color.WHITE, 3)
+		"SpreadShot":
+			draw_line(Vector2(-10, -5), Vector2(10, -10), Color.WHITE, 2)
+			draw_line(Vector2(-10, 0), Vector2(10, 0), Color.WHITE, 2)
+			draw_line(Vector2(-10, 5), Vector2(10, 10), Color.WHITE, 2)
+		"MissileLauncher":
+			draw_rect(Rect2(-8, -3, 16, 6), Color.WHITE)
+			draw_triangle(Vector2(8, 0), 8, Color.WHITE)
 	
 func draw_triangle(center, size, color):
 	var points = PackedVector2Array([

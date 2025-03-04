@@ -1,3 +1,4 @@
+# missile_launcher.gd
 class_name MissileLauncher
 extends WeaponStrategy
 
@@ -17,58 +18,41 @@ func _init():
 
 func fire(entity, spawn_position: Vector2, direction: Vector2) -> Array:
 	var projectiles = []
-	
-	# Calculate start angle for the spread
 	var start_angle = direction.angle() - (spread_angle * (missile_count - 1) / 2)
-	
-	# Create missile scene resource
-	var missile_scene_path = "res://scenes/homing_missile.tscn"
 	var missile_scene = null
 	
-	if ResourceLoader.exists(missile_scene_path):
-		missile_scene = load(missile_scene_path)
+	if ResourceLoader.exists("res://scenes/homing_missile.tscn"):
+		missile_scene = load("res://scenes/homing_missile.tscn")
 	
-	# Play launch sound
 	var sound_system = entity.get_node_or_null("/root/SoundSystem")
 	if sound_system:
 		sound_system.play_laser(spawn_position)
 	
-	# Create missiles
 	for i in range(missile_count):
 		var angle = start_angle + (spread_angle * i)
 		var missile_dir = Vector2(cos(angle), sin(angle))
-		
 		var missile = null
 		
-		# Create missile from scene if available
 		if missile_scene:
 			missile = missile_scene.instantiate()
 		else:
-			# Create missile manually if scene not available
 			missile = HomingMissile.new()
-			
-			# Create sprite
 			var sprite = Sprite2D.new()
 			sprite.name = "Sprite2D"
 			
-			# Try to load missile texture
-			var texture_path = "res://sprites/weapons/missile.png"
-			if ResourceLoader.exists(texture_path):
-				sprite.texture = load(texture_path)
+			if ResourceLoader.exists("res://sprites/weapons/missile.png"):
+				sprite.texture = load("res://sprites/weapons/missile.png")
 			else:
-				# Create a simple texture
 				var image = Image.create(20, 6, false, Image.FORMAT_RGBA8)
 				var color = Color(0.2, 0.8, 1.0) if entity.is_in_group("player") else Color(1.0, 0.3, 0.2)
 				for x in range(20):
 					for y in range(6):
 						image.set_pixel(x, y, color)
-				var texture = ImageTexture.create_from_image(image)
-				sprite.texture = texture
+				sprite.texture = ImageTexture.create_from_image(image)
 			
 			sprite.scale = Vector2(1.0, 1.0)
 			missile.add_child(sprite)
 		
-		# Configure missile properties
 		missile.is_player_missile = entity.is_in_group("player")
 		missile.direction = missile_dir
 		missile.speed = projectile_speed
@@ -78,14 +62,10 @@ func fire(entity, spawn_position: Vector2, direction: Vector2) -> Array:
 		missile.explosion_radius = explosion_radius
 		missile.range = range
 		
-		# Set position with offset
 		missile.global_position = spawn_position + missile_dir * 40
 		missile.rotation = angle
-		
-		# Find initial target
 		missile.target = _find_closest_target(entity, missile.is_player_missile)
 		
-		# Add to scene
 		entity.get_tree().current_scene.add_child(missile)
 		projectiles.append(missile)
 	

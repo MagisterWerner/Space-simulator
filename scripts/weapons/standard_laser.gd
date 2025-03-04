@@ -1,8 +1,8 @@
+# standard_laser.gd
 class_name StandardLaser
 extends WeaponStrategy
 
-# Laser specific properties
-@export var laser_color: Color = Color(0.2, 0.8, 0.2)  # Green for player
+@export var laser_color: Color = Color(0.2, 0.8, 0.2)
 
 func _init():
 	weapon_name = "StandardLaser"
@@ -13,30 +13,19 @@ func _init():
 	range = 800.0
 
 func fire(entity, spawn_position: Vector2, direction: Vector2) -> Array:
-	# Create laser directly instead of using the scene
 	var laser = Laser.new()
 	
-	# Set position
-	var spawn_offset = direction * 30
-	laser.global_position = spawn_position + spawn_offset
-	
-	# Configure the laser
+	laser.global_position = spawn_position + direction * 30
 	laser.direction = direction
 	laser.rotation = direction.angle()
 	laser.is_player_laser = entity.is_in_group("player")
 	laser.damage = damage
 	laser.speed = projectile_speed
 	
-	# Note: No Sprite2D is added here, so the laser will use its _draw method
-	# which draws a colored rectangle based on is_player_laser
-	
-	# Add to scene
 	entity.get_tree().current_scene.add_child(laser)
 	
-	# Play laser sound
 	var sound_system = entity.get_node_or_null("/root/SoundSystem")
 	if sound_system:
 		sound_system.play_laser(spawn_position)
 	
-	# Return the projectile array (just one for standard laser)
 	return [laser]
