@@ -1,0 +1,210 @@
+[gd_scene load_steps=23 format=3 uid="uid://ddvglltbr24s5"]
+
+[ext_resource type="Shader" path="res://assets/shaders/pixelate.gdshader" id="1_8135d"]
+
+[sub_resource type="Gradient" id="Gradient_imevy"]
+interpolation_mode = 1
+offsets = PackedFloat32Array(0, 0.558559, 0.563063)
+colors = PackedColorArray(0, 0, 0, 1, 0.25098, 0.25098, 0.25098, 0.25098, 0, 0, 0, 1)
+
+[sub_resource type="FastNoiseLite" id="FastNoiseLite_206wp"]
+noise_type = 5
+seed = 100
+frequency = 1.0
+fractal_octaves = 1
+domain_warp_type = 1
+domain_warp_fractal_type = 0
+
+[sub_resource type="NoiseTexture2D" id="NoiseTexture2D_vcegq"]
+width = 1280
+height = 720
+seamless = true
+seamless_blend_skirt = 1.0
+color_ramp = SubResource("Gradient_imevy")
+noise = SubResource("FastNoiseLite_206wp")
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_yp1jp"]
+shader = ExtResource("1_8135d")
+shader_parameter/amount = 640
+
+[sub_resource type="Gradient" id="Gradient_gnm8q"]
+colors = PackedColorArray(0, 0, 0, 0, 1, 0.648484, 0.651975, 0.25098)
+
+[sub_resource type="FastNoiseLite" id="FastNoiseLite_4ecef"]
+noise_type = 5
+seed = 10
+
+[sub_resource type="NoiseTexture2D" id="NoiseTexture2D_m7jqd"]
+width = 1280
+height = 720
+generate_mipmaps = false
+seamless = true
+bump_strength = 32.0
+color_ramp = SubResource("Gradient_gnm8q")
+noise = SubResource("FastNoiseLite_4ecef")
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_31430"]
+shader = ExtResource("1_8135d")
+shader_parameter/amount = 640
+
+[sub_resource type="Gradient" id="Gradient_kqxmt"]
+colors = PackedColorArray(0, 0, 0, 0, 0.24216, 0.000225083, 0.319237, 0.25098)
+
+[sub_resource type="FastNoiseLite" id="FastNoiseLite_rg20p"]
+seed = 20
+frequency = 0.0025
+
+[sub_resource type="NoiseTexture2D" id="NoiseTexture2D_i4eu3"]
+width = 1280
+height = 720
+generate_mipmaps = false
+seamless = true
+bump_strength = 32.0
+color_ramp = SubResource("Gradient_kqxmt")
+noise = SubResource("FastNoiseLite_rg20p")
+
+[sub_resource type="Gradient" id="Gradient_f3c7i"]
+colors = PackedColorArray(0, 0, 0, 0, 0.501961, 0, 0, 0.25098)
+
+[sub_resource type="FastNoiseLite" id="FastNoiseLite_arr4d"]
+seed = 30
+frequency = 0.0025
+
+[sub_resource type="NoiseTexture2D" id="NoiseTexture2D_px8g1"]
+width = 1280
+height = 720
+generate_mipmaps = false
+seamless = true
+bump_strength = 32.0
+color_ramp = SubResource("Gradient_f3c7i")
+noise = SubResource("FastNoiseLite_arr4d")
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_3sig5"]
+shader = ExtResource("1_8135d")
+shader_parameter/amount = 640
+
+[sub_resource type="Gradient" id="Gradient_7uveo"]
+colors = PackedColorArray(0, 0, 0, 0, 0.745098, 0.313726, 0, 0.25098)
+
+[sub_resource type="FastNoiseLite" id="FastNoiseLite_wcp3o"]
+seed = 40
+frequency = 0.0025
+
+[sub_resource type="NoiseTexture2D" id="NoiseTexture2D_rie3p"]
+width = 1280
+height = 720
+generate_mipmaps = false
+seamless = true
+bump_strength = 32.0
+color_ramp = SubResource("Gradient_7uveo")
+noise = SubResource("FastNoiseLite_wcp3o")
+
+[sub_resource type="Gradient" id="Gradient_sno5a"]
+colors = PackedColorArray(0, 0, 0, 0, 0, 0.256169, 0, 0.25098)
+
+[sub_resource type="FastNoiseLite" id="FastNoiseLite_pfh6w"]
+seed = 50
+frequency = 0.0025
+
+[sub_resource type="NoiseTexture2D" id="NoiseTexture2D_fl0la"]
+width = 1280
+height = 720
+generate_mipmaps = false
+seamless = true
+bump_strength = 32.0
+color_ramp = SubResource("Gradient_sno5a")
+noise = SubResource("FastNoiseLite_pfh6w")
+
+[node name="ParallaxBackground" type="ParallaxBackground"]
+scroll_ignore_camera_zoom = true
+
+[node name="ParallaxLayer1" type="ParallaxLayer" parent="."]
+motion_scale = Vector2(0.01, 0.01)
+motion_mirroring = Vector2(1280, 720)
+
+[node name="Stars" type="TextureRect" parent="ParallaxLayer1"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_right = 512.0
+offset_bottom = 512.0
+grow_horizontal = 2
+grow_vertical = 2
+texture = SubResource("NoiseTexture2D_vcegq")
+
+[node name="PinkClouds" type="TextureRect" parent="ParallaxLayer1"]
+material = SubResource("ShaderMaterial_yp1jp")
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -384.0
+offset_top = -104.0
+offset_right = 896.0
+offset_bottom = 616.0
+grow_horizontal = 2
+grow_vertical = 2
+texture = SubResource("NoiseTexture2D_m7jqd")
+
+[node name="PurpleClouds" type="TextureRect" parent="ParallaxLayer1"]
+material = SubResource("ShaderMaterial_31430")
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -384.0
+offset_top = -104.0
+offset_right = 896.0
+offset_bottom = 616.0
+grow_horizontal = 2
+grow_vertical = 2
+texture = SubResource("NoiseTexture2D_i4eu3")
+
+[node name="RedClouds" type="TextureRect" parent="ParallaxLayer1"]
+material = SubResource("ShaderMaterial_yp1jp")
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -384.0
+offset_top = -104.0
+offset_right = 896.0
+offset_bottom = 616.0
+grow_horizontal = 2
+grow_vertical = 2
+texture = SubResource("NoiseTexture2D_px8g1")
+
+[node name="BrownClouds" type="TextureRect" parent="ParallaxLayer1"]
+material = SubResource("ShaderMaterial_3sig5")
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -384.0
+offset_top = -104.0
+offset_right = 896.0
+offset_bottom = 616.0
+grow_horizontal = 2
+grow_vertical = 2
+texture = SubResource("NoiseTexture2D_rie3p")
+
+[node name="GreenClouds" type="TextureRect" parent="ParallaxLayer1"]
+material = SubResource("ShaderMaterial_3sig5")
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -384.0
+offset_top = -104.0
+offset_right = 896.0
+offset_bottom = 616.0
+grow_horizontal = 2
+grow_vertical = 2
+texture = SubResource("NoiseTexture2D_fl0la")
+
+[node name="ParallaxLayer2" type="ParallaxLayer" parent="."]
+motion_scale = Vector2(0.015, 0.015)
+motion_mirroring = Vector2(1280, 720)
+
+[node name="ParallaxLayer3" type="ParallaxLayer" parent="."]
+motion_scale = Vector2(0.02, 0.02)
+motion_mirroring = Vector2(1280, 720)
+
+[node name="ParallaxLayer4" type="ParallaxLayer" parent="."]
+motion_scale = Vector2(0.025, 0.025)
+motion_mirroring = Vector2(1280, 720)

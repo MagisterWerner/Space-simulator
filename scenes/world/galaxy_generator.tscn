@@ -1,0 +1,149 @@
+[gd_scene load_steps=22 format=3 uid="uid://d3shxb6nxl2ea"]
+
+[ext_resource type="Script" path="res://scenes/world/galaxy_generator.gd" id="1_hlbwx"]
+[ext_resource type="Script" path="res://addons/gaea/generators/2D/noise_generator/noise_generator.gd" id="1_tcw1j"]
+[ext_resource type="Script" path="res://addons/gaea/generators/2D/noise_generator/noise_generator_settings.gd" id="2_ji258"]
+[ext_resource type="Script" path="res://addons/gaea/others/falloff_map.gd" id="2_oy5c1"]
+[ext_resource type="Script" path="res://addons/gaea/generators/2D/noise_generator/noise_generator_data.gd" id="3_3bxmw"]
+[ext_resource type="Script" path="res://addons/gaea/tile_info/tilemap_tile_info.gd" id="4_65rkp"]
+[ext_resource type="Script" path="res://addons/gaea/renderers/2D/tilemap_gaea_renderer.gd" id="5_w4vke"]
+[ext_resource type="Texture2D" uid="uid://hjv4x5b3h55i" path="res://assets/sprites/tile_maps/grid.png" id="7_vo475"]
+
+[sub_resource type="Image" id="Image_lvx2d"]
+data = {
+"data": PackedByteArray(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255, 255, 255, 255, 255, 255, 255, 255, 255, 0, 255, 255, 255, 255, 255, 255, 255, 255, 255, 0, 255, 255, 255, 255, 255, 255, 255, 255, 255, 0, 255, 255, 255, 255, 255, 255, 255, 255, 255, 0, 255, 255, 255, 255, 255, 255, 255, 255, 255, 0, 255, 255, 255, 255, 255, 255, 255, 255, 255, 0, 255, 255, 255, 255, 255, 255, 255, 255, 255, 0, 255, 255, 255, 255, 255, 255, 255, 255, 255, 0, 255, 255, 255, 255, 255, 255, 255, 255, 255),
+"format": "Lum8",
+"height": 10,
+"mipmaps": false,
+"width": 10
+}
+
+[sub_resource type="ImageTexture" id="ImageTexture_2ce45"]
+image = SubResource("Image_lvx2d")
+
+[sub_resource type="Resource" id="Resource_a01u3"]
+script = ExtResource("2_oy5c1")
+texture = SubResource("ImageTexture_2ce45")
+falloff_start = 1.0
+falloff_end = 1.0
+
+[sub_resource type="FastNoiseLite" id="FastNoiseLite_bdffd"]
+noise_type = 0
+seed = 773547052
+frequency = 0.0781
+domain_warp_enabled = true
+domain_warp_type = 2
+
+[sub_resource type="Resource" id="Resource_nhwvf"]
+script = ExtResource("4_65rkp")
+type = 0
+tilemap_layer = 0
+source_id = 0
+atlas_coord = Vector2i(0, 0)
+alternative_tile = 0
+id = ""
+layer = 0
+
+[sub_resource type="Resource" id="Resource_m14v7"]
+resource_name = "empty space"
+script = ExtResource("3_3bxmw")
+title = "empty space"
+tile = SubResource("Resource_nhwvf")
+min = -1.0
+max = 0.0
+
+[sub_resource type="Resource" id="Resource_mt0p7"]
+script = ExtResource("4_65rkp")
+type = 0
+tilemap_layer = 0
+source_id = 0
+atlas_coord = Vector2i(1, 0)
+alternative_tile = 0
+id = ""
+layer = 0
+
+[sub_resource type="Resource" id="Resource_pkhno"]
+resource_name = "asteroids"
+script = ExtResource("3_3bxmw")
+title = "asteroids"
+tile = SubResource("Resource_mt0p7")
+min = 0.0
+max = 0.5
+
+[sub_resource type="Resource" id="Resource_qwu0e"]
+script = ExtResource("4_65rkp")
+type = 0
+tilemap_layer = 0
+source_id = 0
+atlas_coord = Vector2i(2, 0)
+alternative_tile = 0
+id = ""
+layer = 0
+
+[sub_resource type="Resource" id="Resource_ald3p"]
+resource_name = "planets"
+script = ExtResource("3_3bxmw")
+title = "planets"
+tile = SubResource("Resource_qwu0e")
+min = 0.5
+max = 1.0
+
+[sub_resource type="Resource" id="Resource_r04ly"]
+resource_name = "Settings"
+script = ExtResource("2_ji258")
+tiles = Array[ExtResource("3_3bxmw")]([SubResource("Resource_m14v7"), SubResource("Resource_pkhno"), SubResource("Resource_ald3p")])
+noise = SubResource("FastNoiseLite_bdffd")
+infinite = false
+world_size = Vector2i(10, 10)
+falloff_enabled = false
+falloff_map = SubResource("Resource_a01u3")
+modifiers = Array[Resource("res://addons/gaea/modifiers/2D/modifier_2d.gd")]([])
+
+[sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_4yl3e"]
+texture = ExtResource("7_vo475")
+texture_region_size = Vector2i(64, 64)
+0:0/0 = 0
+1:0/next_alternative_id = 2
+1:0/0 = 0
+2:0/0 = 0
+3:0/0 = 0
+4:0/0 = 0
+
+[sub_resource type="TileSet" id="TileSet_gv5nj"]
+tile_size = Vector2i(64, 64)
+sources/0 = SubResource("TileSetAtlasSource_4yl3e")
+
+[node name="GalaxyGenerator" type="Node2D"]
+script = ExtResource("1_hlbwx")
+grid_color = Color(0, 1, 1, 0.0588235)
+
+[node name="ColorRect" type="ColorRect" parent="."]
+visible = false
+show_behind_parent = true
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+size_flags_horizontal = 4
+size_flags_vertical = 4
+color = Color(0, 0, 0, 1)
+
+[node name="NoiseGenerator" type="Node" parent="."]
+script = ExtResource("1_tcw1j")
+settings = SubResource("Resource_r04ly")
+chunk_size = Vector2i(4, 4)
+tile_size = Vector2i(512, 512)
+random_seed = false
+seed = 866562065
+
+[node name="TilemapGaeaRenderer" type="Node" parent="." node_paths=PackedStringArray("tile_map", "generator")]
+script = ExtResource("5_w4vke")
+tile_map = NodePath("../TileMap")
+generator = NodePath("../NoiseGenerator")
+
+[node name="TileMap" type="TileMap" parent="."]
+tile_set = SubResource("TileSet_gv5nj")
+rendering_quadrant_size = 4
+format = 2
+layer_0/tile_data = PackedInt32Array(327681, 65536, 0, 393217, 0, 0, 458753, 0, 0, 524289, 65536, 0, 589825, 65536, 0, 196610, 0, 0, 262146, 0, 0, 327682, 0, 0, 393218, 65536, 0, 458754, 0, 0, 524290, 0, 0, 131075, 0, 0, 196611, 0, 0, 262147, 0, 0, 327683, 131072, 0, 393219, 65536, 0, 458755, 0, 0, 524291, 0, 0, 589827, 65536, 0, 65540, 0, 0, 131076, 65536, 0, 262148, 0, 0, 327684, 65536, 0, 393220, 65536, 0, 524292, 0, 0, 589828, 65536, 0, 65541, 65536, 0, 131077, 65536, 0, 196613, 65536, 0, 262149, 0, 0, 327685, 0, 0, 393221, 65536, 0, 458757, 0, 0, 524293, 65536, 0, 589829, 0, 0, 131078, 65536, 0, 262150, 0, 0, 327686, 65536, 0, 393222, 0, 0, 65543, 65536, 0, 131079, 65536, 0, 327687, 65536, 0, 393223, 0, 0, 458759, 65536, 0, 589831, 0, 0, 65544, 65536, 0, 196616, 65536, 0, 327688, 0, 0, 393224, 0, 0, 458760, 65536, 0, 589832, 0, 0, 131081, 65536, 0, 196617, 0, 0, 262153, 0, 0, 327689, 0, 0, 393225, 65536, 0, 458761, 65536, 0, 524297, 65536, 0, 589833, 0, 0, 131073, 0, 0, 65538, 65536, 0, 131074, 0, 0, 65539, 0, 0, 0, 65536, 0, 65536, 65536, 0, 131072, 0, 0, 196608, 0, 0, 262144, 65536, 0, 327680, 65536, 0, 393216, 65536, 0, 458752, 0, 0, 524288, 65536, 0, 1, 0, 0, 2, 65536, 0, 4, 0, 0, 7, 0, 0, 9, 65536, 0, 65537, 65536, 0, 3, 0, 0, 196612, 65536, 0, 524295, 0, 0, 262152, 0, 0, 6, 65536, 0, 196615, 65536, 0, 458756, 0, 0, 196614, 131072, 0, 196609, 65536, 0, 262145, 65536, 0, 65542, 65536, 0, 458758, 65536, 0, 262151, 65536, 0, 589824, 0, 0, 589826, 65536, 0, 5, 0, 0, 131080, 65536, 0, 524296, 65536, 0, 524294, 0, 0, 8, 65536, 0, 589830, 0, 0, 65545, 65536, 0)
