@@ -1,6 +1,0 @@
-[gd_scene load_steps=2 format=3 uid="uid://bf3vndk53m1a7"]
-
-[ext_resource type="Script" path="res://star_field.gd" id="1_mkop3"]
-
-[node name="StarField" type="Node2D"]
-script = ExtResource("1_mkop3")

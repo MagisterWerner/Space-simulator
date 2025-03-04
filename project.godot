@@ -17,6 +17,10 @@ config/features=PackedStringArray("4.3")
 boot_splash/bg_color=Color(0.0862745, 0.0862745, 0.0862745, 1)
 config/icon="res://player_ship.png"
 
+[audio]
+
+buses/default_bus_layout=""
+
 [category]
 
 property_name=1
@@ -40,10 +44,6 @@ enabled=PackedStringArray()
 [filesystem]
 
 import/blender/enabled=false
-
-[gui]
-
-theme/custom="res://assets/theme/theme-main.tres"
 
 [input]
 
