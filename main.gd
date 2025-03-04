@@ -31,7 +31,9 @@ func initialize_world():
 	grid.regenerate()
 	await get_tree().process_frame
 	
-	planet_spawner.generate_planets()
+	if planet_spawner:
+		if planet_spawner.has_method("generate_planets"):
+			planet_spawner.generate_planets()
 	await get_tree().process_frame
 	
 	asteroid_spawner.generate_asteroids()
@@ -137,11 +139,13 @@ func respawn_player_at_initial_planet():
 	grid.was_in_boundary_cell = false
 	grid.respawn_timer = 0.0
 	
-	planet_spawner.draw_planets(grid, grid.loaded_cells)
-	asteroid_spawner.draw_asteroids(grid, grid.loaded_cells)
-	enemy_spawner.initialize_enemy_visibility()
+	if asteroid_spawner and asteroid_spawner.has_method("draw_asteroids"):
+		asteroid_spawner.draw_asteroids(grid, grid.loaded_cells)
 	
-	var planet_name = planet_spawner.get_planet_name(initial_planet_cell_x, initial_planet_cell_y)
+	if enemy_spawner and enemy_spawner.has_method("initialize_enemy_visibility"):
+		enemy_spawner.initialize_enemy_visibility()
+	
+	var planet_name = get_planet_name(initial_planet_cell_x, initial_planet_cell_y)
 	show_message("You have been rescued and returned to planet %s." % planet_name)
 	
 	call_deferred("force_grid_update")
@@ -151,7 +155,7 @@ func place_player_at_random_planet():
 		return
 	
 	grid.queue_redraw()
-	var planet_positions = planet_spawner.get_all_planet_positions()
+	var planet_positions = get_planet_positions()
 	
 	if planet_positions.size() > 0:
 		var rng = RandomNumberGenerator.new()
@@ -175,7 +179,7 @@ func place_player_at_random_planet():
 		grid.current_player_cell_y = -1
 		grid.update_loaded_chunks(cell_x, cell_y)
 		
-		var planet_name = planet_spawner.get_planet_name(chosen_planet.grid_x, chosen_planet.grid_y)
+		var planet_name = get_planet_name(chosen_planet.grid_x, chosen_planet.grid_y)
 		show_message("Welcome to planet %s!" % planet_name)
 		
 		await get_tree().create_timer(0.1).timeout
@@ -239,7 +243,38 @@ func _deferred_create_player():
 	call_deferred("place_player_at_random_planet")
 
 func get_planet_positions():
-	return planet_spawner.get_all_planet_positions()
+	if planet_spawner:
+		if planet_spawner.has_method("get_all_planet_positions"):
+			return planet_spawner.get_all_planet_positions()
+		elif "planet_positions" in planet_spawner:
+			return planet_spawner.planet_positions
+	return []
+
+func get_planet_name(x, y):
+	if planet_spawner and planet_spawner.has_method("get_planet_name"):
+		return planet_spawner.get_planet_name(x, y)
+	
+	# Fallback implementation
+	var consonants = ["b", "c", "d", "f", "g", "h", "j", "k", "l", "m", "n", "p", "r", "s", "t", "v", "z"]
+	var vowels = ["a", "e", "i", "o", "u"]
+	
+	var rng = RandomNumberGenerator.new()
+	rng.seed = grid.seed_value + (x * 100) + y
+	
+	var name = ""
+	name += consonants[rng.randi() % consonants.size()].to_upper()
+	name += vowels[rng.randi() % vowels.size()]
+	name += consonants[rng.randi() % consonants.size()]
+	name += vowels[rng.randi() % vowels.size()]
+
+	if rng.randi() % 2 == 0:
+		name += "-"
+		name += consonants[rng.randi() % consonants.size()].to_upper()
+		name += vowels[rng.randi() % vowels.size()]
+	else:
+		name += " " + str((x + y) % 9 + 1)
+
+	return name
 	
 func force_grid_update():
 	var cell_x = int(floor(player.global_position.x / grid.cell_size.x))

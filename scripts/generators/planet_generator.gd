@@ -1,5 +1,6 @@
 # planet_generator.gd
 extends RefCounted
+class_name PlanetGenerator
 
 enum PlanetTheme {
 	ARID,

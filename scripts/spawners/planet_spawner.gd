@@ -1,31 +1,15 @@
 # planet_spawner.gd
 extends Node
 
-const MoonGeneratorClass = preload("res://scripts/generators/moon_generator.gd")
-const PlanetGeneratorClass = preload("res://scripts/generators/planet_generator.gd")
-const AtmosphereGeneratorClass = preload("res://scripts/generators/atmosphere_generator.gd")
-
-# Configuration parameters
 @export var planet_percentage: int = 10
 @export var minimum_planets: int = 5
-@export var moon_chance: int = 40
-@export var max_moons: int = 2
-@export var moon_orbit_factor: float = 0.05
 @export var cell_margin: float = 0.2
-@export var min_moon_distance_factor: float = 1.8
-@export var max_moon_distance_factor: float = 2.5
-@export var max_orbit_deviation: float = 0.15
 
 var grid = null
+var planet_scene = preload("res://planet.tscn")
+var spawned_planets = []
 var planet_positions = []
 var planet_data = []
-
-# Texture caches
-var generated_planet_textures = {}
-var generated_moon_textures = {}
-var generated_atmosphere_textures = {}
-
-var debug_mode = true
 
 func _ready():
 	grid = get_node_or_null("/root/Main/Grid")
@@ -35,14 +19,17 @@ func _ready():
 	
 	if grid.has_signal("_seed_changed"):
 		grid.connect("_seed_changed", _on_grid_seed_changed)
+	
+	if grid.has_signal("_cell_loaded"):
+		grid.connect("_cell_loaded", _on_cell_loaded)
+	if grid.has_signal("_cell_unloaded"):
+		grid.connect("_cell_unloaded", _on_cell_unloaded)
 
 func generate_planets():
 	# Clear existing data
+	clear_planets()
 	planet_positions.clear()
 	planet_data.clear()
-	generated_planet_textures.clear()
-	generated_moon_textures.clear()
-	generated_atmosphere_textures.clear()
 	
 	if grid.cell_contents.size() == 0:
 		return
@@ -99,67 +86,12 @@ func generate_planets():
 			y * grid.cell_size.y + grid.cell_size.y / 2
 		)
 		
-		# Determine moon count
-		var has_moons = rng.randi() % 100 < moon_chance
-		var num_moons = rng.randi_range(1, max_moons) if has_moons else 0
-		
-		# Generate moons
-		var moons = []
-		if has_moons:
-			for m in range(num_moons):
-				var moon_seed = planet_seed + m * 100
-				var moon_texture = MoonGeneratorClass.get_moon_texture(moon_seed)
-				
-				# Cache texture
-				var moon_key = str(moon_seed)
-				generated_moon_textures[moon_key] = moon_texture
-				
-				# Get moon size
-				var moon_generator = MoonGeneratorClass.new()
-				var moon_pixel_size = moon_generator.get_moon_size(moon_seed)
-				
-				# Calculate orbit parameters
-				var planet_radius = 128.0
-				var moon_radius = moon_pixel_size / 2.0
-				var min_distance = planet_radius * min_moon_distance_factor + moon_radius
-				var max_distance = planet_radius * max_moon_distance_factor + moon_radius
-				var moon_orbit_distance = rng.randf_range(min_distance, max_distance)
-				var moon_angle = rng.randf_range(0, TAU)
-				var orbit_deviation = rng.randf_range(-max_orbit_deviation, max_orbit_deviation)
-				
-				moons.append({
-					"seed": moon_seed,
-					"distance": moon_orbit_distance,
-					"angle": moon_angle,
-					"scale": 1.0,
-					"orbit_speed": rng.randf_range(0.2, 0.5) * moon_orbit_factor,
-					"orbit_deviation": orbit_deviation,
-					"phase_offset": rng.randf_range(0, TAU),
-					"pixel_size": moon_pixel_size
-				})
-		
-		# Generate planet data
-		var planet_generator = PlanetGeneratorClass.new()
-		var planet_theme = planet_generator.get_planet_theme(planet_seed)
-		
-		var atmosphere_generator = AtmosphereGeneratorClass.new()
-		var atmosphere_data = atmosphere_generator.generate_atmosphere_data(planet_theme, planet_seed)
-		
-		# Store planet data
+		# Store planet position
 		planet_positions.append({
 			"position": world_pos,
 			"grid_x": x,
-			"grid_y": y
-		})
-		
-		planet_data.append({
-			"seed": planet_seed,
-			"scale": 1.0,
-			"pixel_size": 256,
-			"moons": moons,
-			"name": generate_planet_name(x, y),
-			"theme": planet_theme,
-			"atmosphere": atmosphere_data
+			"grid_y": y,
+			"seed": planet_seed
 		})
 		
 		# Reserve cells
@@ -174,121 +106,105 @@ func generate_planets():
 		if actual_planet_count >= planet_count:
 			break
 	
-	grid.queue_redraw()
-
-func draw_planets(canvas: CanvasItem, loaded_cells: Dictionary):
-	var time = Time.get_ticks_msec() / 1000.0
-	
-	for cell_pos in loaded_cells.keys():
+	# Create planets for cells that are already loaded
+	for cell_pos in grid.loaded_cells.keys():
 		var x = int(cell_pos.x)
 		var y = int(cell_pos.y)
 		
-		if y >= grid.cell_contents.size() or x >= grid.cell_contents[y].size() or grid.cell_contents[y][x] != grid.CellContent.PLANET:
+		if y >= grid.cell_contents.size() or x >= grid.cell_contents[y].size():
 			continue
-		
-		# Find planet data
-		var planet_index = -1
-		for i in range(planet_positions.size()):
-			if planet_positions[i].grid_x == x and planet_positions[i].grid_y == y:
-				planet_index = i
-				break
-		
-		if planet_index != -1:
-			var planet = planet_data[planet_index]
-			var planet_seed = planet.seed
 			
-			# Get or generate planet texture
-			var planet_key = str(planet_seed)
-			var planet_textures = null
-			
-			if generated_planet_textures.has(planet_key):
-				planet_textures = generated_planet_textures[planet_key]
-			else:
-				planet_textures = PlanetGeneratorClass.get_planet_texture(planet_seed)
-				generated_planet_textures[planet_key] = planet_textures
-			
-			# Get or generate atmosphere texture
-			var atmosphere_texture = null
-			if generated_atmosphere_textures.has(planet_key):
-				atmosphere_texture = generated_atmosphere_textures[planet_key]
-			else:
-				var atmosphere_generator = AtmosphereGeneratorClass.new()
-				atmosphere_texture = atmosphere_generator.generate_atmosphere_texture(
-					planet.theme, 
-					planet_seed,
-					planet.atmosphere.color,
-					planet.atmosphere.thickness
-				)
-				generated_atmosphere_textures[planet_key] = atmosphere_texture
-			
-			var planet_texture = planet_textures[0]
-			var planet_size = Vector2(256, 256)
-			
-			# Reset transform
-			canvas.draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
-			
-			# Draw atmosphere
-			if atmosphere_texture:
-				canvas.draw_set_transform(planet_positions[planet_index].position, 0, Vector2.ONE)
-				canvas.draw_texture(atmosphere_texture, -Vector2(atmosphere_texture.get_width(), atmosphere_texture.get_height()) / 2, Color.WHITE)
-				canvas.draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
-			
-			# Draw planet
-			canvas.draw_set_transform(planet_positions[planet_index].position, 0, Vector2.ONE)
-			canvas.draw_texture(planet_texture, -planet_size / 2, Color.WHITE)
-			canvas.draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
-			
-			# Draw moons that should appear behind the planet
-			if planet.has("moons"):
-				for moon in planet.moons:
-					var moon_angle = moon.angle + time * moon.orbit_speed + moon.phase_offset
-					var deviation_factor = sin(moon_angle) * moon.orbit_deviation
-					
-					var moon_pos = planet_positions[planet_index].position + Vector2(
-						cos(moon_angle) * moon.distance,
-						sin(moon_angle) * moon.distance * (1.0 + deviation_factor)
+		if grid.cell_contents[y][x] == grid.CellContent.PLANET:
+			for planet_pos in planet_positions:
+				if planet_pos.grid_x == x and planet_pos.grid_y == y:
+					spawn_planet(
+						planet_pos.position,
+						planet_pos.grid_x,
+						planet_pos.grid_y, 
+						planet_pos.seed
 					)
-					
-					# Draw moons behind planet
-					if sin(moon_angle) > 0:
-						draw_procedural_moon(canvas, moon, moon_pos)
-				
-				# Draw moons in front of planet
-				for moon in planet.moons:
-					var moon_angle = moon.angle + time * moon.orbit_speed + moon.phase_offset
-					var deviation_factor = sin(moon_angle) * moon.orbit_deviation
-					
-					var moon_pos = planet_positions[planet_index].position + Vector2(
-						cos(moon_angle) * moon.distance,
-						sin(moon_angle) * moon.distance * (1.0 + deviation_factor)
-					)
-					
-					# Draw moons in front of planet
-					if sin(moon_angle) <= 0:
-						draw_procedural_moon(canvas, moon, moon_pos)
+					break
+	
+	grid.queue_redraw()
 
-func draw_procedural_moon(canvas: CanvasItem, moon, moon_pos: Vector2):
-	var moon_key = str(moon.seed)
-	var moon_texture = null
+func clear_planets():
+	for planet in spawned_planets:
+		if is_instance_valid(planet):
+			planet.queue_free()
 	
-	if generated_moon_textures.has(moon_key):
-		moon_texture = generated_moon_textures[moon_key]
-	else:
-		moon_texture = MoonGeneratorClass.get_moon_texture(moon.seed)
-		generated_moon_textures[moon_key] = moon_texture
+	spawned_planets.clear()
+
+func spawn_planet(position, grid_x, grid_y, seed_value):
+	var planet_instance = planet_scene.instantiate()
 	
-	if moon_texture:
-		var moon_size = Vector2(moon.pixel_size, moon.pixel_size)
-		
-		canvas.draw_set_transform(moon_pos, 0, Vector2.ONE)
-		canvas.draw_texture(moon_texture, -moon_size / 2, Color.WHITE)
-		canvas.draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
-	else:
-		var moon_radius = moon.pixel_size / 2.0
-		canvas.draw_circle(moon_pos, moon_radius, Color(0.9, 0.9, 0.9))
+	planet_instance.initialize({
+		"seed_value": seed_value,
+		"grid_x": grid_x,
+		"grid_y": grid_y
+	})
+	
+	planet_instance.global_position = position
+	get_parent().add_child(planet_instance)
+	spawned_planets.append(planet_instance)
+	
+	# Update planet_data for compatibility with old code
+	var planet_data_entry = {
+		"seed": seed_value,
+		"scale": 1.0,
+		"pixel_size": planet_instance.pixel_size,
+		"moons": planet_instance.moons,
+		"name": planet_instance.planet_name,
+		"theme": planet_instance.theme_id,
+		"atmosphere": planet_instance.atmosphere_data
+	}
+	
+	planet_data.append(planet_data_entry)
+	
+	return planet_instance
+
+func _on_cell_loaded(cell_x, cell_y):
+	if cell_x < 0 or cell_y < 0 or cell_y >= grid.cell_contents.size() or cell_x >= grid.cell_contents[cell_y].size():
+		return
+	
+	if grid.cell_contents[cell_y][cell_x] == grid.CellContent.PLANET:
+		for planet_pos in planet_positions:
+			if planet_pos.grid_x == cell_x and planet_pos.grid_y == cell_y:
+				# Check if planet already exists
+				var planet_exists = false
+				for planet in spawned_planets:
+					if is_instance_valid(planet) and planet.grid_x == cell_x and planet.grid_y == cell_y:
+						planet_exists = true
+						break
+				
+				if not planet_exists:
+					spawn_planet(
+						planet_pos.position,
+						planet_pos.grid_x,
+						planet_pos.grid_y, 
+						planet_pos.seed
+					)
+				break
+
+func _on_cell_unloaded(cell_x, cell_y):
+	for i in range(spawned_planets.size() - 1, -1, -1):
+		var planet = spawned_planets[i]
+		if is_instance_valid(planet) and planet.grid_x == cell_x and planet.grid_y == cell_y:
+			planet.queue_free()
+			spawned_planets.remove_at(i)
 
 func get_all_planet_positions():
 	return planet_positions
+
+func get_planet_name(x, y):
+	for planet in spawned_planets:
+		if is_instance_valid(planet) and planet.grid_x == x and planet.grid_y == y:
+			return planet.planet_name
+	
+	# Fallback to generating a name
+	var name_component = NameComponent.new()
+	var seed_value = grid.seed_value + x * 10000 + y * 1000
+	name_component.initialize(seed_value, x, y)
+	return name_component.get_name()
 
 func reset_planets():
 	call_deferred("generate_planets")
@@ -296,36 +212,7 @@ func reset_planets():
 func _on_grid_seed_changed(_new_seed = null):
 	call_deferred("reset_planets")
 
-func generate_planet_name(x, y):
-	var consonants = ["b", "c", "d", "f", "g", "h", "j", "k", "l", "m", "n", "p", "r", "s", "t", "v", "z"]
-	var vowels = ["a", "e", "i", "o", "u"]
-	
-	var rng = RandomNumberGenerator.new()
-	rng.seed = grid.seed_value + (x * 100) + y
-	
-	var planet_name = ""
-
-	# First syllable
-	planet_name += consonants[rng.randi() % consonants.size()].to_upper()
-	planet_name += vowels[rng.randi() % vowels.size()]
-
-	# Second syllable
-	planet_name += consonants[rng.randi() % consonants.size()]
-	planet_name += vowels[rng.randi() % vowels.size()]
-
-	# Add a number or hyphen with additional characters
-	if rng.randi() % 2 == 0:
-		planet_name += "-"
-		planet_name += consonants[rng.randi() % consonants.size()].to_upper()
-		planet_name += vowels[rng.randi() % vowels.size()]
-	else:
-		planet_name += " " + str((x + y) % 9 + 1)
-
-	return planet_name
-
-func get_planet_name(x, y):
-	for i in range(planet_positions.size()):
-		if planet_positions[i].grid_x == x and planet_positions[i].grid_y == y:
-			return planet_data[i].name
-	
-	return generate_planet_name(x, y)
+# For compatibility with old code
+func draw_planets(_canvas: CanvasItem, _loaded_cells: Dictionary):
+	# This function is intentionally empty for backwards compatibility
+	pass

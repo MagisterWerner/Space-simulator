@@ -1,5 +1,6 @@
 # atmosphere_generator.gd
 extends RefCounted
+class_name AtmosphereGenerator
 
 enum PlanetTheme {
 	ARID,

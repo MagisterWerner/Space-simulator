@@ -1,0 +1,12 @@
+[gd_scene load_steps=3 format=3 uid="uid://cou7p6qtf1wf3"]
+
+[ext_resource type="Script" path="res://scripts/entities/moon.gd" id="1_5p682"]
+[ext_resource type="Script" path="res://scripts/components/name_component.gd" id="2_gjc6d"]
+
+[node name="Moon" type="Node2D"]
+script = ExtResource("1_5p682")
+
+[node name="NameComponent" type="Node" parent="."]
+script = ExtResource("2_gjc6d")
+entity_type = "moon"
+name_color = Color(0.8, 0.8, 0.8, 1)

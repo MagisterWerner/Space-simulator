@@ -195,10 +195,6 @@ func _draw():
 		
 		draw_cell_coordinates(x, y)
 	
-	if planet_spawner:
-		draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
-		planet_spawner.draw_planets(self, loaded_cells)
-	
 	if asteroid_spawner:
 		draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
 		asteroid_spawner.draw_asteroids(self, loaded_cells)

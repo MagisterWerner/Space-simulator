@@ -220,8 +220,17 @@ func check_planet_collision():
 	if not planet_spawner or not main:
 		return
 	
-	var planet_positions = planet_spawner.planet_positions
-	var planet_data = planet_spawner.planet_data
+	# Safely check for planet positions
+	var planet_positions = []
+	var planet_data = []
+	
+	if planet_spawner.has_method("get_all_planet_positions"):
+		planet_positions = planet_spawner.get_all_planet_positions()
+	elif "planet_positions" in planet_spawner:
+		planet_positions = planet_spawner.planet_positions
+	
+	if "planet_data" in planet_spawner:
+		planet_data = planet_spawner.planet_data
 	
 	var on_any_planet = false
 	var new_planet_id = -1
@@ -229,8 +238,16 @@ func check_planet_collision():
 	# Handle entering a new planet
 	if new_planet_id != -1 and new_planet_id != current_planet_id:
 		current_planet_id = new_planet_id
-		var planet_name = planet_data[current_planet_id].name
-		if main and main.has_method("show_message"):
+		var planet_name = ""
+		
+		if planet_data.size() > current_planet_id and "name" in planet_data[current_planet_id]:
+			planet_name = planet_data[current_planet_id].name
+		elif main.has_method("get_planet_name") and planet_positions.size() > current_planet_id:
+			var planet_pos = planet_positions[current_planet_id]
+			if "grid_x" in planet_pos and "grid_y" in planet_pos:
+				planet_name = main.get_planet_name(planet_pos.grid_x, planet_pos.grid_y)
+		
+		if planet_name != "" and main and main.has_method("show_message"):
 			main.show_message("Welcome to planet " + planet_name + "!")
 	
 	# Handle leaving a planet

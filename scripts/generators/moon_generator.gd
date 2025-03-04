@@ -1,5 +1,6 @@
 # moon_generator.gd
 extends RefCounted
+class_name MoonGenerator
 
 const MOON_SIZES: Array = [24, 32, 40, 48, 56]
 const PIXEL_RESOLUTION: int = 64
