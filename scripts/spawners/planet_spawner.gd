@@ -199,7 +199,9 @@ func spawn_planet(position, grid_x, grid_y, seed_value):
 		"moons": moons,
 		"name": planet_name,
 		"theme": theme_id,
-		"atmosphere": atmosphere_data
+		"atmosphere": atmosphere_data,
+		"grid_x": grid_x,
+		"grid_y": grid_y
 	}
 	
 	planet_data.append(planet_data_entry)
@@ -245,6 +247,10 @@ func get_planet_name(x, y):
 	for planet in spawned_planets:
 		if is_instance_valid(planet) and planet.grid_x == x and planet.grid_y == y:
 			return planet.planet_name
+	
+	for data in planet_data:
+		if data.grid_x == x and data.grid_y == y and "name" in data:
+			return data.name
 	
 	var name_component = NameComponent.new()
 	var seed_value = grid.seed_value + x * 10000 + y * 1000

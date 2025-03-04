@@ -220,7 +220,6 @@ func check_planet_collision():
 	if not planet_spawner or not main:
 		return
 	
-	# Safely check for planet positions
 	var planet_positions = []
 	var planet_data = []
 	
@@ -235,7 +234,6 @@ func check_planet_collision():
 	var on_any_planet = false
 	var new_planet_id = -1
 	
-	# Handle entering a new planet
 	if new_planet_id != -1 and new_planet_id != current_planet_id:
 		current_planet_id = new_planet_id
 		var planet_name = ""
@@ -250,7 +248,6 @@ func check_planet_collision():
 		if planet_name != "" and main and main.has_method("show_message"):
 			main.show_message("Welcome to planet " + planet_name + "!")
 	
-	# Handle leaving a planet
 	if not on_any_planet and current_planet_id != -1:
 		current_planet_id = -1
 

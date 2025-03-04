@@ -39,7 +39,12 @@ func initialize_world():
 		asteroid_spawner.generate_asteroids()
 	await get_tree().process_frame
 	
-	create_player()
+	if has_node("Player"):
+		player = get_node("Player")
+		call_deferred("place_player_at_random_planet")
+	else:
+		create_player()
+		
 	await get_tree().process_frame
 	
 	if enemy_spawner and enemy_spawner.has_method("spawn_enemies"):
@@ -63,8 +68,10 @@ func handle_seed_key_input():
 		if key_pressed and not previous_key_states[key_code]:
 			grid.set_seed(i)
 			update_seed_label()
-			create_player()
-			enemy_spawner.reset_enemies()
+			message_label.visible = false
+			if enemy_spawner and enemy_spawner.has_method("reset_enemies"):
+				enemy_spawner.reset_enemies()
+			call_deferred("initialize_world")
 		
 		previous_key_states[key_code] = key_pressed
 
@@ -76,11 +83,12 @@ func handle_random_seed_input():
 		
 		grid.set_seed(new_seed)
 		update_seed_label()
-		create_player()
+		message_label.visible = false
 		if enemy_spawner and enemy_spawner.has_method("reset_enemies"):
 			enemy_spawner.reset_enemies()
 		
 		show_message("Generated new random seed: %s" % new_seed)
+		call_deferred("initialize_world")
 
 func manage_message_timer(delta):
 	if message_timer > 0:
@@ -181,10 +189,10 @@ func place_player_at_random_planet():
 		grid.current_player_cell_y = -1
 		grid.update_loaded_chunks(cell_x, cell_y)
 		
+		await get_tree().create_timer(0.1).timeout
 		var planet_name = get_planet_name(chosen_planet.grid_x, chosen_planet.grid_y)
 		show_message("Welcome to planet %s!" % planet_name)
 		
-		await get_tree().create_timer(0.1).timeout
 		force_grid_update()
 	else:
 		var center = Vector2(
@@ -209,6 +217,8 @@ func place_player_at_random_planet():
 		grid.update_loaded_chunks(cell_x, cell_y)
 		
 		await get_tree().create_timer(0.1).timeout
+		show_message("No planets found. Starting in empty space.")
+		
 		force_grid_update()
 
 func create_player():
