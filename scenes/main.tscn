@@ -27,6 +27,7 @@ script = ExtResource("2_doega")
 
 [node name="Grid" type="Node2D" parent="."]
 script = ExtResource("2_lvljp")
+seed_value = 2
 
 [node name="CanvasLayer" type="CanvasLayer" parent="."]
 
