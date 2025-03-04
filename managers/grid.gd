@@ -2,11 +2,11 @@ class_name Grid
 extends Node2D
 
 # Grid properties
-@export var cell_size: Vector2 = Vector2(64, 64)  # Size of each grid cell
-@export var grid_size: Vector2 = Vector2(20, 20)  # Number of cells in grid
+@export var cell_size: Vector2 = Vector2(512, 512)  # Size of each grid cell
+@export var grid_size: Vector2 = Vector2(10, 10)  # Number of cells in grid
 @export var grid_color: Color = Color(0.2, 0.2, 0.2, 0.5)  # Grid line color
 @export var boundary_color: Color = Color(1.0, 0.0, 0.0, 0.8)  # Boundary cell color
-@export var font_size: int = 12
+@export var font_size: int = 14
 @export var seed_value: int = 0  # Seed for randomization, exposed in inspector
 @export var chunk_load_radius: int = 1  # Fixed at 1 for performance
 

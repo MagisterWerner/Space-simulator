@@ -27,10 +27,6 @@ script = ExtResource("2_doega")
 
 [node name="Grid" type="Node2D" parent="."]
 script = ExtResource("2_lvljp")
-cell_size = Vector2(1024, 1024)
-grid_size = Vector2(10, 10)
-grid_color = Color(0.2, 0.2, 0.2, 0)
-boundary_color = Color(1, 0, 0, 0)
 
 [node name="CanvasLayer" type="CanvasLayer" parent="."]
 
