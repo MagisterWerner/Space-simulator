@@ -13,36 +13,46 @@ func _physics_process(_delta: float) -> void:
 	update_movement()
 
 func update_movement() -> void:
+	# For rotating right (yaw right)
 	if Input.get_action_strength(move_right_action) and !Input.get_action_strength(move_down_action):
-		apply_impulse(Vector2(0, -speed*0.5).rotated(rotation), $ThrusterPositions/Left.position.rotated(rotation))
+		# Apply torque to rotate clockwise
+		apply_torque(speed * 250)
 		$ThrusterPositions/Left/RearThruster.set_deferred("emitting", true)
 	else:
 		$ThrusterPositions/Left/RearThruster.set_deferred("emitting", false)
 
+	# For rotating left (yaw left)
 	if Input.get_action_strength(move_left_action) and !Input.get_action_strength(move_down_action):
-		apply_impulse(Vector2(0, -speed*0.5).rotated(rotation), $ThrusterPositions/Right.position.rotated(rotation))
+		# Apply torque to rotate counter-clockwise
+		apply_torque(-speed * 250)
 		$ThrusterPositions/Right/RearThruster.set_deferred("emitting", true)
 	else:
 		$ThrusterPositions/Right/RearThruster.set_deferred("emitting", false)
 
+	# For moving forward in the direction the ship is facing
 	if Input.get_action_strength(move_up_action):
-		apply_central_impulse(Vector2(0, -speed*8).rotated(rotation))
+		# Apply force in the direction the ship is facing (rotated right/90 degrees from original)
+		apply_central_impulse(Vector2(speed*8, 0).rotated(rotation))
 		$MainThruster.set_deferred("emitting", true)
 	else:
 		$MainThruster.set_deferred("emitting", false)
 
+	# For moving backward (opposite to the direction the ship is facing)
 	if Input.get_action_strength(move_down_action):
-		apply_central_impulse(Vector2(0, +speed*2).rotated(rotation))
+		# Apply force opposite to the direction the ship is facing
+		apply_central_impulse(Vector2(-speed*2, 0).rotated(rotation))
 		$ThrusterPositions/Left/FrontThruster.set_deferred("emitting", true)
 		$ThrusterPositions/Right/FrontThruster.set_deferred("emitting", true)
 
+		# For combined backward and right movement
 		if Input.get_action_strength(move_right_action) and !Input.get_action_strength(move_left_action):
-			apply_impulse(Vector2(0, +speed*0.5).rotated(rotation), $ThrusterPositions/Right.position.rotated(rotation))
+			apply_torque(speed * 250)
 			$ThrusterPositions/Right/FrontThruster.set_deferred("emitting", true)
 			$ThrusterPositions/Left/FrontThruster.set_deferred("emitting", false)
 
+		# For combined backward and left movement
 		if Input.get_action_strength(move_left_action) and !Input.get_action_strength(move_right_action):
-			apply_impulse(Vector2(0, +speed*0.5).rotated(rotation), $ThrusterPositions/Left.position.rotated(rotation))
+			apply_torque(-speed * 250)
 			$ThrusterPositions/Left/FrontThruster.set_deferred("emitting", true)
 			$ThrusterPositions/Right/FrontThruster.set_deferred("emitting", false)
 	else:
