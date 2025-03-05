@@ -1,4 +1,4 @@
-# entity_manager.gd
+# autoload/entities.gd
 extends Node
 class_name EntityManager
 

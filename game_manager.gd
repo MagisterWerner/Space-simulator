@@ -20,25 +20,15 @@ var available_upgrades: Array = []
 var player_upgrades: Array = []
 
 func _ready() -> void:
-	# Set up event connections
-	if event_system:
-		event_system.register_event("player_earned_credits")
-		event_system.register_event("player_spent_credits")
-		event_system.register_event("asteroid_mined")
-		event_system.register_event("enemy_destroyed")
-		event_system.register_event("trade_completed")
-		
-		# Connect events to local methods
-		event_system.connect_event("player_earned_credits", _on_player_earned_credits)
-		event_system.connect_event("player_spent_credits", _on_player_spent_credits)
+	# Set up event connections from the Events autoload
+	Events.credits_changed.connect(_on_player_credits_changed)
+	Events.player_died.connect(_on_player_died)
 	
-	# Connect signals from resource manager
-	if resource_manager:
-		resource_manager.resource_changed.connect(_on_resource_changed)
+	# Connect signals from Resources autoload
+	Resources.resource_changed.connect(_on_resource_changed)
 	
-	# Connect to entity manager signals
-	if entity_manager:
-		entity_manager.player_spawned.connect(_on_player_spawned)
+	# Connect to Entities autoload signals
+	Entities.player_spawned.connect(_on_player_spawned)
 	
 	# Initialize available upgrades
 	_initialize_available_upgrades()
@@ -59,22 +49,21 @@ func start_game() -> void:
 	player_upgrades.clear()
 	
 	# Spawn the player
-	if entity_manager:
-		var viewport_size = get_viewport().get_visible_rect().size
-		player_ship = entity_manager.spawn_player(viewport_size / 2)
+	var viewport_size = get_viewport().get_visible_rect().size
+	player_ship = Entities.spawn_player(viewport_size / 2)
 	
 	# Initialize resources
-	if resource_manager:
-		# Clear inventory
-		for resource_id in resource_manager.resource_data:
-			resource_manager.inventory[resource_id] = 0
-		
-		# Set starting resources
-		resource_manager.add_resource(resource_manager.ResourceType.CREDITS, 1000)  # Starting credits
-		resource_manager.add_resource(resource_manager.ResourceType.FUEL, 100)      # Starting fuel
+	# Clear inventory
+	for resource_id in Resources.resource_data:
+		Resources.inventory[resource_id] = 0
+	
+	# Set starting resources
+	Resources.add_resource(Resources.ResourceType.CREDITS, 1000)  # Starting credits
+	Resources.add_resource(Resources.ResourceType.FUEL, 100)      # Starting fuel
 	
 	# Emit game started signal
 	game_started.emit()
+	Events.game_started.emit()
 
 func pause_game() -> void:
 	if not game_running or is_game_paused:
@@ -86,6 +75,7 @@ func pause_game() -> void:
 	
 	# Emit game paused signal
 	game_paused.emit()
+	Events.game_paused.emit()
 
 func resume_game() -> void:
 	if not game_running or not is_game_paused:
@@ -97,6 +87,7 @@ func resume_game() -> void:
 	
 	# Emit game resumed signal
 	game_resumed.emit()
+	Events.game_resumed.emit()
 
 func end_game() -> void:
 	if not game_running:
@@ -109,6 +100,7 @@ func end_game() -> void:
 	
 	# Emit game over signal
 	game_over.emit()
+	Events.game_over.emit()
 
 func restart_game() -> void:
 	# End the current game
@@ -116,14 +108,14 @@ func restart_game() -> void:
 		end_game()
 	
 	# Clear all entities
-	if entity_manager:
-		entity_manager.despawn_all()
+	Entities.despawn_all()
 	
 	# Start a new game
 	start_game()
 	
 	# Emit game restarted signal
 	game_restarted.emit()
+	Events.game_restarted.emit()
 
 func _on_player_spawned(player) -> void:
 	player_ship = player
@@ -145,17 +137,19 @@ func _on_player_died() -> void:
 		end_game()
 
 func _on_player_earned_credits(amount: float) -> void:
-	if resource_manager:
-		resource_manager.add_resource(resource_manager.ResourceType.CREDITS, amount)
+	Resources.add_resource(Resources.ResourceType.CREDITS, amount)
 
 func _on_player_spent_credits(amount: float) -> void:
-	if resource_manager:
-		resource_manager.remove_resource(resource_manager.ResourceType.CREDITS, amount)
+	Resources.remove_resource(Resources.ResourceType.CREDITS, amount)
+
+func _on_player_credits_changed(new_amount: float) -> void:
+	player_credits_changed.emit(new_amount)
 
 func _on_resource_changed(resource_id: int, new_amount: float, _old_amount: float) -> void:
 	# Handle resource changes
-	if resource_id == resource_manager.ResourceType.CREDITS:
+	if resource_id == Resources.ResourceType.CREDITS:
 		player_credits_changed.emit(new_amount)
+		Events.credits_changed.emit(new_amount)
 
 func _initialize_available_upgrades() -> void:
 	# Create strategy instances
@@ -201,16 +195,14 @@ func purchase_upgrade(upgrade_index: int, component_name: String) -> bool:
 	var upgrade = available_upgrades[upgrade_index]
 	
 	# Check if player has enough credits
-	if resource_manager:
-		if not resource_manager.has_resource(resource_manager.ResourceType.CREDITS, upgrade.price):
-			return false
+	if not Resources.has_resource(Resources.ResourceType.CREDITS, upgrade.price):
+		return false
 	
 	# Apply the upgrade to the player ship
 	if player_ship and is_instance_valid(player_ship):
 		if player_ship.add_upgrade_strategy(upgrade, component_name):
 			# Deduct credits
-			if resource_manager:
-				resource_manager.remove_resource(resource_manager.ResourceType.CREDITS, upgrade.price)
+			Resources.remove_resource(Resources.ResourceType.CREDITS, upgrade.price)
 			
 			# Add to player's upgrades
 			player_upgrades.append({
@@ -219,8 +211,8 @@ func purchase_upgrade(upgrade_index: int, component_name: String) -> bool:
 			})
 			
 			# Emit event
-			if event_system:
-				event_system.emit_event("player_spent_credits", [upgrade.price])
+			Events.upgrade_purchased.emit(upgrade, component_name, upgrade.price)
+			Events.credits_changed.emit(Resources.get_resource_amount(Resources.ResourceType.CREDITS))
 			
 			return true
 	
@@ -234,6 +226,7 @@ func remove_upgrade(upgrade_index: int) -> bool:
 	
 	if player_ship and is_instance_valid(player_ship):
 		player_ship.remove_upgrade_strategy(upgrade_info.upgrade)
+		Events.upgrade_removed.emit(upgrade_info.upgrade, upgrade_info.component)
 		player_upgrades.remove_at(upgrade_index)
 		return true
 	

@@ -1,4 +1,4 @@
-# resource_manager.gd
+# autoload/resources.gd
 extends Node
 class_name ResourceManager
 
