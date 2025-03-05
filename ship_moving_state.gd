@@ -8,6 +8,11 @@ func enter(params: Dictionary = {}) -> void:
 		var movement = ship.get_node_or_null("MovementComponent") as MovementComponent
 		if movement:
 			movement.thrust_forward(true)
+			print("Entering moving state - thrusting forward")
+		else:
+			print("MovementComponent not found")
+	else:
+		print("Owner is not a PlayerShip")
 
 func exit() -> void:
 	var ship = owner as PlayerShip
@@ -15,6 +20,7 @@ func exit() -> void:
 		var movement = ship.get_node_or_null("MovementComponent") as MovementComponent
 		if movement:
 			movement.thrust_forward(false)
+			print("Exiting moving state - stopping thrust")
 
 func update(delta: float) -> void:
 	var ship = owner as PlayerShip

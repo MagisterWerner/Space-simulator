@@ -9,57 +9,70 @@ class_name EventSystem
 # event_name -> Signal
 var _events: Dictionary = {}
 
-# Dictionary to store methods connected to signals
-# event_name -> Array of Callables
-var _connections: Dictionary = {}
-
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS  # Keep processing during pause
 
 # Register a new event
 func register_event(event_name: String) -> void:
 	if _events.has(event_name):
-		push_warning("EventSystem: Event '%s' is already registered" % event_name)
-		return
+		return  # Silently return if already registered
 	
 	# Create a new signal for this event
 	_events[event_name] = Signal()
-	_connections[event_name] = []
 
-# Connect a method to an event
+# Connect a method to an event - with better error handling
 func connect_event(event_name: String, callable: Callable) -> void:
+	# Make sure the event exists first
 	if not _events.has(event_name):
-		# Auto-register the event if it doesn't exist
 		register_event(event_name)
 	
-	var signal_ref: Signal = _events[event_name]
+	# Verify the callable before connecting
+	if not callable.is_valid():
+		push_warning("EventSystem: Cannot connect invalid callable to event '%s'" % event_name)
+		return
 	
-	# Avoid connecting the same method multiple times
+	# Get the target object
+	var obj = callable.get_object()
+	if obj == null or not is_instance_valid(obj):
+		push_warning("EventSystem: Cannot connect to null or invalid object for event '%s'" % event_name)
+		return
+	
+	# Get the signal
+	var signal_ref = _events[event_name]
+	
+	# Only connect if not already connected
 	if not signal_ref.is_connected(callable):
 		signal_ref.connect(callable)
-		_connections[event_name].append(callable)
+		
+		# Set up automatic disconnection when object is freed
+		if not obj.tree_exiting.is_connected(_on_object_freed.bind(event_name, callable)):
+			obj.tree_exiting.connect(_on_object_freed.bind(event_name, callable))
+
+# Handle automatic disconnection when an object is freed
+func _on_object_freed(event_name: String, callable: Callable) -> void:
+	# Simply call disconnect_event to handle the cleanup
+	disconnect_event(event_name, callable)
 
 # Disconnect a method from an event
 func disconnect_event(event_name: String, callable: Callable) -> void:
 	if not _events.has(event_name):
-		push_warning("EventSystem: Event '%s' doesn't exist" % event_name)
 		return
 	
-	var signal_ref: Signal = _events[event_name]
+	var signal_ref = _events[event_name]
 	
+	# Only try to disconnect if connected (avoids errors)
 	if signal_ref.is_connected(callable):
 		signal_ref.disconnect(callable)
-		_connections[event_name].erase(callable)
 
 # Emit an event with optional arguments
 func emit_event(event_name: String, args: Array = []) -> void:
+	# Make sure the event exists
 	if not _events.has(event_name):
-		# Auto-register the event if it doesn't exist
 		register_event(event_name)
 	
-	var signal_ref: Signal = _events[event_name]
+	var signal_ref = _events[event_name]
 	
-	# Emit the signal with the provided arguments
+	# Emit with the right number of arguments
 	match args.size():
 		0:
 			signal_ref.emit()
@@ -72,8 +85,8 @@ func emit_event(event_name: String, args: Array = []) -> void:
 		4:
 			signal_ref.emit(args[0], args[1], args[2], args[3])
 		_:
+			# Too many arguments, provide a warning and use up to 4
 			push_warning("EventSystem: Too many arguments for event '%s'" % event_name)
-			# Emit with up to 4 arguments
 			if args.size() > 4:
 				signal_ref.emit(args[0], args[1], args[2], args[3])
 			else:
@@ -89,50 +102,26 @@ func has_event(event_name: String) -> bool:
 
 # Get the number of connections for an event
 func get_connection_count(event_name: String) -> int:
-	if not _connections.has(event_name):
+	if not _events.has(event_name):
 		return 0
-	return _connections[event_name].size()
+	
+	# In Godot, we don't have direct access to the number of connections
+	# We could track this separately if needed
+	return 0  # Placeholder
 
 # Remove all connections for an event
 func clear_event_connections(event_name: String) -> void:
 	if not _events.has(event_name):
 		return
 	
-	var signal_ref: Signal = _events[event_name]
-	
-	# Disconnect all connected methods
-	for callable in _connections[event_name]:
-		if signal_ref.is_connected(callable):
-			signal_ref.disconnect(callable)
-	
-	_connections[event_name].clear()
+	# Simply replace with a new signal to clear all connections
+	_events[event_name] = Signal()
 
 # Remove an event completely
 func remove_event(event_name: String) -> void:
-	if not _events.has(event_name):
-		return
-	
-	# First clear all connections
-	clear_event_connections(event_name)
-	
-	# Then remove the event
-	_events.erase(event_name)
-	_connections.erase(event_name)
+	if _events.has(event_name):
+		_events.erase(event_name)
 
 # Clear all events and connections
 func clear_all_events() -> void:
-	for event_name in _events.keys():
-		remove_event(event_name)
-
-# Example usage:
-# In a global autoload:
-# var events = EventSystem.new()
-# add_child(events)
-# events.register_event("player_died")
-# events.connect_event("player_died", Callable(self, "_on_player_died"))
-# ...
-# events.emit_event("player_died", [player_node])
-#
-# To receive events:
-# func _on_player_died(player_node) -> void:
-#     print("Player died: ", player_node.name)
+	_events.clear()

@@ -17,8 +17,18 @@ func _ready() -> void:
 	# Get all child states
 	for child in get_children():
 		if child is State:
-			states[child.name.to_lower()] = child
+			# Store state with multiple name variations for flexibility
+			var name_lower = child.name.to_lower()
+			states[child.name] = child            # Original name: "IdleState"
+			states[name_lower] = child            # Lowercase: "idlestate"
+			
+			# Also register without "State" suffix for convenience
+			if name_lower.ends_with("state"):
+				var base_name = name_lower.substr(0, name_lower.length() - 5)  # Remove "state"
+				states[base_name] = child         # Base name: "idle"
+			
 			child.state_machine = self
+			debug_print("Registered state: %s (also accessible via '%s')" % [child.name, name_lower.replace("state", "")])
 	
 	# Set initial state
 	if not initial_state.is_empty():
@@ -34,6 +44,8 @@ func _ready() -> void:
 	if current_state:
 		current_state.enter()
 		debug_print("Initial state: %s" % current_state.name)
+	else:
+		push_error("No initial state set and no states found in children")
 
 func _process(delta: float) -> void:
 	if current_state:
@@ -48,12 +60,12 @@ func _unhandled_input(event: InputEvent) -> void:
 		current_state.handle_input(event)
 
 func transition_to(target_state_name: String, params: Dictionary = {}) -> void:
-	if not states.has(target_state_name.to_lower()):
-		push_error("State '%s' not found in StateMachine" % target_state_name)
+	if not states.has(target_state_name):
+		push_error("State '%s' not found in StateMachine. Available states: %s" % [target_state_name, states.keys()])
 		return
 	
 	var from_state = current_state
-	var to_state = states[target_state_name.to_lower()]
+	var to_state = states[target_state_name]
 	
 	if from_state:
 		from_state.exit()

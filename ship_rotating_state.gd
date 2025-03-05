@@ -3,7 +3,7 @@ extends State
 class_name ShipRotatingState
 
 func enter(params: Dictionary = {}) -> void:
-	pass
+	print("Entering rotating state")
 
 func update(delta: float) -> void:
 	var ship = owner as PlayerShip
