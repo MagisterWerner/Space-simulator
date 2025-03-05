@@ -1,6 +1,28 @@
-# game_manager.gd
+# autoload/game_manager.gd
+#
+# GameManager Singleton
+# =====================
+# Purpose:
+#   Manages the overall game state, lifecycle, and upgrade system.
+#   Serves as the central authority for gameplay mechanics and progression.
+#
+# Interface:
+#   - Game State Management: start_game(), pause_game(), resume_game(), end_game(), restart_game()
+#   - Upgrade System: purchase_upgrade(), remove_upgrade(), get_available_upgrades_for_component()
+#   - Signals: game_started, game_paused, game_resumed, game_over, game_restarted, player_credits_changed
+#
+# Usage:
+#   Access via the GameManager autoload:
+#   ```
+#   # Start a new game
+#   GameManager.start_game()
+#
+#   # Purchase an upgrade for a component
+#   GameManager.purchase_upgrade(upgrade_index, component_name)
+#   ```
+#
 extends Node
-class_name GameManager
+class_name GameManagerSingleton
 
 signal game_started
 signal game_paused
@@ -20,6 +42,13 @@ var available_upgrades: Array = []
 var player_upgrades: Array = []
 
 func _ready() -> void:
+	# Make sure systems are initialized in the right order
+	call_deferred("_initialize_systems")
+
+func _initialize_systems() -> void:
+	# Ensure Entities has access to required scenes
+	_initialize_entity_scenes()
+	
 	# Set up event connections from the Events autoload
 	Events.credits_changed.connect(_on_player_credits_changed)
 	Events.player_died.connect(_on_player_died)
@@ -32,12 +61,11 @@ func _ready() -> void:
 	
 	# Initialize available upgrades
 	_initialize_available_upgrades()
-	
-	# Wait one frame to ensure all systems are ready
-	await get_tree().process_frame
-	
-	# Auto-start the game if needed
-	# start_game()
+
+func _initialize_entity_scenes() -> void:
+	# Make sure the entity scenes are set correctly
+	if not Entities._scenes_initialized:
+		Entities._initialize_scenes()
 
 func start_game() -> void:
 	if game_running:
@@ -47,6 +75,9 @@ func start_game() -> void:
 	game_running = true
 	is_game_paused = false
 	player_upgrades.clear()
+	
+	# Ensure entity scenes are initialized
+	_initialize_entity_scenes()
 	
 	# Spawn the player
 	var viewport_size = get_viewport().get_visible_rect().size
@@ -121,7 +152,9 @@ func _on_player_spawned(player) -> void:
 	player_ship = player
 	
 	# Connect player signals
-	player_ship.player_died.connect(_on_player_died)
+	if player_ship and is_instance_valid(player_ship):
+		if not player_ship.player_died.is_connected(_on_player_died):
+			player_ship.player_died.connect(_on_player_died)
 
 func _on_player_died() -> void:
 	# Handle player death

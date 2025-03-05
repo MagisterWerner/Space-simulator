@@ -1,4 +1,30 @@
-# autoload/resources.gd
+# autoload/resource_manager.gd
+#
+# Resources Singleton
+# ==================
+# Purpose:
+#   Manages the player's resources, inventory, and trading system.
+#   Provides a centralized interface for all resource-related operations.
+#
+# Interface:
+#   - Resource Management: add_resource(), remove_resource(), get_resource_amount(), has_resource()
+#   - Cargo Management: set_cargo_capacity(), get_available_cargo_space(), has_cargo_space_for()
+#   - Trading: trade_with_station(), get_resource_price(), set_station_market_modifiers()
+#   - Signals: resource_added, resource_removed, resource_changed, cargo_capacity_changed
+#   - Constants: ResourceType enum defines all available resource types
+#
+# Usage:
+#   Access via the Resources autoload:
+#   ```
+#   # Add credits to player inventory
+#   Resources.add_resource(Resources.ResourceType.CREDITS, 100)
+#   
+#   # Check if player has enough fuel
+#   if Resources.has_resource(Resources.ResourceType.FUEL, 50):
+#       # Use the fuel
+#       Resources.remove_resource(Resources.ResourceType.FUEL, 50)
+#   ```
+#
 extends Node
 class_name ResourceManager
 

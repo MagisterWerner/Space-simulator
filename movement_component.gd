@@ -10,7 +10,7 @@ signal boost_recharged
 @export_category("Movement Properties")
 @export var thrust_force: float = 16.0  # Multiplier for forward impulse
 @export var reverse_force: float = 4.0  # Multiplier for backward impulse
-@export var rotation_force: float = 1.0  # Multiplier for rotation impulse
+@export var rotation_force: float = 0.8  # Multiplier for rotation impulse
 @export var max_speed: float = 700.0
 @export var dampening_factor: float = 0.98
 

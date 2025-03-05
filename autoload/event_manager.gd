@@ -1,6 +1,31 @@
-# autoload/events.gd
+# autoload/event_manager.gd
+#
+# Events Singleton
+# ===============
+# Purpose:
+#   Provides a centralized event bus for game-wide communication.
+#   Decouples systems by allowing them to communicate without direct references.
+#
+# Interface:
+#   - Game Events: game_started, game_paused, game_resumed, game_over, game_restarted
+#   - Player Events: player_position_changed, player_damaged, player_died, player_respawned
+#   - Entity Events: entity_spawned, entity_despawned, enemy_destroyed, asteroid_mined
+#   - Resource Events: credits_changed, resource_collected, trade_completed
+#   - Upgrade Events: upgrade_purchased, upgrade_removed
+#   - UI Events: ui_opened, ui_closed
+#   - Helper Methods: safe_connect(), safe_disconnect(), safe_emit()
+#
+# Usage:
+#   Access via the Events autoload:
+#   ```
+#   # Connect to a signal
+#   Events.player_died.connect(my_function)
+#   
+#   # Emit a signal
+#   Events.safe_emit("credits_changed", [new_amount])
+#   ```
+#
 # Autoloaded singleton for game-wide event management
-# Add this script as an autoload named "event" in Project Settings
 extends Node
 
 # === PLAYER EVENTS ===

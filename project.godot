@@ -23,9 +23,11 @@ buses/default_bus_layout=""
 
 [autoload]
 
-Events="*res://autoload/events.gd"
-Resources="*res://autoload/resources.gd"
-Entities="*res://autoload/entities.gd"
+Events="*res://autoload/event_manager.gd"
+Resources="*res://autoload/resource_manager.gd"
+Entities="*res://autoload/entity_manager.gd"
+Game="*res://autoload/game_manager.gd"
+Seed="*res://autoload/seed_manager.gd"
 
 [category]
 

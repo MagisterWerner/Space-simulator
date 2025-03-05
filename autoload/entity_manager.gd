@@ -1,4 +1,27 @@
-# autoload/entities.gd
+# autoload/entity_manager.gd
+#
+# Entities Singleton
+# =================
+# Purpose:
+#   Manages all game entities (players, ships, asteroids, stations).
+#   Provides centralized entity registration, spawning, and lookup.
+#
+# Interface:
+#   - Entity Registration: register_entity(), deregister_entity()
+#   - Entity Spawning: spawn_player(), spawn_enemy_ship(), spawn_asteroid(), spawn_station()
+#   - Entity Queries: get_nearest_entity(), get_entities_in_radius(), despawn_all()
+#   - Signals: entity_spawned, entity_despawned, player_spawned
+#
+# Usage:
+#   Access via the Entities autoload:
+#   ```
+#   # Spawn the player
+#   var player = Entities.spawn_player(spawn_position)
+#   
+#   # Find the nearest asteroid to the player
+#   var nearest_asteroid = Entities.get_nearest_entity(player.global_position, "asteroid")
+#   ```
+#
 extends Node
 class_name EntityManager
 
@@ -15,15 +38,39 @@ var stations: Dictionary = {}  # station_id -> station_node
 # Entity counter for generating unique IDs
 var entity_counter: int = 0
 
-# Entity scenes
-@export var player_ship_scene: PackedScene
-@export var enemy_ship_scenes: Array[PackedScene] = []
-@export var asteroid_scenes: Array[PackedScene] = []
-@export var station_scenes: Array[PackedScene] = []
+# Entity scenes - now using preloaded scenes instead of exported variables
+var player_ship_scene: PackedScene = null
+var enemy_ship_scenes: Array[PackedScene] = []
+var asteroid_scenes: Array[PackedScene] = []
+var station_scenes: Array[PackedScene] = []
+
+# Initialization flag
+var _scenes_initialized: bool = false
 
 func _ready() -> void:
-	# Connect to clean up entities when they're freed
-	process_mode = Node.PROCESS_MODE_ALWAYS  # Continue processing during pause
+	# Set up process mode to continue during pause
+	process_mode = Node.PROCESS_MODE_ALWAYS
+	
+	# Initialize scenes
+	_initialize_scenes()
+
+func _initialize_scenes() -> void:
+	if _scenes_initialized:
+		return
+	
+	# Load player ship scene
+	player_ship_scene = load("res://player_ship.tscn")
+	
+	# Load asteroid scenes (add your actual paths)
+	# Example: asteroid_scenes.append(load("res://asteroids/asteroid_small.tscn"))
+	
+	# Load enemy ship scenes (add your actual paths)
+	# Example: enemy_ship_scenes.append(load("res://enemies/enemy_basic.tscn"))
+	
+	# Load station scenes (add your actual paths)
+	# Example: station_scenes.append(load("res://stations/trading_station.tscn"))
+	
+	_scenes_initialized = true
 
 func register_entity(entity: Node, entity_type: String = "generic") -> int:
 	# Generate a unique ID for the entity
@@ -77,6 +124,9 @@ func _on_entity_tree_exiting(entity: Node) -> void:
 	deregister_entity(entity)
 
 func spawn_player(spawn_position: Vector2 = Vector2.ZERO) -> Node:
+	# Ensure scenes are initialized
+	_initialize_scenes()
+	
 	if not player_ship_scene:
 		push_error("EntityManager: player_ship_scene not set")
 		return null
@@ -93,6 +143,9 @@ func spawn_player(spawn_position: Vector2 = Vector2.ZERO) -> Node:
 	return player
 
 func spawn_enemy_ship(type_index: int = 0, spawn_position: Vector2 = Vector2.ZERO) -> Node:
+	# Ensure scenes are initialized
+	_initialize_scenes()
+	
 	if enemy_ship_scenes.is_empty():
 		push_error("EntityManager: enemy_ship_scenes array is empty")
 		return null
@@ -112,9 +165,19 @@ func spawn_enemy_ship(type_index: int = 0, spawn_position: Vector2 = Vector2.ZER
 	return ship
 
 func spawn_asteroid(type_index: int = -1, spawn_position: Vector2 = Vector2.ZERO) -> Node:
+	# Ensure scenes are initialized
+	_initialize_scenes()
+	
 	if asteroid_scenes.is_empty():
-		push_error("EntityManager: asteroid_scenes array is empty")
-		return null
+		# Create a default asteroid if none are defined
+		var default_asteroid = Node2D.new()
+		default_asteroid.name = "DefaultAsteroid"
+		
+		# Add to scene and register
+		add_child(default_asteroid)
+		default_asteroid.global_position = spawn_position
+		register_entity(default_asteroid, "asteroid")
+		return default_asteroid
 	
 	# Random type if not specified
 	if type_index < 0 or type_index >= asteroid_scenes.size():
@@ -132,9 +195,19 @@ func spawn_asteroid(type_index: int = -1, spawn_position: Vector2 = Vector2.ZERO
 	return asteroid
 
 func spawn_station(type_index: int = 0, spawn_position: Vector2 = Vector2.ZERO) -> Node:
+	# Ensure scenes are initialized
+	_initialize_scenes()
+	
 	if station_scenes.is_empty():
-		push_error("EntityManager: station_scenes array is empty")
-		return null
+		# Create a default station if none are defined
+		var default_station = Node2D.new()
+		default_station.name = "DefaultStation"
+		
+		# Add to scene and register
+		add_child(default_station)
+		default_station.global_position = spawn_position
+		register_entity(default_station, "station")
+		return default_station
 	
 	if type_index < 0 or type_index >= station_scenes.size():
 		type_index = 0
