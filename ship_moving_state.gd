@@ -15,6 +15,7 @@ func exit() -> void:
 		var movement = ship.get_node_or_null("MovementComponent") as MovementComponent
 		if movement:
 			movement.thrust_forward(false)
+			movement.thrust_backward(false)
 
 func update(delta: float) -> void:
 	var ship = owner as PlayerShip
@@ -26,7 +27,19 @@ func update(delta: float) -> void:
 	if not movement:
 		return
 	
-	# Handle rotation while moving
+	# Handle both forward and backward movement
+	if Input.is_action_pressed("move_up"):
+		movement.thrust_forward(true)
+		movement.thrust_backward(false)
+	elif Input.is_action_pressed("move_down"):
+		movement.thrust_forward(false)
+		movement.thrust_backward(true)
+	else:
+		movement.thrust_forward(false)
+		movement.thrust_backward(false)
+		state_machine.transition_to("idle")
+	
+	# Handle rotation
 	if Input.is_action_pressed("move_left"):
 		movement.rotate_left()
 	elif Input.is_action_pressed("move_right"):
@@ -39,7 +52,3 @@ func update(delta: float) -> void:
 		movement.start_boost()
 	else:
 		movement.stop_boost()
-	
-	# Check for transition back to idle
-	if not Input.is_action_pressed("move_up"):
-		state_machine.transition_to("idle")
