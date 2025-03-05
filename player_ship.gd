@@ -17,6 +17,12 @@ signal player_respawned
 @export var debug_mode: bool = false
 
 func _ready() -> void:
+	# Set optimal physics properties for responsive ship controls
+	mass = 2.0  # Reduced from 5.0 to make ship more responsive
+	gravity_scale = 0.0
+	linear_damp = 0.5   # Light damping for smoother movement
+	angular_damp = 3.0  # Stronger damping to prevent excessive rotation
+	
 	# Connect component signals
 	if health_component:
 		health_component.damaged.connect(_on_health_damaged)
@@ -25,6 +31,17 @@ func _ready() -> void:
 	# Ensure we're in the player group
 	if not is_in_group("player"):
 		add_to_group("player")
+	
+	# Fix thruster paths if needed
+	if movement_component:
+		# Check and set thruster paths if empty
+		if movement_component.main_thruster_path.is_empty():
+			# Attempt to find thrusters based on common names
+			var main_thruster = find_child("MainThruster")
+			if main_thruster:
+				movement_component.main_thruster_path = get_path_to(main_thruster)
+		
+		# Similar checks for other thrusters can be added here
 
 func _physics_process(delta: float) -> void:
 	# The actual movement is handled by MovementComponent and StateMachine

@@ -8,19 +8,19 @@ signal boost_depleted
 signal boost_recharged
 
 @export_category("Movement Properties")
-@export var thrust_force: float = 500.0
-@export var rotation_speed: float = 2.5
-@export var max_speed: float = 500.0
-@export var dampening_factor: float = 0.99  # Applied when not thrusting
+@export var thrust_force: float = 2000.0  # Increased from 500.0
+@export var rotation_speed: float = 3.5   # Increased from 2.5
+@export var max_speed: float = 700.0      # Increased from 500.0
+@export var dampening_factor: float = 0.98  # Reduced dampening (was 0.99)
 
 @export_category("Boost")
 @export var boost_enabled: bool = true
-@export var boost_multiplier: float = 2.0
+@export var boost_multiplier: float = 2.5  # Increased from 2.0
 @export var boost_duration: float = 3.0
-@export var boost_cooldown: float = 5.0
+@export var boost_cooldown: float = 4.0  # Reduced from 5.0
 @export var boost_fuel: float = 100.0
 @export var boost_fuel_consumption: float = 30.0  # Per second
-@export var boost_fuel_regen: float = 15.0  # Per second
+@export var boost_fuel_regen: float = 20.0  # Increased from 15.0
 
 @export_category("Thruster Effects")
 @export var main_thruster_path: NodePath
@@ -35,13 +35,16 @@ var _boost_cooldown_remaining: float = 0.0
 var _current_boost_fuel: float = 100.0
 var _rigid_body: RigidBody2D
 var _movement_strategies: Array = []
-var _main_thruster: Node2D
-var _left_thruster: Node2D
-var _right_thruster: Node2D
+var _main_thruster: Node
+var _left_thruster: Node
+var _right_thruster: Node
 
 func setup() -> void:
 	if owner_entity is RigidBody2D:
 		_rigid_body = owner_entity
+		# Set optimal physics properties for smoother movement
+		_rigid_body.linear_damp = 0.5  # Add a small amount of linear damping
+		_rigid_body.angular_damp = 3.0  # Increased to stop excessive spinning
 	else:
 		push_error("MovementComponent: Owner is not a RigidBody2D")
 		disable()
@@ -62,7 +65,7 @@ func setup() -> void:
 	_update_thruster_effects()
 
 func physics_process_component(delta: float) -> void:
-	if not _rigid_body:
+	if not _rigid_body or not enabled:
 		return
 	
 	# Apply strategies to movement properties
@@ -100,16 +103,17 @@ func physics_process_component(delta: float) -> void:
 	if _boost_cooldown_remaining > 0:
 		_boost_cooldown_remaining -= delta
 	
-	# Apply rotation
+	# Apply rotation - use torque impulse for more responsive rotation
 	if _rotation_direction != 0:
-		_rigid_body.apply_torque(_rotation_direction * modified_rotation * 250)
+		var torque = _rotation_direction * modified_rotation * 400  # Increased torque force
+		_rigid_body.apply_torque(torque)
 	
-	# Apply thrust
+	# Apply thrust - use central force for continuous acceleration
 	if _is_thrusting:
 		var thrust_vector = Vector2(modified_thrust, 0).rotated(_rigid_body.rotation)
 		_rigid_body.apply_central_force(thrust_vector)
 	
-	# Apply speed dampening
+	# Apply speed dampening only when not thrusting
 	if not _is_thrusting:
 		_rigid_body.linear_velocity *= dampening_factor
 	
@@ -161,16 +165,31 @@ func get_current_speed() -> float:
 	return get_current_velocity().length()
 
 func _update_thruster_effects() -> void:
-	# Main thruster visibility based on thrusting state
-	if _main_thruster and _main_thruster.has_method("set_deferred"):
-		_main_thruster.set_deferred("emitting", _is_thrusting)
+	# Fix for CPUParticles2D thruster effects
 	
-	# Rotation thrusters
-	if _left_thruster and _left_thruster.has_method("set_deferred"):
-		_left_thruster.set_deferred("emitting", _rotation_direction > 0)
+	# Main thruster
+	if _main_thruster is CPUParticles2D:
+		_main_thruster.emitting = _is_thrusting
+	elif _main_thruster is GPUParticles2D:
+		_main_thruster.emitting = _is_thrusting
+	elif _main_thruster is Node2D:
+		_main_thruster.visible = _is_thrusting
 	
-	if _right_thruster and _right_thruster.has_method("set_deferred"):
-		_right_thruster.set_deferred("emitting", _rotation_direction < 0)
+	# Left thruster - usually shows when turning right
+	if _left_thruster is CPUParticles2D:
+		_left_thruster.emitting = _rotation_direction > 0
+	elif _left_thruster is GPUParticles2D:
+		_left_thruster.emitting = _rotation_direction > 0
+	elif _left_thruster is Node2D:
+		_left_thruster.visible = _rotation_direction > 0
+	
+	# Right thruster - usually shows when turning left
+	if _right_thruster is CPUParticles2D:
+		_right_thruster.emitting = _rotation_direction < 0
+	elif _right_thruster is GPUParticles2D:
+		_right_thruster.emitting = _rotation_direction < 0
+	elif _right_thruster is Node2D:
+		_right_thruster.visible = _rotation_direction < 0
 
 func add_movement_strategy(strategy) -> void:
 	if not _movement_strategies.has(strategy):
