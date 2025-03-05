@@ -2,59 +2,123 @@
 extends RigidBody2D
 class_name PlayerShip
 
-@export var speed := 5
+signal player_damaged(amount)
+signal player_died
+signal player_respawned
 
-@export var move_right_action := "move_right"
-@export var move_left_action := "move_left"
-@export var move_down_action := "move_down"
-@export var move_up_action := "move_up"
+# Core Components
+@onready var health_component: HealthComponent = $HealthComponent
+@onready var movement_component: MovementComponent = $MovementComponent
+@onready var shield_component: ShieldComponent = $ShieldComponent
+@onready var weapon_component: WeaponComponent = $WeaponComponent
+@onready var state_machine: StateMachine = $StateMachine
 
-func _physics_process(_delta: float) -> void:
-	update_movement()
+# Debug properties
+@export var debug_mode: bool = false
 
-func update_movement() -> void:
-	# For rotating right (yaw right)
-	if Input.get_action_strength(move_right_action) and !Input.get_action_strength(move_down_action):
-		# Apply torque to rotate clockwise
-		apply_torque(speed * 250)
-		$ThrusterPositions/Left/RearThruster.set_deferred("emitting", true)
-	else:
-		$ThrusterPositions/Left/RearThruster.set_deferred("emitting", false)
+func _ready() -> void:
+	# Connect component signals
+	if health_component:
+		health_component.damaged.connect(_on_health_damaged)
+		health_component.died.connect(_on_health_died)
+	
+	# Ensure we're in the player group
+	if not is_in_group("player"):
+		add_to_group("player")
 
-	# For rotating left (yaw left)
-	if Input.get_action_strength(move_left_action) and !Input.get_action_strength(move_down_action):
-		# Apply torque to rotate counter-clockwise
-		apply_torque(-speed * 250)
-		$ThrusterPositions/Right/RearThruster.set_deferred("emitting", true)
-	else:
-		$ThrusterPositions/Right/RearThruster.set_deferred("emitting", false)
+func _physics_process(delta: float) -> void:
+	# The actual movement is handled by MovementComponent and StateMachine
+	pass
 
-	# For moving forward in the direction the ship is facing
-	if Input.get_action_strength(move_up_action):
-		# Apply force in the direction the ship is facing (rotated right/90 degrees from original)
-		apply_central_impulse(Vector2(speed*8, 0).rotated(rotation))
-		$MainThruster.set_deferred("emitting", true)
-	else:
-		$MainThruster.set_deferred("emitting", false)
+func _on_health_damaged(amount: float, source: Node) -> void:
+	# Emit player damaged signal
+	player_damaged.emit(amount)
+	
+	# Change state to damaged if health is low
+	if health_component and health_component.is_critical() and state_machine:
+		state_machine.transition_to("damaged")
+	
+	debug_print("Player took %s damage" % amount)
 
-	# For moving backward (opposite to the direction the ship is facing)
-	if Input.get_action_strength(move_down_action):
-		# Apply force opposite to the direction the ship is facing
-		apply_central_impulse(Vector2(-speed*2, 0).rotated(rotation))
-		$ThrusterPositions/Left/FrontThruster.set_deferred("emitting", true)
-		$ThrusterPositions/Right/FrontThruster.set_deferred("emitting", true)
+func _on_health_died() -> void:
+	# Emit player died signal
+	player_died.emit()
+	
+	# Change state to dead
+	if state_machine:
+		state_machine.transition_to("dead")
+	
+	debug_print("Player died")
 
-		# For combined backward and right movement
-		if Input.get_action_strength(move_right_action) and !Input.get_action_strength(move_left_action):
-			apply_torque(speed * 250)
-			$ThrusterPositions/Right/FrontThruster.set_deferred("emitting", true)
-			$ThrusterPositions/Left/FrontThruster.set_deferred("emitting", false)
+func respawn(position: Vector2 = Vector2.ZERO) -> void:
+	# Reset position
+	global_position = position
+	
+	# Reset physics state
+	linear_velocity = Vector2.ZERO
+	angular_velocity = 0
+	
+	# Enable components
+	for child in get_children():
+		if child is Component:
+			child.enable()
+	
+	# Heal the ship
+	if health_component:
+		health_component.heal(health_component.max_health, null)
+	
+	# Reset shield
+	if shield_component:
+		shield_component.current_shield = shield_component.max_shield
+		shield_component.shield_changed.emit(shield_component.current_shield, shield_component.max_shield)
+	
+	# Change state to idle
+	if state_machine:
+		state_machine.transition_to("idle")
+	
+	# Emit player respawned signal
+	player_respawned.emit()
+	
+	debug_print("Player respawned")
 
-		# For combined backward and left movement
-		if Input.get_action_strength(move_left_action) and !Input.get_action_strength(move_right_action):
-			apply_torque(-speed * 250)
-			$ThrusterPositions/Left/FrontThruster.set_deferred("emitting", true)
-			$ThrusterPositions/Right/FrontThruster.set_deferred("emitting", false)
-	else:
-		$ThrusterPositions/Left/FrontThruster.set_deferred("emitting", false)
-		$ThrusterPositions/Right/FrontThruster.set_deferred("emitting", false)
+func play_death_effect() -> void:
+	# Optional: Implement death effect here
+	pass
+
+func add_upgrade_strategy(strategy: Strategy, component_name: String) -> bool:
+	var component = get_node_or_null(component_name)
+	
+	if not component or not component is Component:
+		debug_print("Failed to add strategy: component not found")
+		return false
+	
+	# Apply the strategy to the component
+	strategy.apply_to_component(component)
+	
+	debug_print("Added strategy: %s to %s" % [strategy.strategy_name, component_name])
+	return true
+
+func remove_upgrade_strategy(strategy: Strategy) -> void:
+	if strategy.owner_component:
+		strategy.remove_from_component()
+		debug_print("Removed strategy: %s" % strategy.strategy_name)
+
+func _on_body_entered(body: Node) -> void:
+	# Handle collision with other bodies
+	if body.is_in_group("asteroid"):
+		# Take collision damage from asteroids
+		if health_component:
+			var impact_velocity = linear_velocity.length()
+			var damage = impact_velocity * 0.05  # Scale damage based on impact velocity
+			health_component.apply_damage(damage, "collision", body)
+	
+	elif body.is_in_group("enemy"):
+		# Take collision damage from enemies
+		if health_component:
+			health_component.apply_damage(20.0, "collision", body)
+	
+	debug_print("Collided with: %s" % body.name)
+
+func debug_print(message: String) -> void:
+	if debug_mode:
+		print("[PlayerShip] %s" % message)

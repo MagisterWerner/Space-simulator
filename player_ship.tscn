@@ -1,7 +1,13 @@
-[gd_scene load_steps=4 format=3 uid="uid://rhas31gnv33u"]
+[gd_scene load_steps=10 format=3 uid="uid://rhas31gnv33u"]
 
 [ext_resource type="Script" path="res://player_ship.gd" id="1_a8k2q"]
 [ext_resource type="Texture2D" uid="uid://rmbujdpioval" path="res://player_ship.png" id="2_n7prj"]
+[ext_resource type="Script" path="res://health_component.gd" id="3_e3lqq"]
+[ext_resource type="Script" path="res://shield_component.gd" id="4_kk8v0"]
+[ext_resource type="Script" path="res://movement_component.gd" id="5_dy5mj"]
+[ext_resource type="Script" path="res://weapon_component.gd" id="6_mndbk"]
+[ext_resource type="Script" path="res://state_machine.gd" id="7_x6hty"]
+[ext_resource type="Script" path="res://ship_idle_state.gd" id="8_ep03r"]
 
 [sub_resource type="Gradient" id="Gradient_u2vx4"]
 offsets = PackedFloat32Array(0, 0.486667, 0.846667, 1)
@@ -25,6 +31,22 @@ texture = ExtResource("2_n7prj")
 rotation = 1.57079
 polygon = PackedVector2Array(1, -20, 2, -20, 2, -18, 3, -18, 3, -15, 4, -15, 4, -11, 5, -11, 5, -10, 6, -10, 6, -7, 7, -7, 7, -11, 8, -11, 8, -10, 9, -10, 9, -11, 10, -11, 10, -4, 11, -4, 11, -3, 12, -3, 12, -2, 13, -2, 13, -1, 14, -1, 14, 0, 17, 0, 17, 3, 18, 3, 18, 4, 19, 4, 19, 8, 17, 8, 17, 10, 14, 10, 14, 8, 12, 8, 12, 7, 5, 7, 5, 8, 4, 8, 4, 9, 5, 9, 5, 10, 6, 10, 6, 11, 7, 11, 7, 12, 8, 12, 8, 15, 3, 15, 3, 14, 2, 14, 2, 16, -2, 16, -2, 14, -3, 14, -3, 15, -8, 15, -8, 12, -7, 12, -7, 11, -6, 11, -6, 10, -5, 10, -5, 9, -4, 9, -4, 8, -5, 8, -5, 7, -12, 7, -12, 8, -14, 8, -14, 10, -17, 10, -17, 8, -19, 8, -19, 4, -18, 4, -18, 3, -17, 3, -17, 0, -14, 0, -14, -1, -13, -1, -13, -2, -12, -2, -12, -3, -11, -3, -11, -4, -10, -4, -10, -11, -9, -11, -9, -10, -8, -10, -8, -11, -7, -11, -7, -7, -6, -7, -6, -10, -5, -10, -5, -11, -4, -11, -4, -15, -3, -15, -3, -18, -2, -18, -2, -20, -1, -20, -1, -21, 1, -21)
 metadata/_edit_lock_ = true
+
+[node name="MainThruster" type="CPUParticles2D" parent="."]
+position = Vector2(-16, 0)
+rotation = 1.57079
+emitting = false
+amount = 32
+speed_scale = 4.0
+local_coords = true
+emission_shape = 2
+emission_sphere_radius = 2.0
+direction = Vector2(0, 1)
+spread = 5.0
+gravity = Vector2(0, 0)
+initial_velocity_min = 8.0
+initial_velocity_max = 16.0
+color_ramp = SubResource("Gradient_u2vx4")
 
 [node name="ThrusterPositions" type="Node2D" parent="."]
 rotation = 1.57079
@@ -81,20 +103,34 @@ initial_velocity_min = 4.0
 initial_velocity_max = 8.0
 color_ramp = SubResource("Gradient_u2vx4")
 
-[node name="MainThruster" type="CPUParticles2D" parent="."]
-position = Vector2(-16, 0)
-rotation = 1.57079
-emitting = false
-amount = 32
-speed_scale = 4.0
-local_coords = true
-emission_shape = 2
-emission_sphere_radius = 2.0
-direction = Vector2(0, 1)
-spread = 5.0
-gravity = Vector2(0, 0)
-initial_velocity_min = 8.0
-initial_velocity_max = 16.0
-color_ramp = SubResource("Gradient_u2vx4")
+[node name="HealthComponent" type="Node" parent="."]
+script = ExtResource("3_e3lqq")
+
+[node name="ShieldComponent" type="Node" parent="."]
+script = ExtResource("4_kk8v0")
+
+[node name="MovementComponent" type="Node" parent="."]
+script = ExtResource("5_dy5mj")
+
+[node name="WeaponComponent" type="Node" parent="."]
+script = ExtResource("6_mndbk")
+
+[node name="StateMachine" type="Node" parent="."]
+script = ExtResource("7_x6hty")
+
+[node name="IdleState" type="Node" parent="StateMachine"]
+script = ExtResource("8_ep03r")
+
+[node name="MovingState" type="Node" parent="StateMachine"]
+
+[node name="RotatingState" type="Node" parent="StateMachine"]
+
+[node name="CombatState" type="Node" parent="StateMachine"]
+
+[node name="DamagedState" type="Node" parent="StateMachine"]
+
+[node name="DeadState" type="Node" parent="StateMachine"]
+
+[node name="RespawningState" type="Node" parent="StateMachine"]
 
 [connection signal="body_entered" from="." to="." method="_on_body_entered"]
