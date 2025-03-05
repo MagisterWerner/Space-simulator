@@ -43,11 +43,11 @@ func _ready() -> void:
 		
 		# Similar checks for other thrusters can be added here
 
-func _physics_process(delta: float) -> void:
+func _physics_process(_delta: float) -> void:
 	# The actual movement is handled by MovementComponent and StateMachine
 	pass
 
-func _on_health_damaged(amount: float, source: Node) -> void:
+func _on_health_damaged(amount: float, _source: Node) -> void:
 	# Emit player damaged signal
 	player_damaged.emit(amount)
 	
@@ -67,9 +67,9 @@ func _on_health_died() -> void:
 	
 	debug_print("Player died")
 
-func respawn(position: Vector2 = Vector2.ZERO) -> void:
+func respawn(spawn_position: Vector2 = Vector2.ZERO) -> void:
 	# Reset position
-	global_position = position
+	global_position = spawn_position
 	
 	# Reset physics state
 	linear_velocity = Vector2.ZERO

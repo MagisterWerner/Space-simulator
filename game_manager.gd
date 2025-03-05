@@ -157,7 +157,7 @@ func _on_player_spent_credits(amount: float) -> void:
 	if resource_manager:
 		resource_manager.remove_resource(resource_manager.ResourceType.CREDITS, amount)
 
-func _on_resource_changed(resource_id: int, new_amount: float, old_amount: float) -> void:
+func _on_resource_changed(resource_id: int, new_amount: float, _old_amount: float) -> void:
 	# Handle resource changes
 	if resource_id == resource_manager.ResourceType.CREDITS:
 		player_credits_changed.emit(new_amount)

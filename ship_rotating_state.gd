@@ -2,10 +2,10 @@
 extends State
 class_name ShipRotatingState
 
-func enter(params: Dictionary = {}) -> void:
+func enter(_params: Dictionary = {}) -> void:
 	print("Entering rotating state")
 
-func update(delta: float) -> void:
+func update(_delta: float) -> void:
 	var ship = owner as PlayerShip
 	if not ship:
 		return

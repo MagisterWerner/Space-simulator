@@ -37,7 +37,7 @@ var _is_thrusting_forward: bool = false
 var _is_thrusting_backward: bool = false
 var _rotation_direction: float = 0.0
 var _is_boosting: bool = false
-var _boost_time_remaining: float = 0.0
+# Removing unused variable: var _boost_time_remaining: float = 0.0
 var _boost_cooldown_remaining: float = 0.0
 var _current_boost_fuel: float = 100.0
 var _rigid_body: RigidBody2D

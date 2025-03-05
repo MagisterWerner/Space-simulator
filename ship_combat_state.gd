@@ -16,7 +16,7 @@ func enter(params: Dictionary = {}) -> void:
 func exit() -> void:
 	target = null
 
-func update(delta: float) -> void:
+func update(_delta: float) -> void:
 	var ship = owner as PlayerShip
 	if not ship:
 		return

@@ -2,7 +2,7 @@
 extends State
 class_name ShipMovingState
 
-func enter(params: Dictionary = {}) -> void:
+func enter(_params: Dictionary = {}) -> void:
 	var ship = owner as PlayerShip
 	if ship:
 		var movement = ship.get_node_or_null("MovementComponent") as MovementComponent
@@ -17,7 +17,7 @@ func exit() -> void:
 			movement.thrust_forward(false)
 			movement.thrust_backward(false)
 
-func update(delta: float) -> void:
+func update(_delta: float) -> void:
 	var ship = owner as PlayerShip
 	if not ship:
 		return

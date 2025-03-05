@@ -54,11 +54,11 @@ func _physics_process(delta: float) -> void:
 	if enabled:
 		physics_process_component(delta)
 		
-func process_component(delta: float) -> void:
+func process_component(_delta: float) -> void:
 	# Override this in child components for custom process logic
 	pass
 	
-func physics_process_component(delta: float) -> void:
+func physics_process_component(_delta: float) -> void:
 	# Override this in child components for custom physics process logic
 	pass
 	
