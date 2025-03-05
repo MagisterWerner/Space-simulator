@@ -23,7 +23,9 @@ buses/default_bus_layout=""
 
 [autoload]
 
-Events="*res://autoload/event.gd"
+Events="*res://autoload/events.gd"
+Resources="*res://autoload/resources.gd"
+Entities="*res://autoload/entities.gd"
 
 [category]
 

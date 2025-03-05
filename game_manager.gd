@@ -9,11 +9,6 @@ signal game_over
 signal game_restarted
 signal player_credits_changed(new_amount)
 
-# Core systems
-@onready var entity_manager: EntityManager = $EntityManager
-@onready var event_system: EventSystem = $EventSystem
-@onready var resource_manager: ResourceManager = $ResourceManager
-
 # Game state
 var game_running: bool = false
 var is_game_paused: bool = false  # Renamed from game_paused to avoid conflict with signal
