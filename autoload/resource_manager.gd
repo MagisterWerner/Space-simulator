@@ -62,63 +62,72 @@ var resource_data = {
 		"description": "Standard ship fuel for interplanetary travel",
 		"icon": null,
 		"base_value": 5.0,
-		"base_weight": 0.1
+		"base_weight": 0.1,
+		"is_currency": false
 	},
 	ResourceType.METAL_ORE: {
 		"name": "Metal Ore",
 		"description": "Raw metal ore from asteroid mining",
 		"icon": null,
 		"base_value": 10.0,
-		"base_weight": 2.0
+		"base_weight": 2.0,
+		"is_currency": false
 	},
 	ResourceType.PRECIOUS_METALS: {
 		"name": "Precious Metals",
 		"description": "High-value refined metals",
 		"icon": null,
 		"base_value": 50.0,
-		"base_weight": 1.0
+		"base_weight": 1.0,
+		"is_currency": false
 	},
 	ResourceType.CRYSTALS: {
 		"name": "Crystals",
 		"description": "Rare crystals used in advanced technology",
 		"icon": null,
 		"base_value": 75.0,
-		"base_weight": 0.5
+		"base_weight": 0.5,
+		"is_currency": false
 	},
 	ResourceType.ORGANIC_MATTER: {
 		"name": "Organic Matter",
 		"description": "Biological resources for various uses",
 		"icon": null,
 		"base_value": 15.0,
-		"base_weight": 1.5
+		"base_weight": 1.5,
+		"is_currency": false
 	},
 	ResourceType.TECHNOLOGY_PARTS: {
 		"name": "Technology Parts",
 		"description": "Components for building advanced systems",
 		"icon": null,
 		"base_value": 40.0,
-		"base_weight": 0.8
+		"base_weight": 0.8,
+		"is_currency": false
 	},
 	ResourceType.WEAPONS_COMPONENTS: {
 		"name": "Weapons Components",
 		"description": "Parts for manufacturing weapons",
 		"icon": null,
 		"base_value": 60.0,
-		"base_weight": 1.2
+		"base_weight": 1.2,
+		"is_currency": false
 	},
 	ResourceType.MEDICAL_SUPPLIES: {
 		"name": "Medical Supplies",
 		"description": "Essential medical equipment and medicines",
 		"icon": null,
 		"base_value": 35.0,
-		"base_weight": 0.7
+		"base_weight": 0.7,
+		"is_currency": false
 	},
 	ResourceType.LUXURY_GOODS: {
 		"name": "Luxury Goods",
 		"description": "High-value luxury items",
 		"icon": null,
 		"base_value": 100.0,
-		"base_weight": 0.3
+		"base_weight": 0.3,
+		"is_currency": false
 	}
 }
 
@@ -143,8 +152,8 @@ func add_resource(resource_id: int, amount: float) -> bool:
 	var old_amount = inventory[resource_id]
 	
 	# Check cargo capacity for non-currency resources
-	if not resource_data[resource_id].is_currency:
-		var weight_per_unit = resource_data[resource_id].base_weight
+	if not resource_data[resource_id]["is_currency"]:
+		var weight_per_unit = resource_data[resource_id]["base_weight"]
 		var additional_weight = amount * weight_per_unit
 		
 		if used_capacity + additional_weight > cargo_capacity:
@@ -173,8 +182,8 @@ func remove_resource(resource_id: int, amount: float) -> bool:
 	inventory[resource_id] -= amount
 	
 	# Update used capacity for non-currency resources
-	if not resource_data[resource_id].is_currency:
-		var weight_per_unit = resource_data[resource_id].base_weight
+	if not resource_data[resource_id]["is_currency"]:
+		var weight_per_unit = resource_data[resource_id]["base_weight"]
 		var reduced_weight = amount * weight_per_unit
 		used_capacity -= reduced_weight
 	
@@ -200,10 +209,10 @@ func get_available_cargo_space() -> float:
 
 # Check if there's enough cargo space for a resource amount
 func has_cargo_space_for(resource_id: int, amount: float) -> bool:
-	if resource_data[resource_id].is_currency:
+	if resource_data[resource_id]["is_currency"]:
 		return true  # Currency doesn't take cargo space
 	
-	var weight_per_unit = resource_data[resource_id].base_weight
+	var weight_per_unit = resource_data[resource_id]["base_weight"]
 	var required_space = amount * weight_per_unit
 	
 	return get_available_cargo_space() >= required_space
@@ -222,14 +231,14 @@ func get_total_cargo_value() -> float:
 	
 	for resource_id in inventory:
 		if resource_id != ResourceType.CREDITS:
-			total_value += inventory[resource_id] * resource_data[resource_id].base_value
+			total_value += inventory[resource_id] * resource_data[resource_id]["base_value"]
 	
 	return total_value
 
 # Get the resource name
 func get_resource_name(resource_id: int) -> String:
 	if resource_data.has(resource_id):
-		return resource_data[resource_id].name
+		return resource_data[resource_id]["name"]
 	return "Unknown Resource"
 
 # Trade resources with a station
@@ -262,13 +271,13 @@ func trade_with_station(station_id: String, buy_resources: Dictionary, sell_reso
 	# Check cargo capacity for buying resources
 	var required_capacity = 0.0
 	for resource_id in buy_resources:
-		if not resource_data[resource_id].is_currency:
-			required_capacity += buy_resources[resource_id] * resource_data[resource_id].base_weight
+		if not resource_data[resource_id]["is_currency"]:
+			required_capacity += buy_resources[resource_id] * resource_data[resource_id]["base_weight"]
 	
 	var freed_capacity = 0.0
 	for resource_id in sell_resources:
-		if not resource_data[resource_id].is_currency:
-			freed_capacity += sell_resources[resource_id] * resource_data[resource_id].base_weight
+		if not resource_data[resource_id]["is_currency"]:
+			freed_capacity += sell_resources[resource_id] * resource_data[resource_id]["base_weight"]
 	
 	if get_available_cargo_space() + freed_capacity < required_capacity:
 		return false
@@ -299,7 +308,7 @@ func set_station_market_modifiers(station_id: String, modifiers: Dictionary) -> 
 
 # Get the price of a resource at a specific station
 func get_resource_price(resource_id: int, station_id: String = "") -> float:
-	var base_price = resource_data[resource_id].base_value
+	var base_price = resource_data[resource_id]["base_value"]
 	
 	if station_id.is_empty() or not market_modifiers.has(station_id):
 		return base_price

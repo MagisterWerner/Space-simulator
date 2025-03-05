@@ -10,6 +10,8 @@ signal state_changed(from_state, to_state)
 var current_state: State
 var states: Dictionary = {}
 var history: Array = []
+var last_transition_time: float = 0.0
+const MIN_TRANSITION_INTERVAL: float = 0.05  # 50ms minimum between transitions
 
 func _ready() -> void:
 	await owner.ready
@@ -60,14 +62,30 @@ func _unhandled_input(event: InputEvent) -> void:
 		current_state.handle_input(event)
 
 func transition_to(target_state_name: String, params: Dictionary = {}) -> void:
+	# First, check if the state exists
 	if not states.has(target_state_name):
 		push_error("State '%s' not found in StateMachine. Available states: %s" % [target_state_name, states.keys()])
 		return
 	
-	var from_state = current_state
 	var to_state = states[target_state_name]
 	
+	# Don't transition if we're already in this state
+	if current_state == to_state:
+		debug_print("Ignoring transition - already in state: %s" % target_state_name)
+		return
+	
+	# Time-based rate limiting to prevent rapid consecutive transitions
+	var current_time = Time.get_ticks_msec() / 1000.0
+	if current_time - last_transition_time < MIN_TRANSITION_INTERVAL:
+		debug_print("Ignoring transition due to rate limit - too soon after previous transition")
+		return
+		
+	last_transition_time = current_time
+	
+	var from_state = current_state
+	
 	if from_state:
+		debug_print("Exiting state: %s" % from_state.name)
 		from_state.exit()
 		history.append(from_state.name)
 		# Keep a reasonable history size
@@ -75,6 +93,7 @@ func transition_to(target_state_name: String, params: Dictionary = {}) -> void:
 			history.pop_front()
 	
 	current_state = to_state
+	debug_print("Entering state: %s" % current_state.name)
 	current_state.enter(params)
 	
 	state_changed.emit(from_state.name if from_state else "", current_state.name)

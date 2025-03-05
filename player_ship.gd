@@ -17,6 +17,13 @@ signal player_respawned
 @export var debug_mode: bool = false
 
 func _ready() -> void:
+	# Debug - print all components to check for duplicates
+	if debug_mode:
+		debug_print("Components in player ship:")
+		for child in get_children():
+			if child is Component:
+				debug_print(" - " + child.name + " (" + str(child.get_path()) + ")")
+	
 	# Set optimal physics properties for responsive ship controls
 	mass = 2.0  # Reduced from 5.0 to make ship more responsive
 	gravity_scale = 0.0
@@ -31,17 +38,6 @@ func _ready() -> void:
 	# Ensure we're in the player group
 	if not is_in_group("player"):
 		add_to_group("player")
-	
-	# Fix thruster paths if needed
-	if movement_component:
-		# Check and set thruster paths if empty
-		if movement_component.main_thruster_path.is_empty():
-			# Attempt to find thrusters based on common names
-			var main_thruster = find_child("MainThruster")
-			if main_thruster:
-				movement_component.main_thruster_path = get_path_to(main_thruster)
-		
-		# Similar checks for other thrusters can be added here
 
 func _physics_process(_delta: float) -> void:
 	# The actual movement is handled by MovementComponent and StateMachine

@@ -13,15 +13,50 @@ signal component_enabled
 @export var debug_mode: bool = false
 
 var owner_entity: Node = null
+# Global init tracking for all components - static dictionary persists across component instances
+static var _init_registry = {}
 
 func _ready() -> void:
 	await owner.ready
 	owner_entity = owner
-	setup()
+	_initialize()
 	if enabled:
 		enable()
 	component_ready.emit()
 
+# New private initialization sequence
+func _initialize() -> void:
+	# Generate unique identifier for this component instance
+	var instance_id = get_instance_id()
+	
+	# If this specific component instance has been initialized, skip
+	if _init_registry.has(instance_id):
+		return
+		
+	# Mark this instance as initialized
+	_init_registry[instance_id] = true
+	
+	# Call the setup method which subclasses will override
+	setup()
+	
+	# Clean up registry occasionally to prevent memory leaks from deleted components
+	if _init_registry.size() > 100:  # Arbitrary threshold
+		_cleanup_registry()
+
+# Cleanup function to prevent memory buildup
+func _cleanup_registry() -> void:
+	var valid_ids = []
+	for id in _init_registry.keys():
+		if is_instance_valid(instance_from_id(id)):
+			valid_ids.append(id)
+	
+	# Rebuild registry with only valid instances
+	var new_registry = {}
+	for id in valid_ids:
+		new_registry[id] = true
+	_init_registry = new_registry
+
+# Interface method to be overridden by child classes
 func setup() -> void:
 	# Override this in child components to setup the component
 	pass

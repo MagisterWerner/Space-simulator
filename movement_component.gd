@@ -37,7 +37,6 @@ var _is_thrusting_forward: bool = false
 var _is_thrusting_backward: bool = false
 var _rotation_direction: float = 0.0
 var _is_boosting: bool = false
-# Removing unused variable: var _boost_time_remaining: float = 0.0
 var _boost_cooldown_remaining: float = 0.0
 var _current_boost_fuel: float = 100.0
 var _rigid_body: RigidBody2D
@@ -52,10 +51,18 @@ var _right_thruster_front: Node
 var _left_position: Node2D
 var _right_position: Node2D
 
+# Static flag for tracking console messages across all movement components
+static var _has_logged_init: bool = false
+
 func setup() -> void:
 	if owner_entity is RigidBody2D:
 		_rigid_body = owner_entity
-		print("MovementComponent: Successfully attached to RigidBody2D")
+		
+		# Using a static flag to ensure the message only prints once
+		# This prevents duplicate log messages while still allowing normal initialization
+		if not _has_logged_init:
+			print("MovementComponent: Successfully attached to RigidBody2D")
+			_has_logged_init = true
 	else:
 		push_error("MovementComponent: Owner is not a RigidBody2D")
 		disable()

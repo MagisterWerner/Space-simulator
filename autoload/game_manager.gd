@@ -35,7 +35,7 @@ signal player_credits_changed(new_amount)
 var game_running: bool = false
 var is_game_paused: bool = false  # Renamed from game_paused to avoid conflict with signal
 var current_level: String = ""
-var player_ship: PlayerShip = null
+var player_ship = null  # Changed to avoid type checking issues
 
 # Upgrade system
 var available_upgrades: Array = []
@@ -50,22 +50,32 @@ func _initialize_systems() -> void:
 	_initialize_entity_scenes()
 	
 	# Set up event connections from the Events autoload
-	Events.credits_changed.connect(_on_player_credits_changed)
-	Events.player_died.connect(_on_player_died)
+	if has_node("/root/Events"):
+		if Events.has_signal("credits_changed"):
+			Events.credits_changed.connect(_on_player_credits_changed)
+		
+		if Events.has_signal("player_died"):
+			Events.player_died.connect(_on_player_died)
 	
-	# Connect signals from Resources autoload
-	Resources.resource_changed.connect(_on_resource_changed)
+	# Connect signals from Resources autoload - make sure the signal exists
+	if has_node("/root/Resources"):
+		if Resources.has_signal("resource_changed"):
+			Resources.resource_changed.connect(_on_resource_changed)
 	
 	# Connect to Entities autoload signals
-	Entities.player_spawned.connect(_on_player_spawned)
+	if has_node("/root/Entities"):
+		if Entities.has_signal("player_spawned"):
+			Entities.player_spawned.connect(_on_player_spawned)
 	
 	# Initialize available upgrades
 	_initialize_available_upgrades()
 
 func _initialize_entity_scenes() -> void:
 	# Make sure the entity scenes are set correctly
-	if not Entities._scenes_initialized:
-		Entities._initialize_scenes()
+	if has_node("/root/Entities"):
+		if Entities.has_method("_initialize_scenes"):
+			if not Entities._scenes_initialized:
+				Entities._initialize_scenes()
 
 func start_game() -> void:
 	if game_running:
@@ -81,20 +91,23 @@ func start_game() -> void:
 	
 	# Spawn the player
 	var viewport_size = get_viewport().get_visible_rect().size
-	player_ship = Entities.spawn_player(viewport_size / 2)
+	if has_node("/root/Entities"):
+		player_ship = Entities.spawn_player(viewport_size / 2)
 	
 	# Initialize resources
-	# Clear inventory
-	for resource_id in Resources.resource_data:
-		Resources.inventory[resource_id] = 0
-	
-	# Set starting resources
-	Resources.add_resource(Resources.ResourceType.CREDITS, 1000)  # Starting credits
-	Resources.add_resource(Resources.ResourceType.FUEL, 100)      # Starting fuel
+	if has_node("/root/Resources"):
+		# Clear inventory
+		for resource_id in Resources.resource_data:
+			Resources.inventory[resource_id] = 0
+		
+		# Set starting resources
+		Resources.add_resource(Resources.ResourceType.CREDITS, 1000)  # Starting credits
+		Resources.add_resource(Resources.ResourceType.FUEL, 100)      # Starting fuel
 	
 	# Emit game started signal
 	game_started.emit()
-	Events.game_started.emit()
+	if has_node("/root/Events"):
+		Events.safe_emit("game_started")
 
 func pause_game() -> void:
 	if not game_running or is_game_paused:
@@ -106,7 +119,8 @@ func pause_game() -> void:
 	
 	# Emit game paused signal
 	game_paused.emit()
-	Events.game_paused.emit()
+	if has_node("/root/Events"):
+		Events.safe_emit("game_paused")
 
 func resume_game() -> void:
 	if not game_running or not is_game_paused:
@@ -118,7 +132,8 @@ func resume_game() -> void:
 	
 	# Emit game resumed signal
 	game_resumed.emit()
-	Events.game_resumed.emit()
+	if has_node("/root/Events"):
+		Events.safe_emit("game_resumed")
 
 func end_game() -> void:
 	if not game_running:
@@ -131,7 +146,8 @@ func end_game() -> void:
 	
 	# Emit game over signal
 	game_over.emit()
-	Events.game_over.emit()
+	if has_node("/root/Events"):
+		Events.safe_emit("game_over")
 
 func restart_game() -> void:
 	# End the current game
@@ -139,21 +155,23 @@ func restart_game() -> void:
 		end_game()
 	
 	# Clear all entities
-	Entities.despawn_all()
+	if has_node("/root/Entities"):
+		Entities.despawn_all()
 	
 	# Start a new game
 	start_game()
 	
 	# Emit game restarted signal
 	game_restarted.emit()
-	Events.game_restarted.emit()
+	if has_node("/root/Events"):
+		Events.safe_emit("game_restarted")
 
 func _on_player_spawned(player) -> void:
 	player_ship = player
 	
 	# Connect player signals
 	if player_ship and is_instance_valid(player_ship):
-		if not player_ship.player_died.is_connected(_on_player_died):
+		if player_ship.has_signal("player_died") and not player_ship.player_died.is_connected(_on_player_died):
 			player_ship.player_died.connect(_on_player_died)
 
 func _on_player_died() -> void:
@@ -170,56 +188,74 @@ func _on_player_died() -> void:
 		end_game()
 
 func _on_player_earned_credits(amount: float) -> void:
-	Resources.add_resource(Resources.ResourceType.CREDITS, amount)
+	if has_node("/root/Resources"):
+		Resources.add_resource(Resources.ResourceType.CREDITS, amount)
 
 func _on_player_spent_credits(amount: float) -> void:
-	Resources.remove_resource(Resources.ResourceType.CREDITS, amount)
+	if has_node("/root/Resources"):
+		Resources.remove_resource(Resources.ResourceType.CREDITS, amount)
 
 func _on_player_credits_changed(new_amount: float) -> void:
 	player_credits_changed.emit(new_amount)
 
 func _on_resource_changed(resource_id: int, new_amount: float, _old_amount: float) -> void:
 	# Handle resource changes
-	if resource_id == Resources.ResourceType.CREDITS:
+	if has_node("/root/Resources") and resource_id == Resources.ResourceType.CREDITS:
 		player_credits_changed.emit(new_amount)
-		Events.credits_changed.emit(new_amount)
+		if has_node("/root/Events"):
+			Events.safe_emit("credits_changed", [new_amount])
 
 func _initialize_available_upgrades() -> void:
-	# Create strategy instances
+	# We need to directly create instances of the strategy classes without relying on ClassDB
+	# since these are inner classes
 	
-	# Weapon upgrades
-	var double_damage = WeaponStrategies.DoubleDamageStrategy.new()
-	var rapid_fire = WeaponStrategies.RapidFireStrategy.new()
-	var piercing_shot = WeaponStrategies.PiercingShotStrategy.new()
-	var spread_shot = WeaponStrategies.SpreadShotStrategy.new()
+	# First check if we have the necessary script resources loaded
+	var weapon_strategies_script = load("res://weapon_strategies.gd")
+	var shield_strategies_script = load("res://shield_strategies.gd")
+	var movement_strategies_script = load("res://movement_strategies.gd")
 	
-	# Shield upgrades
-	var reinforced_shield = ShieldStrategies.ReinforcedShieldStrategy.new()
-	var fast_recharge = ShieldStrategies.FastRechargeStrategy.new()
-	var reflective_shield = ShieldStrategies.ReflectiveShieldStrategy.new()
-	var absorbent_shield = ShieldStrategies.AbsorbentShieldStrategy.new()
+	if not weapon_strategies_script or not shield_strategies_script or not movement_strategies_script:
+		push_warning("Strategy scripts not found - skipping upgrade initialization")
+		return
 	
-	# Movement upgrades
-	var enhanced_thrusters = MovementStrategies.EnhancedThrustersStrategy.new()
-	var maneuverability = MovementStrategies.ManeuverabilityStrategy.new()
-	var afterburner = MovementStrategies.AfterburnerStrategy.new()
-	var inertial_dampeners = MovementStrategies.InertialDampenersStrategy.new()
+	# Create instances of weapon strategies
+	if weapon_strategies_script:
+		# We don't need the base class instance, we can directly access inner classes
+		var double_damage = weapon_strategies_script.DoubleDamageStrategy.new()
+		var rapid_fire = weapon_strategies_script.RapidFireStrategy.new()
+		var piercing_shot = weapon_strategies_script.PiercingShotStrategy.new()
+		var spread_shot = weapon_strategies_script.SpreadShotStrategy.new()
+		
+		available_upgrades.append(double_damage)
+		available_upgrades.append(rapid_fire)
+		available_upgrades.append(piercing_shot)
+		available_upgrades.append(spread_shot)
 	
-	# Add all strategies to available_upgrades array
-	available_upgrades.append(double_damage)
-	available_upgrades.append(rapid_fire)
-	available_upgrades.append(piercing_shot)
-	available_upgrades.append(spread_shot)
+	# Create instances of shield strategies
+	if shield_strategies_script:
+		# We don't need the base class instance, we can directly access inner classes
+		var reinforced_shield = shield_strategies_script.ReinforcedShieldStrategy.new()
+		var fast_recharge = shield_strategies_script.FastRechargeStrategy.new()
+		var reflective_shield = shield_strategies_script.ReflectiveShieldStrategy.new()
+		var absorbent_shield = shield_strategies_script.AbsorbentShieldStrategy.new()
+		
+		available_upgrades.append(reinforced_shield)
+		available_upgrades.append(fast_recharge)
+		available_upgrades.append(reflective_shield)
+		available_upgrades.append(absorbent_shield)
 	
-	available_upgrades.append(reinforced_shield)
-	available_upgrades.append(fast_recharge)
-	available_upgrades.append(reflective_shield)
-	available_upgrades.append(absorbent_shield)
-	
-	available_upgrades.append(enhanced_thrusters)
-	available_upgrades.append(maneuverability)
-	available_upgrades.append(afterburner)
-	available_upgrades.append(inertial_dampeners)
+	# Create instances of movement strategies
+	if movement_strategies_script:
+		# We don't need the base class instance, we can directly access inner classes
+		var enhanced_thrusters = movement_strategies_script.EnhancedThrustersStrategy.new()
+		var maneuverability = movement_strategies_script.ManeuverabilityStrategy.new()
+		var afterburner = movement_strategies_script.AfterburnerStrategy.new()
+		var inertial_dampeners = movement_strategies_script.InertialDampenersStrategy.new()
+		
+		available_upgrades.append(enhanced_thrusters)
+		available_upgrades.append(maneuverability)
+		available_upgrades.append(afterburner)
+		available_upgrades.append(inertial_dampeners)
 
 func purchase_upgrade(upgrade_index: int, component_name: String) -> bool:
 	if upgrade_index < 0 or upgrade_index >= available_upgrades.size():
@@ -228,14 +264,15 @@ func purchase_upgrade(upgrade_index: int, component_name: String) -> bool:
 	var upgrade = available_upgrades[upgrade_index]
 	
 	# Check if player has enough credits
-	if not Resources.has_resource(Resources.ResourceType.CREDITS, upgrade.price):
+	if has_node("/root/Resources") and not Resources.has_resource(Resources.ResourceType.CREDITS, upgrade.price):
 		return false
 	
 	# Apply the upgrade to the player ship
 	if player_ship and is_instance_valid(player_ship):
 		if player_ship.add_upgrade_strategy(upgrade, component_name):
 			# Deduct credits
-			Resources.remove_resource(Resources.ResourceType.CREDITS, upgrade.price)
+			if has_node("/root/Resources"):
+				Resources.remove_resource(Resources.ResourceType.CREDITS, upgrade.price)
 			
 			# Add to player's upgrades
 			player_upgrades.append({
@@ -244,8 +281,9 @@ func purchase_upgrade(upgrade_index: int, component_name: String) -> bool:
 			})
 			
 			# Emit event
-			Events.upgrade_purchased.emit(upgrade, component_name, upgrade.price)
-			Events.credits_changed.emit(Resources.get_resource_amount(Resources.ResourceType.CREDITS))
+			if has_node("/root/Events"):
+				Events.safe_emit("upgrade_purchased", [upgrade, component_name, upgrade.price])
+				Events.safe_emit("credits_changed", [Resources.get_resource_amount(Resources.ResourceType.CREDITS)])
 			
 			return true
 	
@@ -259,7 +297,8 @@ func remove_upgrade(upgrade_index: int) -> bool:
 	
 	if player_ship and is_instance_valid(player_ship):
 		player_ship.remove_upgrade_strategy(upgrade_info.upgrade)
-		Events.upgrade_removed.emit(upgrade_info.upgrade, upgrade_info.component)
+		if has_node("/root/Events"):
+			Events.safe_emit("upgrade_removed", [upgrade_info.upgrade, upgrade_info.component])
 		player_upgrades.remove_at(upgrade_index)
 		return true
 	
@@ -269,27 +308,24 @@ func get_available_upgrades_for_component(component_name: String) -> Array:
 	var filtered_upgrades = []
 	
 	for upgrade in available_upgrades:
-		# Filter based on component type
+		var upgrade_script = upgrade.get_script()
+		if upgrade_script == null:
+			continue
+			
+		var script_path = upgrade_script.resource_path
+		
+		# Filter based on component type and script path
 		match component_name:
 			"WeaponComponent":
-				if upgrade is WeaponStrategies.DoubleDamageStrategy or \
-				   upgrade is WeaponStrategies.RapidFireStrategy or \
-				   upgrade is WeaponStrategies.PiercingShotStrategy or \
-				   upgrade is WeaponStrategies.SpreadShotStrategy:
+				if "weapon_strategies" in script_path.to_lower():
 					filtered_upgrades.append(upgrade)
 			
 			"ShieldComponent":
-				if upgrade is ShieldStrategies.ReinforcedShieldStrategy or \
-				   upgrade is ShieldStrategies.FastRechargeStrategy or \
-				   upgrade is ShieldStrategies.ReflectiveShieldStrategy or \
-				   upgrade is ShieldStrategies.AbsorbentShieldStrategy:
+				if "shield_strategies" in script_path.to_lower():
 					filtered_upgrades.append(upgrade)
 			
 			"MovementComponent":
-				if upgrade is MovementStrategies.EnhancedThrustersStrategy or \
-				   upgrade is MovementStrategies.ManeuverabilityStrategy or \
-				   upgrade is MovementStrategies.AfterburnerStrategy or \
-				   upgrade is MovementStrategies.InertialDampenersStrategy:
+				if "movement_strategies" in script_path.to_lower():
 					filtered_upgrades.append(upgrade)
 	
 	return filtered_upgrades
