@@ -21,6 +21,10 @@ config/icon="res://player_ship.png"
 
 buses/default_bus_layout=""
 
+[autoload]
+
+Events="*res://autoload/event.gd"
+
 [category]
 
 property_name=1

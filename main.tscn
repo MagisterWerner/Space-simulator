@@ -4,7 +4,7 @@
 [ext_resource type="Script" path="res://game_manager.gd" id="2_m1mqq"]
 [ext_resource type="PackedScene" uid="uid://rhas31gnv33u" path="res://player_ship.tscn" id="2_qlsn3"]
 [ext_resource type="Script" path="res://entity_manager.gd" id="3_ymx7i"]
-[ext_resource type="Script" path="res://event_system.gd" id="4_pakj0"]
+[ext_resource type="Script" path="res://autoload/event.gd" id="4_pakj0"]
 [ext_resource type="Script" path="res://resource_manager.gd" id="5_t2eh4"]
 
 [node name="Main" type="Node2D"]
