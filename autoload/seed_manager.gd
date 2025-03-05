@@ -1,30 +1,5 @@
-# autoload/seed_manager.gd
-#
-# SeedManager Singleton
-# ====================
-# Purpose:
-#   Manages the procedural generation seed used throughout the game.
-#   Ensures consistent and reproducible random generation for all game elements.
-#
-# Interface:
-#   - Seed Management: set_seed(), set_random_seed(), get_seed()
-#   - Random Generation: get_random_value(), get_random_int(), get_random_point_in_circle()
-#   - Array Operations: get_random_element(), get_shuffled_array()
-#   - Signals: seed_changed
-#
-# Usage:
-#   Access via the SeedManager autoload:
-#   ```
-#   # Set a specific seed
-#   SeedManager.set_seed(12345)
-#
-#   # Get a random value that will always be the same for a given object ID and seed
-#   var random_value = SeedManager.get_random_value(asteroid_id, 0.0, 100.0)
-#
-#   # Get a random point in a circle for spawning
-#   var spawn_position = SeedManager.get_random_point_in_circle(entity_id, 500.0)
-#   ```
-#
+# scripts/autoload/seed_manager.gd - Improved with deterministic noise generation
+
 extends Node
 class_name SeedManagerSingleton
 
@@ -35,10 +10,14 @@ var current_seed: int = 0
 var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var seed_hash: String = ""
 
-# Generation history for debugging
-var generation_history: Array = []
-var max_history_size: int = 100
+# Cache for deterministic values
+var _noise_generators = {}
+var _value_cache = {}
+var _max_cache_size = 1000  # Limit the cache size
+
+# Flags
 var debug_mode: bool = false
+var enable_cache: bool = true  # Can be toggled for memory optimization
 
 func _ready() -> void:
 	# Initialize with a random seed if none is set
@@ -46,7 +25,8 @@ func _ready() -> void:
 		set_random_seed()
 	
 	# Connect to game start signal
-	Events.game_started.connect(_on_game_started)
+	if has_node("/root/Events") and Events.has_signal("game_started"):
+		Events.game_started.connect(_on_game_started)
 
 func _on_game_started() -> void:
 	# Optional: Generate a new seed when starting a new game
@@ -57,13 +37,17 @@ func _on_game_started() -> void:
 func set_seed(new_seed: int) -> void:
 	# Store the old seed for history
 	if current_seed != 0 and current_seed != new_seed:
-		_add_to_history("Changed seed", current_seed, new_seed)
+		if debug_mode:
+			print("SeedManager: Changed seed from %s to %s" % [current_seed, new_seed])
 	
 	current_seed = new_seed
 	rng.seed = current_seed
 	
 	# Create a seed hash for saving/loading
 	seed_hash = _generate_seed_hash(current_seed)
+	
+	# Clear caches when seed changes
+	_clear_caches()
 	
 	# Notify all systems that depend on the seed
 	seed_changed.emit(current_seed)
@@ -82,105 +66,133 @@ func get_seed_hash() -> String:
 	return seed_hash
 
 # Get a consistent random value between min and max for a given object ID
-func get_random_value(object_id: int, min_val: float, max_val: float) -> float:
+# Use object_subid for different values from same object
+func get_random_value(object_id: int, min_val: float, max_val: float, object_subid: int = 0) -> float:
+	# Try to get from cache first
+	var cache_key = "value_%d_%d_%f_%f" % [object_id, object_subid, min_val, max_val]
+	if enable_cache and _value_cache.has(cache_key):
+		return _value_cache[cache_key]
+	
 	# Create a deterministic random value based on the seed and object ID
-	var hash_seed = _hash_combine(current_seed, object_id)
+	var hash_seed = _hash_combine(current_seed, object_id + object_subid)
 	var temp_rng = RandomNumberGenerator.new()
 	temp_rng.seed = hash_seed
 	
 	var result = min_val + temp_rng.randf() * (max_val - min_val)
 	
-	if debug_mode:
-		_add_to_history("Random value", {
-			"object_id": object_id,
-			"min": min_val,
-			"max": max_val,
-			"result": result
-		})
+	# Cache the result
+	if enable_cache:
+		_value_cache[cache_key] = result
+		_clean_cache_if_needed()
 	
 	return result
 
 # Get a random integer in a given range for an object
-func get_random_int(object_id: int, min_val: int, max_val: int) -> int:
-	var hash_seed = _hash_combine(current_seed, object_id)
+func get_random_int(object_id: int, min_val: int, max_val: int, object_subid: int = 0) -> int:
+	# Try to get from cache first
+	var cache_key = "int_%d_%d_%d_%d" % [object_id, object_subid, min_val, max_val]
+	if enable_cache and _value_cache.has(cache_key):
+		return _value_cache[cache_key]
+	
+	var hash_seed = _hash_combine(current_seed, object_id + object_subid)
 	var temp_rng = RandomNumberGenerator.new()
 	temp_rng.seed = hash_seed
 	
-	return temp_rng.randi_range(min_val, max_val)
+	var result = temp_rng.randi_range(min_val, max_val)
+	
+	# Cache the result
+	if enable_cache:
+		_value_cache[cache_key] = result
+		_clean_cache_if_needed()
+	
+	return result
 
 # Get a random point in a circle with given radius
-func get_random_point_in_circle(object_id: int, radius: float) -> Vector2:
-	var hash_seed = _hash_combine(current_seed, object_id)
+func get_random_point_in_circle(object_id: int, radius: float, object_subid: int = 0) -> Vector2:
+	# Try to get from cache first
+	var cache_key = "circle_%d_%d_%f" % [object_id, object_subid, radius]
+	if enable_cache and _value_cache.has(cache_key):
+		return _value_cache[cache_key]
+	
+	var hash_seed = _hash_combine(current_seed, object_id + object_subid)
 	var temp_rng = RandomNumberGenerator.new()
 	temp_rng.seed = hash_seed
 	
 	var angle = temp_rng.randf() * TAU  # Random angle in radians (0 to 2π)
 	var distance = sqrt(temp_rng.randf()) * radius  # Square root for uniform distribution
 	
-	return Vector2(cos(angle) * distance, sin(angle) * distance)
+	var result = Vector2(cos(angle) * distance, sin(angle) * distance)
+	
+	# Cache the result
+	if enable_cache:
+		_value_cache[cache_key] = result
+		_clean_cache_if_needed()
+	
+	return result
 
-# Get a random element from an array
-func get_random_element(object_id: int, array: Array):
-	if array.is_empty():
+# Get a 2D noise value for terrain/world generation
+func get_2d_noise(x: float, y: float, scale: float = 1.0, octaves: int = 4, object_id: int = 0) -> float:
+	# Get or create a noise generator for this object ID
+	var noise = _get_noise_generator(object_id)
+	
+	# Configure noise properties
+	noise.seed = current_seed + object_id
+	noise.octaves = octaves
+	noise.persistence = 0.5
+	noise.lacunarity = 2.0
+	
+	# Get the noise value
+	return noise.get_noise_2d(x * scale, y * scale)
+
+# Generate weighted random selection from array
+func get_weighted_element(object_id: int, elements: Array, weights: Array = []) -> Variant:
+	if elements.is_empty():
 		return null
-	
-	var index = get_random_int(object_id, 0, array.size() - 1)
-	return array[index]
-
-# Shuffle an array deterministically based on an object ID
-func get_shuffled_array(object_id: int, original_array: Array) -> Array:
-	# Create a copy to avoid modifying the original
-	var array = original_array.duplicate()
-	
-	var hash_seed = _hash_combine(current_seed, object_id)
-	var temp_rng = RandomNumberGenerator.new()
-	temp_rng.seed = hash_seed
-	
-	# Fisher-Yates shuffle
-	for i in range(array.size() - 1, 0, -1):
-		var j = temp_rng.randi_range(0, i)
-		var temp = array[i]
-		array[i] = array[j]
-		array[j] = temp
-	
-	return array
-
-# Generate a noise value at a position (for terrain generation, etc.)
-func get_noise_value(object_id: int, position: Vector2) -> float:
-	# This is a simple hash-based noise function
-	var x_hash = _hash_combine(current_seed, int(position.x * 1000) + object_id)
-	var y_hash = _hash_combine(current_seed, int(position.y * 1000) + object_id)
-	
-	var temp_rng = RandomNumberGenerator.new()
-	temp_rng.seed = x_hash ^ y_hash
-	
-	return temp_rng.randf()
-
-# Generate a random spawn position within a rectangular area
-func get_random_position_in_rect(object_id: int, rect: Rect2) -> Vector2:
-	var x = get_random_value(object_id * 2, rect.position.x, rect.position.x + rect.size.x)
-	var y = get_random_value(object_id * 2 + 1, rect.position.y, rect.position.y + rect.size.y)
-	return Vector2(x, y)
-
-# Generate a consistent asteroid field based on seed
-func generate_asteroid_field(center: Vector2, radius: float, count: int, center_clearance: float = 100.0) -> Array:
-	var positions = []
-	
-	for i in range(count):
-		var object_id = _hash_combine(current_seed, i)
-		var pos = get_random_point_in_circle(object_id, radius)
-		pos += center
 		
-		# Ensure asteroids aren't too close to the center
-		var distance_to_center = pos.distance_to(center)
-		if distance_to_center < center_clearance:
-			# Move the asteroid outward
-			var direction = (pos - center).normalized()
-			pos = center + direction * center_clearance
-		
-		positions.append(pos)
+	if weights.is_empty():
+		weights = Array()
+		weights.resize(elements.size())
+		for i in range(elements.size()):
+			weights[i] = 1.0
 	
-	return positions
+	# Calculate total weight
+	var total_weight = 0.0
+	for w in weights:
+		total_weight += w
+	
+	# Get random value
+	var value = get_random_value(object_id, 0.0, total_weight)
+	
+	# Find the selected element
+	var current_weight = 0.0
+	for i in range(elements.size()):
+		current_weight += weights[i]
+		if value <= current_weight:
+			return elements[i]
+	
+	# Fallback
+	return elements[elements.size() - 1]
+
+# Helper method to get/create a noise generator
+func _get_noise_generator(object_id: int) -> FastNoiseLite:
+	if not _noise_generators.has(object_id):
+		var noise = FastNoiseLite.new()
+		noise.seed = current_seed + object_id
+		_noise_generators[object_id] = noise
+	
+	return _noise_generators[object_id]
+
+# Helper to clear caches
+func _clear_caches() -> void:
+	_value_cache.clear()
+	_noise_generators.clear()
+
+# Helper to clean cache if it gets too big
+func _clean_cache_if_needed() -> void:
+	if _value_cache.size() > _max_cache_size:
+		# Simple approach: just clear the cache when it gets too big
+		# A more sophisticated approach would be to implement an LRU cache
+		_value_cache.clear()
 
 # Helper function to combine seed and object ID into a new hash
 func _hash_combine(seed_value: int, object_id: int) -> int:
@@ -196,35 +208,7 @@ func _generate_seed_hash(seed_value: int) -> String:
 	for i in range(6):
 		var index = temp_seed % characters.length()
 		hash_string += characters[index]
-		# Fix for integer division warning - explicitly convert to float for division
+		# Fix for integer division
 		temp_seed = int(temp_seed / float(characters.length()))
 	
 	return hash_string
-
-# Add an entry to the generation history for debugging
-func _add_to_history(action: String, data_old, data_new = null) -> void:
-	if not debug_mode:
-		return
-	
-	generation_history.append({
-		"time": Time.get_ticks_msec(),
-		"action": action,
-		"old_data": data_old,
-		"new_data": data_new
-	})
-	
-	# Limit history size
-	if generation_history.size() > max_history_size:
-		generation_history.pop_front()
-
-# Enable or disable debug mode
-func set_debug_mode(enabled: bool) -> void:
-	debug_mode = enabled
-	if enabled:
-		print("SeedManager debug mode enabled")
-	else:
-		generation_history.clear()
-
-# Clear the generation history
-func clear_history() -> void:
-	generation_history.clear()

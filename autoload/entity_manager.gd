@@ -59,7 +59,7 @@ func _initialize_scenes() -> void:
 		return
 	
 	# Load player ship scene
-	player_ship_scene = load("res://player_ship.tscn")
+	player_ship_scene = load("res://scenes/player/player_ship.tscn")
 	
 	# Load asteroid scenes (add your actual paths)
 	# Example: asteroid_scenes.append(load("res://asteroids/asteroid_small.tscn"))
