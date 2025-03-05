@@ -1,4 +1,6 @@
 # scripts/utils/debug_logger.gd
+# A robust logging utility for Godot projects
+# Provides multiple log levels, stack traces, and optional file output
 extends Node
 class_name DebugLogger
 
@@ -60,7 +62,7 @@ func _log(level: int, source: String, message: String, append_stack: bool):
 	var log_message = "[%s][%s][%s] %s" % [time_str, level_str, source, message]
 	
 	if append_stack:
-		log_message += "\n    Stack: " + get_stack()
+		log_message += "\n    Stack: " + get_stack_trace()
 	
 	# Print to console
 	match level:
@@ -72,15 +74,21 @@ func _log(level: int, source: String, message: String, append_stack: bool):
 	if log_to_file and _log_file:
 		_log_file.store_line(log_message)
 
-# Get simplified stack trace
-func get_stack() -> String:
+# Get simplified stack trace from the built-in get_stack() function
+func get_stack_trace() -> String:
 	var stack = get_stack()
 	var stack_str = ""
-	for i in range(min(3, stack.size())): # Show only 3 levels
+	
+	# Limit to 3 levels for readability
+	for i in range(min(3, stack.size())):
+		if i >= stack.size():
+			break
+			
 		var frame = stack[i]
 		stack_str += frame.source + ":" + str(frame.line) + " in " + frame.function
-		if i < stack.size() - 1:
+		if i < min(3, stack.size()) - 1:
 			stack_str += " ← "
+			
 	return stack_str
 
 # Call this when quitting the game
