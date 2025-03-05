@@ -1,0 +1,10 @@
+[gd_scene load_steps=2 format=3 uid="uid://8iqbtdgouxfb"]
+
+[ext_resource type="Script" path="res://scripts/backgrounds/space_background.gd" id="1_3yl7t"]
+
+[node name="SpaceBackground" type="ParallaxBackground"]
+script = ExtResource("1_3yl7t")
+star_count_far = 2000
+star_count_mid = 750
+star_count_near = 350
+twinkle_speed = 0.3

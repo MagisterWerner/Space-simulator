@@ -1,12 +1,16 @@
-[gd_scene load_steps=3 format=3 uid="uid://ddsnaxcqqd81s"]
+[gd_scene load_steps=4 format=3 uid="uid://ddsnaxcqqd81s"]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1_txjaf"]
 [ext_resource type="PackedScene" uid="uid://rhas31gnv33u" path="res://scenes/player/player_ship.tscn" id="2_cayce"]
+[ext_resource type="PackedScene" uid="uid://8iqbtdgouxfb" path="res://scenes/backgrounds/space_background.tscn" id="3_t8g3p"]
 
 [node name="Main" type="Node2D"]
 script = ExtResource("1_txjaf")
 
+[node name="SpaceBackground" parent="." instance=ExtResource("3_t8g3p")]
+
 [node name="BlackBackground" type="ColorRect" parent="."]
+z_index = -99
 offset_left = -10000.0
 offset_top = -10000.0
 offset_right = 10000.0
