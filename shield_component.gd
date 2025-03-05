@@ -20,7 +20,7 @@ signal shield_changed(current, maximum)
 
 var _shield_active: bool = true
 var _last_hit_time: float = 0.0
-var _shield_visual: Node2D
+var _shield_visual: Node = null  # Changed from Node2D to Node
 var _shield_strategies: Array = []
 
 func setup() -> void:
@@ -110,7 +110,11 @@ func process_component(delta: float) -> void:
 
 func _update_shield_visual() -> void:
 	if _shield_visual:
-		_shield_visual.visible = _shield_active and enabled
+		# Check if the shield visual has a visible property (most nodes do)
+		if _shield_visual.has_method("set_visible"):
+			_shield_visual.set_visible(_shield_active and enabled)
+		elif _shield_visual is Node2D:
+			_shield_visual.visible = _shield_active and enabled
 
 func get_shield_percent() -> float:
 	return current_shield / max_shield

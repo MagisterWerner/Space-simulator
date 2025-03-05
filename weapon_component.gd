@@ -40,7 +40,7 @@ var _is_overheated: bool = false
 var _last_fire_time: float = 0.0
 var _overheated_time: float = 0.0
 var _weapon_strategies: Array = []
-var _muzzle_node: Node2D
+var _muzzle_node: Node = null  # Changed from Node2D to Node
 
 func setup() -> void:
 	_current_heat = 0.0
@@ -82,9 +82,19 @@ func fire() -> bool:
 	var world = owner_entity.get_parent()
 	world.add_child(projectile_instance)
 	
-	# Set projectile properties
-	var spawn_pos = _muzzle_node.global_position
-	var spawn_rot = _muzzle_node.global_rotation
+	# Set projectile properties - Safely handle positions and rotations
+	var spawn_pos = Vector2.ZERO
+	var spawn_rot = 0.0
+	
+	# Check if muzzle node has global_position (is Node2D)
+	if _muzzle_node is Node2D:
+		spawn_pos = _muzzle_node.global_position
+		spawn_rot = _muzzle_node.global_rotation
+	else:
+		# Fallback to owner_entity's position and rotation if available
+		if owner_entity is Node2D:
+			spawn_pos = owner_entity.global_position
+			spawn_rot = owner_entity.global_rotation
 	
 	projectile_instance.global_position = spawn_pos
 	projectile_instance.global_rotation = spawn_rot

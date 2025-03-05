@@ -75,6 +75,10 @@ class SpreadShotStrategy extends Strategy:
 		
 		var weapon = owner_component as WeaponComponent
 		
+		# Make sure we can access the projectile's parent (should be a Node2D)
+		if not projectile.get_parent() is Node2D:
+			return
+			
 		for i in range(num_additional_projectiles):
 			# Create side projectiles with angle offsets
 			var side_projectile = weapon.projectile_scene.instantiate()

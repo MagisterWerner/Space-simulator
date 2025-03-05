@@ -1,4 +1,4 @@
-[gd_scene load_steps=10 format=3 uid="uid://rhas31gnv33u"]
+[gd_scene load_steps=16 format=3 uid="uid://rhas31gnv33u"]
 
 [ext_resource type="Script" path="res://player_ship.gd" id="1_a8k2q"]
 [ext_resource type="Texture2D" uid="uid://rmbujdpioval" path="res://player_ship.png" id="2_n7prj"]
@@ -8,6 +8,12 @@
 [ext_resource type="Script" path="res://weapon_component.gd" id="6_mndbk"]
 [ext_resource type="Script" path="res://state_machine.gd" id="7_x6hty"]
 [ext_resource type="Script" path="res://ship_idle_state.gd" id="8_ep03r"]
+[ext_resource type="Script" path="res://ship_moving_state.gd" id="9_r6a07"]
+[ext_resource type="Script" path="res://ship_rotating_state.gd" id="10_vkyl1"]
+[ext_resource type="Script" path="res://ship_combat_state.gd" id="11_hohms"]
+[ext_resource type="Script" path="res://ship_damaged_state.gd" id="12_b76de"]
+[ext_resource type="Script" path="res://ship_dead_state.gd" id="13_n8si1"]
+[ext_resource type="Script" path="res://ship_respawning_state.gd" id="14_7dcri"]
 
 [sub_resource type="Gradient" id="Gradient_u2vx4"]
 offsets = PackedFloat32Array(0, 0.486667, 0.846667, 1)
@@ -122,15 +128,21 @@ script = ExtResource("7_x6hty")
 script = ExtResource("8_ep03r")
 
 [node name="MovingState" type="Node" parent="StateMachine"]
+script = ExtResource("9_r6a07")
 
 [node name="RotatingState" type="Node" parent="StateMachine"]
+script = ExtResource("10_vkyl1")
 
 [node name="CombatState" type="Node" parent="StateMachine"]
+script = ExtResource("11_hohms")
 
 [node name="DamagedState" type="Node" parent="StateMachine"]
+script = ExtResource("12_b76de")
 
 [node name="DeadState" type="Node" parent="StateMachine"]
+script = ExtResource("13_n8si1")
 
 [node name="RespawningState" type="Node" parent="StateMachine"]
+script = ExtResource("14_7dcri")
 
 [connection signal="body_entered" from="." to="." method="_on_body_entered"]
