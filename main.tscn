@@ -30,11 +30,6 @@ script = ExtResource("4_pakj0")
 script = ExtResource("5_t2eh4")
 
 [node name="PlayerShip" parent="." instance=ExtResource("2_qlsn3")]
-speed = null
-move_right_action = null
-move_left_action = null
-move_down_action = null
-move_up_action = null
 
 [node name="Camera2D" type="Camera2D" parent="."]
 zoom = Vector2(0.8, 0.8)

@@ -85,7 +85,7 @@ func play_death_effect() -> void:
 	# Optional: Implement death effect here
 	pass
 
-func add_upgrade_strategy(strategy: Strategy, component_name: String) -> bool:
+func add_upgrade_strategy(strategy, component_name: String) -> bool:
 	var component = get_node_or_null(component_name)
 	
 	if not component or not component is Component:
@@ -98,7 +98,7 @@ func add_upgrade_strategy(strategy: Strategy, component_name: String) -> bool:
 	debug_print("Added strategy: %s to %s" % [strategy.strategy_name, component_name])
 	return true
 
-func remove_upgrade_strategy(strategy: Strategy) -> void:
+func remove_upgrade_strategy(strategy) -> void:
 	if strategy.owner_component:
 		strategy.remove_from_component()
 		debug_print("Removed strategy: %s" % strategy.strategy_name)

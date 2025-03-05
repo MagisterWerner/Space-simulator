@@ -16,7 +16,7 @@ signal player_credits_changed(new_amount)
 
 # Game state
 var game_running: bool = false
-var game_paused: bool = false
+var is_game_paused: bool = false  # Renamed from game_paused to avoid conflict with signal
 var current_level: String = ""
 var player_ship: PlayerShip = null
 
@@ -60,7 +60,7 @@ func start_game() -> void:
 	
 	# Reset game state
 	game_running = true
-	game_paused = false
+	is_game_paused = false
 	player_upgrades.clear()
 	
 	# Spawn the player
@@ -82,22 +82,22 @@ func start_game() -> void:
 	game_started.emit()
 
 func pause_game() -> void:
-	if not game_running or game_paused:
+	if not game_running or is_game_paused:
 		return
 	
 	# Pause the game
-	game_paused = true
+	is_game_paused = true
 	get_tree().paused = true
 	
 	# Emit game paused signal
 	game_paused.emit()
 
 func resume_game() -> void:
-	if not game_running or not game_paused:
+	if not game_running or not is_game_paused:
 		return
 	
 	# Resume the game
-	game_paused = false
+	is_game_paused = false
 	get_tree().paused = false
 	
 	# Emit game resumed signal
@@ -109,7 +109,7 @@ func end_game() -> void:
 	
 	# End the game
 	game_running = false
-	game_paused = false
+	is_game_paused = false
 	get_tree().paused = false
 	
 	# Emit game over signal
@@ -163,23 +163,41 @@ func _on_resource_changed(resource_id: int, new_amount: float, old_amount: float
 		player_credits_changed.emit(new_amount)
 
 func _initialize_available_upgrades() -> void:
+	# Create strategy instances
+	
 	# Weapon upgrades
-	available_upgrades.append(WeaponStrategies.DoubleDamageStrategy.new())
-	available_upgrades.append(WeaponStrategies.RapidFireStrategy.new())
-	available_upgrades.append(WeaponStrategies.PiercingShotStrategy.new())
-	available_upgrades.append(WeaponStrategies.SpreadShotStrategy.new())
+	var double_damage = WeaponStrategies.DoubleDamageStrategy.new()
+	var rapid_fire = WeaponStrategies.RapidFireStrategy.new()
+	var piercing_shot = WeaponStrategies.PiercingShotStrategy.new()
+	var spread_shot = WeaponStrategies.SpreadShotStrategy.new()
 	
 	# Shield upgrades
-	available_upgrades.append(ShieldStrategies.ReinforcedShieldStrategy.new())
-	available_upgrades.append(ShieldStrategies.FastRechargeStrategy.new())
-	available_upgrades.append(ShieldStrategies.ReflectiveShieldStrategy.new())
-	available_upgrades.append(ShieldStrategies.AbsorbentShieldStrategy.new())
+	var reinforced_shield = ShieldStrategies.ReinforcedShieldStrategy.new()
+	var fast_recharge = ShieldStrategies.FastRechargeStrategy.new()
+	var reflective_shield = ShieldStrategies.ReflectiveShieldStrategy.new()
+	var absorbent_shield = ShieldStrategies.AbsorbentShieldStrategy.new()
 	
 	# Movement upgrades
-	available_upgrades.append(MovementStrategies.EnhancedThrustersStrategy.new())
-	available_upgrades.append(MovementStrategies.ManeuverabilityStrategy.new())
-	available_upgrades.append(MovementStrategies.AfterburnerStrategy.new())
-	available_upgrades.append(MovementStrategies.InertialDampenersStrategy.new())
+	var enhanced_thrusters = MovementStrategies.EnhancedThrustersStrategy.new()
+	var maneuverability = MovementStrategies.ManeuverabilityStrategy.new()
+	var afterburner = MovementStrategies.AfterburnerStrategy.new()
+	var inertial_dampeners = MovementStrategies.InertialDampenersStrategy.new()
+	
+	# Add all strategies to available_upgrades array
+	available_upgrades.append(double_damage)
+	available_upgrades.append(rapid_fire)
+	available_upgrades.append(piercing_shot)
+	available_upgrades.append(spread_shot)
+	
+	available_upgrades.append(reinforced_shield)
+	available_upgrades.append(fast_recharge)
+	available_upgrades.append(reflective_shield)
+	available_upgrades.append(absorbent_shield)
+	
+	available_upgrades.append(enhanced_thrusters)
+	available_upgrades.append(maneuverability)
+	available_upgrades.append(afterburner)
+	available_upgrades.append(inertial_dampeners)
 
 func purchase_upgrade(upgrade_index: int, component_name: String) -> bool:
 	if upgrade_index < 0 or upgrade_index >= available_upgrades.size():
@@ -259,7 +277,7 @@ func _input(event: InputEvent) -> void:
 	# Handle game pause/resume input
 	if event.is_action_pressed("pause"):
 		if game_running:
-			if game_paused:
+			if is_game_paused:
 				resume_game()
 			else:
 				pause_game()
