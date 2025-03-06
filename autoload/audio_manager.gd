@@ -51,6 +51,9 @@ extends Node
 # Signal declarations
 signal music_changed(track_name)
 signal volume_changed(bus_name, volume_db)
+signal music_finished
+signal sfx_pool_created(sfx_name, pool_size)
+signal audio_buses_initialized
 
 # Constants
 const MUSIC_BUS = "Music"
@@ -84,11 +87,37 @@ var _music_tween = null
 const DEFAULT_POOL_SIZE = 10
 const MAX_POOL_SIZE = 30
 
+# Initialization flags
+var _initialized = false
+var _buses_initialized = false
+
 # Initialization
 func _ready() -> void:
+	# Call deferred to ensure this runs after scene tree is ready
+	call_deferred("_initialize_audio_system")
+	
+	# Make this node process even when game is paused
+	process_mode = Node.PROCESS_MODE_ALWAYS
+
+# Deferred initialization to ensure this happens after all other autoloads
+func _initialize_audio_system() -> void:
+	if _initialized:
+		return
+		
+	# Log initialization
+	print("AudioManager: Initializing audio system...")
+	
+	# Setup audio buses
 	_setup_audio_buses()
+	
+	# Create music players
 	_create_music_players()
+	
+	# Load saved settings
 	_load_settings()
+	
+	_initialized = true
+	print("AudioManager: Audio system initialized successfully")
 
 # Create necessary audio buses if they don't exist
 func _setup_audio_buses() -> void:
@@ -96,7 +125,7 @@ func _setup_audio_buses() -> void:
 	
 	# Check for Master bus (should always exist as bus 0)
 	if AudioServer.get_bus_name(0) != MASTER_BUS:
-		push_warning("Master bus not found at index 0, audio routing may not work correctly")
+		push_warning("AudioManager: Master bus not found at index 0, audio routing may not work correctly")
 	
 	# Create Music bus if needed
 	var music_bus_idx = AudioServer.get_bus_index(MUSIC_BUS)
@@ -116,6 +145,9 @@ func _setup_audio_buses() -> void:
 	
 	# Apply initial volume settings
 	_apply_volume_settings()
+	
+	_buses_initialized = true
+	audio_buses_initialized.emit()
 
 # Create AudioStreamPlayers for music
 func _create_music_players() -> void:
@@ -123,11 +155,21 @@ func _create_music_players() -> void:
 	_music_player.bus = MUSIC_BUS
 	_music_player.volume_db = 0
 	add_child(_music_player)
+	_music_player.finished.connect(_on_music_finished)
 	
 	_next_music_player = AudioStreamPlayer.new()
 	_next_music_player.bus = MUSIC_BUS
 	_next_music_player.volume_db = MIN_DB  # Start silent
 	add_child(_next_music_player)
+	_next_music_player.finished.connect(_on_next_music_finished)
+
+func _on_music_finished() -> void:
+	music_finished.emit()
+
+func _on_next_music_finished() -> void:
+	# Only handle if we're in the middle of a crossfade
+	if _music_tween and _music_tween.is_running():
+		pass # Let the tween handle it
 
 # Load saved settings
 func _load_settings() -> void:
@@ -199,7 +241,7 @@ func preload_music(track_name: String, file_path: String) -> void:
 	
 	var stream = load(file_path)
 	if !stream:
-		push_error("Failed to load music: " + file_path)
+		push_error("AudioManager: Failed to load music: " + file_path)
 		return
 	
 	_loaded_music[track_name] = stream
@@ -213,6 +255,12 @@ func unload_music(track_name: String) -> void:
 
 # Play a music track with optional crossfade
 func play_music(track_name: String, crossfade: bool = true) -> void:
+	# Make sure we're initialized
+	if not _initialized:
+		push_warning("AudioManager: Attempting to play music before initialization, deferring...")
+		call_deferred("play_music", track_name, crossfade)
+		return
+	
 	if !config.music_enabled:
 		return
 	
@@ -221,7 +269,7 @@ func play_music(track_name: String, crossfade: bool = true) -> void:
 	
 	# Load the track if not already loaded
 	if !_loaded_music.has(track_name):
-		push_error("Music track not loaded: " + track_name)
+		push_error("AudioManager: Music track not loaded: " + track_name)
 		return
 	
 	var track = _loaded_music[track_name]
@@ -286,7 +334,7 @@ func preload_sfx(sfx_name: String, file_path: String, pool_size: int = DEFAULT_P
 	
 	var stream = load(file_path)
 	if !stream:
-		push_error("Failed to load SFX: " + file_path)
+		push_error("AudioManager: Failed to load SFX: " + file_path)
 		return
 	
 	_loaded_sfx[sfx_name] = stream
@@ -304,12 +352,18 @@ func unload_sfx(sfx_name: String) -> void:
 		# Clean up pool
 		if _sfx_pools.has(sfx_name):
 			for player in _sfx_pools[sfx_name]:
-				player.queue_free()
+				if is_instance_valid(player):
+					player.queue_free()
 			_sfx_pools.erase(sfx_name)
 
 # Create a pool of audio players for a sound effect
 func _create_sfx_pool(sfx_name: String, pool_size: int) -> void:
 	if !_loaded_sfx.has(sfx_name):
+		return
+	
+	# Make sure we're initialized
+	if not _initialized:
+		call_deferred("_create_sfx_pool", sfx_name, pool_size)
 		return
 	
 	pool_size = clamp(pool_size, 1, MAX_POOL_SIZE)
@@ -333,6 +387,7 @@ func _create_sfx_pool(sfx_name: String, pool_size: int) -> void:
 		pool.append(player)
 	
 	_sfx_pools[sfx_name] = pool
+	sfx_pool_created.emit(sfx_name, pool_size)
 
 # Resize a sound effect pool
 func resize_sfx_pool(sfx_name: String, new_size: int) -> void:
@@ -368,15 +423,19 @@ func resize_sfx_pool(sfx_name: String, new_size: int) -> void:
 		for i in range(new_size, current_size):
 			if i < _sfx_pools[sfx_name].size():
 				var player = _sfx_pools[sfx_name][i]
-				if !player.playing:
-					player.queue_free()
-					_sfx_pools[sfx_name].remove_at(i)
-				else:
-					# Mark for later removal
-					player.set_meta("remove_when_done", true)
+				if is_instance_valid(player):
+					if !player.playing:
+						player.queue_free()
+						_sfx_pools[sfx_name].remove_at(i)
+					else:
+						# Mark for later removal
+						player.set_meta("remove_when_done", true)
 
 # Handle finished sound effect
 func _on_sfx_finished(player: Node, sfx_name: String) -> void:
+	if not is_instance_valid(player):
+		return
+		
 	if player.has_meta("remove_when_done") and player.get_meta("remove_when_done"):
 		player.queue_free()
 		if _sfx_pools.has(sfx_name):
@@ -386,11 +445,16 @@ func _on_sfx_finished(player: Node, sfx_name: String) -> void:
 
 # Play a sound effect
 func play_sfx(sfx_name: String, position = null, pitch_scale: float = 1.0, volume_db: float = 0.0) -> Node:
+	# Make sure we're initialized
+	if not _initialized:
+		push_warning("AudioManager: Attempting to play sound before initialization")
+		return null
+	
 	if !config.sfx_enabled:
 		return null
 	
 	if !_loaded_sfx.has(sfx_name):
-		push_error("Sound effect not loaded: " + sfx_name)
+		push_error("AudioManager: Sound effect not loaded: " + sfx_name)
 		return null
 	
 	if !_sfx_pools.has(sfx_name):
@@ -434,7 +498,7 @@ func _find_available_sfx_player(sfx_name: String) -> Node:
 	
 	# First try to find a non-playing player
 	for player in _sfx_pools[sfx_name]:
-		if !player.playing:
+		if is_instance_valid(player) and !player.playing:
 			return player
 	
 	return null
@@ -445,7 +509,8 @@ func stop_sfx(sfx_name: String) -> void:
 		return
 	
 	for player in _sfx_pools[sfx_name]:
-		player.stop()
+		if is_instance_valid(player):
+			player.stop()
 
 # Stop all sound effects
 func stop_all_sfx() -> void:
@@ -507,7 +572,8 @@ func set_positional_audio(enabled: bool) -> void:
 			
 			# Clean up existing pool
 			for player in _sfx_pools[sfx_name]:
-				player.queue_free()
+				if is_instance_valid(player):
+					player.queue_free()
 			_sfx_pools.erase(sfx_name)
 			
 			# Recreate with new setting
@@ -515,14 +581,18 @@ func set_positional_audio(enabled: bool) -> void:
 
 # Utility method to get current music track
 func get_current_music() -> String:
-	return _current_music
+	return _current_music if _current_music else ""
 
 # Utility method to get if music is playing
 func is_music_playing() -> bool:
-	return _music_player.playing || _next_music_player.playing
+	return is_instance_valid(_music_player) and _music_player.playing || is_instance_valid(_next_music_player) and _next_music_player.playing
 
 # Helper for batch loading multiple files
 func preload_sfx_directory(directory_path: String, recursive: bool = false) -> void:
+	if not DirAccess.dir_exists_absolute(directory_path):
+		push_error("AudioManager: Directory not found: " + directory_path)
+		return
+		
 	var dir = DirAccess.open(directory_path)
 	if dir:
 		dir.list_dir_begin()
@@ -545,6 +615,10 @@ func preload_sfx_directory(directory_path: String, recursive: bool = false) -> v
 
 # Helper for batch loading multiple music files
 func preload_music_directory(directory_path: String, recursive: bool = false) -> void:
+	if not DirAccess.dir_exists_absolute(directory_path):
+		push_error("AudioManager: Directory not found: " + directory_path)
+		return
+		
 	var dir = DirAccess.open(directory_path)
 	if dir:
 		dir.list_dir_begin()
@@ -564,3 +638,7 @@ func preload_music_directory(directory_path: String, recursive: bool = false) ->
 				file_name = dir.get_next()
 		
 		dir.list_dir_end()
+
+# Get initialization status
+func is_initialized() -> bool:
+	return _initialized and _buses_initialized
