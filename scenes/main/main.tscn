@@ -1,14 +1,14 @@
-[gd_scene load_steps=4 format=3 uid="uid://ddsnaxcqqd81s"]
+[gd_scene load_steps=5 format=3 uid="uid://ddsnaxcqqd81s"]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1_txjaf"]
 [ext_resource type="PackedScene" uid="uid://rhas31gnv33u" path="res://scenes/player/player_ship.tscn" id="2_cayce"]
 [ext_resource type="PackedScene" uid="uid://8iqbtdgouxfb" path="res://scenes/backgrounds/space_background.tscn" id="3_t8g3p"]
+[ext_resource type="Texture2D" uid="uid://c36xklehwh0ql" path="res://assets/sprites/enemy_ship_1.png" id="4_cqtaa"]
 
 [node name="Main" type="Node2D"]
 script = ExtResource("1_txjaf")
 
 [node name="SpaceBackground" parent="." instance=ExtResource("3_t8g3p")]
-follow_viewport_enabled = true
 
 [node name="PlayerShip" parent="." instance=ExtResource("2_cayce")]
 
@@ -16,3 +16,7 @@ follow_viewport_enabled = true
 zoom = Vector2(0.8, 0.8)
 position_smoothing_enabled = true
 position_smoothing_speed = 3.0
+
+[node name="EnemyShip1" type="Sprite2D" parent="."]
+position = Vector2(453, 251)
+texture = ExtResource("4_cqtaa")
