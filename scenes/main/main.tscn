@@ -12,7 +12,6 @@ script = ExtResource("1_txjaf")
 [node name="SpaceBackground" parent="." instance=ExtResource("3_t8g3p")]
 
 [node name="PlayerShip" parent="." instance=ExtResource("2_cayce")]
-z_index = 20
 
 [node name="Camera2D" type="Camera2D" parent="."]
 zoom = Vector2(0.8, 0.8)
