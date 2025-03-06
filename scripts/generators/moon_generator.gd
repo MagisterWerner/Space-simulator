@@ -3,9 +3,9 @@ extends RefCounted
 class_name MoonGenerator
 
 const MOON_SIZES: Array = [24, 32, 40, 48, 56]
-const PIXEL_RESOLUTION: int = 64
+const PIXEL_RESOLUTION: int = 8
 
-const CUBIC_RESOLUTION: int = 512
+const CUBIC_RESOLUTION: int = 8
 const BASE_FREQUENCY: float = 8.0
 const BASE_AMPLITUDE: float = 0.5
 

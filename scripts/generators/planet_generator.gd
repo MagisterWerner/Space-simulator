@@ -22,7 +22,7 @@ static var planet_texture_cache: Dictionary = {}
 
 var cubic_lookup: Array = []
 var noise_cache: Dictionary = {}
-const CUBIC_RESOLUTION: int = 512
+const CUBIC_RESOLUTION: int = 32
 
 func _init():
 	cubic_lookup.resize(CUBIC_RESOLUTION)
