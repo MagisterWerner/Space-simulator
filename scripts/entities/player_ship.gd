@@ -1,4 +1,5 @@
-# player_ship.gd
+# scripts/entities/player_ship.gd
+# Player ship controller that ties together all ship components and handles input
 extends RigidBody2D
 class_name PlayerShip
 

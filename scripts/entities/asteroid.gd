@@ -1,4 +1,5 @@
-# asteroid.gd
+# scripts/entities/asteroid.gd
+# Asteroid entity that can be destroyed, split into fragments, and damage the player
 extends Node2D
 class_name Asteroid
 
@@ -9,14 +10,17 @@ var rotation_speed: float = 0.0
 var base_scale: float = 1.0
 var field_data = null
 var initial_rotation: float = 0.0
-var sound_system = null
+var audio_manager = null
 
 func _ready():
 	z_index = 3
 	add_to_group("asteroids")
 	
 	health_component = $HealthComponent
-	sound_system = get_node_or_null("/root/SoundSystem")
+	
+	# Look for AudioManager singleton
+	if Engine.has_singleton("AudioManager"):
+		audio_manager = AudioManager
 	
 	if health_component:
 		match size_category:
@@ -77,8 +81,8 @@ func _on_destroyed():
 	else:
 		_create_explosion()
 		
-		if sound_system:
-			sound_system.play_explosion(global_position)
+		if audio_manager:
+			audio_manager.play_sfx("explosion", global_position)
 		
 		var asteroid_spawner = get_node_or_null("/root/Main/AsteroidSpawner")
 		if asteroid_spawner:

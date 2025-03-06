@@ -1,4 +1,5 @@
-# movement_component.gd - Enhanced with integrated audio
+# scripts/components/movement_component.gd
+# Movement component that handles ship thrust, rotation, and boost functionality
 extends Component
 class_name MovementComponent
 
@@ -96,18 +97,18 @@ func _initialize_audio() -> void:
 	if not enable_audio:
 		return
 		
-	if not Engine.has_singleton("Audio"):
+	if not Engine.has_singleton("AudioManager"):
 		push_warning("MovementComponent: AudioManager not found as singleton")
 		return
 		
 	# Preload the thruster sound if using AudioManager
-	if not Audio.has_method("is_sfx_loaded") or not Audio.is_sfx_loaded(thruster_sound_name):
-		Audio.preload_sfx(thruster_sound_name, "res://assets/audio/thruster.wav", 2)
+	if not AudioManager.has_method("is_sfx_loaded") or not AudioManager.is_sfx_loaded(thruster_sound_name):
+		AudioManager.preload_sfx(thruster_sound_name, "res://assets/audio/thruster.wav", 2)
 	
 	# Preload boost sound if it's different
 	if boost_sound_name != thruster_sound_name:
-		if not Audio.has_method("is_sfx_loaded") or not Audio.is_sfx_loaded(boost_sound_name):
-			Audio.preload_sfx(boost_sound_name, "res://assets/audio/boost.wav", 1)
+		if not AudioManager.has_method("is_sfx_loaded") or not AudioManager.is_sfx_loaded(boost_sound_name):
+			AudioManager.preload_sfx(boost_sound_name, "res://assets/audio/boost.wav", 1)
 
 func _on_enable() -> void:
 	# Start any active audio again if it was playing before
@@ -372,11 +373,11 @@ func stop_boost() -> void:
 
 # Audio control methods
 func _start_main_thruster_sound() -> void:
-	if not enable_audio or _main_thruster_active or not Engine.has_singleton("Audio"):
+	if not enable_audio or _main_thruster_active or not Engine.has_singleton("AudioManager"):
 		return
 	
 	_main_thruster_active = true
-	_main_thruster_player = Audio.play_sfx(
+	_main_thruster_player = AudioManager.play_sfx(
 		thruster_sound_name, 
 		owner_entity.global_position, 
 		1.0, 
@@ -402,11 +403,11 @@ func _stop_main_thruster_sound() -> void:
 		_main_thruster_player = null
 
 func _start_rotation_thruster_sound() -> void:
-	if not enable_audio or _rotation_thruster_active or not Engine.has_singleton("Audio"):
+	if not enable_audio or _rotation_thruster_active or not Engine.has_singleton("AudioManager"):
 		return
 	
 	_rotation_thruster_active = true
-	_rotation_thruster_player = Audio.play_sfx(
+	_rotation_thruster_player = AudioManager.play_sfx(
 		thruster_sound_name, 
 		owner_entity.global_position, 
 		1.1, # Slightly higher pitch
@@ -432,11 +433,11 @@ func _stop_rotation_thruster_sound() -> void:
 		_rotation_thruster_player = null
 
 func _start_boost_sound() -> void:
-	if not enable_audio or _boost_sound_active or not Engine.has_singleton("Audio"):
+	if not enable_audio or _boost_sound_active or not Engine.has_singleton("AudioManager"):
 		return
 	
 	_boost_sound_active = true
-	_boost_thruster_player = Audio.play_sfx(
+	_boost_thruster_player = AudioManager.play_sfx(
 		boost_sound_name, 
 		owner_entity.global_position, 
 		0.9, # Slightly lower pitch for boost

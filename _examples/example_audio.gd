@@ -2,7 +2,7 @@ extends Node
 # Example usage of AudioManager
 
 # 1. First, add AudioManager.gd as an autoload singleton in your project settings
-# In Project > Project Settings > Autoload, add the script with name "Audio"
+# In Project > Project Settings > Autoload, add the script with name "AudioManager"
 
 # 2. This example shows how to use the audio manager in a game scene
 
@@ -13,23 +13,23 @@ func _ready():
 	# Initialize audio resources
 	
 	# Preload music tracks
-	Audio.preload_music("main_theme", "res://audio/music/main_theme.ogg")
-	Audio.preload_music("battle_theme", "res://audio/music/battle_theme.mp3")
-	Audio.preload_music("boss_theme", "res://audio/music/boss_theme.ogg")
+	AudioManager.preload_music("main_theme", "res://audio/music/main_theme.ogg")
+	AudioManager.preload_music("battle_theme", "res://audio/music/battle_theme.mp3")
+	AudioManager.preload_music("boss_theme", "res://audio/music/boss_theme.ogg")
 	
 	# Or load all music from a directory
-	# Audio.preload_music_directory("res://audio/music")
+	# AudioManager.preload_music_directory("res://audio/music")
 	
 	# Preload sound effects with appropriate pool sizes
 	# For bullet hell games, increase pool size for frequently used sounds
-	Audio.preload_sfx("laser", "res://audio/sfx/laser.wav", 30)  # Large pool for weapon sounds
-	Audio.preload_sfx("explosion_small", "res://audio/sfx/explosion_small.wav", 20)
-	Audio.preload_sfx("explosion_large", "res://audio/sfx/explosion_large.wav", 10)
-	Audio.preload_sfx("thruster", "res://audio/sfx/thruster.sfxr", 5)
-	Audio.preload_sfx("powerup", "res://audio/sfx/powerup.wav", 5)
+	AudioManager.preload_sfx("laser", "res://audio/sfx/laser.wav", 30)  # Large pool for weapon sounds
+	AudioManager.preload_sfx("explosion_small", "res://audio/sfx/explosion_small.wav", 20)
+	AudioManager.preload_sfx("explosion_large", "res://audio/sfx/explosion_large.wav", 10)
+	AudioManager.preload_sfx("thruster", "res://audio/sfx/thruster.sfxr", 5)
+	AudioManager.preload_sfx("powerup", "res://audio/sfx/powerup.wav", 5)
 	
 	# Start background music
-	Audio.play_music("main_theme")
+	AudioManager.play_music("main_theme")
 	
 	# Connect to player signals for sound effects
 	$Player.weapon_fired.connect(_on_player_fire_weapon)
@@ -56,7 +56,7 @@ func _on_player_fire_weapon():
 	# Add slight pitch variation for more natural sound
 	var pitch = randf_range(0.95, 1.05)
 	
-	Audio.play_sfx("laser", player_position, pitch)
+	AudioManager.play_sfx("laser", player_position, pitch)
 
 func _on_enemy_destroyed(enemy):
 	var position = enemy.global_position
@@ -71,12 +71,12 @@ func _on_enemy_destroyed(enemy):
 	var pitch = randf_range(0.9, 1.1)
 	var volume = randf_range(-2.0, 0.0)
 	
-	Audio.play_sfx(sfx_name, position, pitch, volume)
+	AudioManager.play_sfx(sfx_name, position, pitch, volume)
 
 func _on_player_thrust():
 	if !_thruster_sound_playing:
 		# Track the sound player for looping effects
-		_thruster_sound = Audio.play_sfx("thruster", $Player.global_position)
+		_thruster_sound = AudioManager.play_sfx("thruster", $Player.global_position)
 		_thruster_sound_playing = true
 
 func _on_player_stop_thrust():
@@ -94,36 +94,36 @@ func _process(_delta):
 
 func _on_enter_boss_battle():
 	# Crossfade to boss music
-	Audio.play_music("boss_theme", true)
+	AudioManager.play_music("boss_theme", true)
 
 func _on_victory():
 	# Stop all SFX for a dramatic effect
-	Audio.stop_all_sfx()
+	AudioManager.stop_all_sfx()
 	
 	# Play victory theme
-	Audio.play_music("main_theme", true)
+	AudioManager.play_music("main_theme", true)
 
 # Handle audio settings UI
 
 func _on_master_volume_changed(value):
-	Audio.set_master_volume(value)
-	Audio.save_settings()
+	AudioManager.set_master_volume(value)
+	AudioManager.save_settings()
 
 func _on_music_volume_changed(value):
-	Audio.set_music_volume(value)
-	Audio.save_settings()
+	AudioManager.set_music_volume(value)
+	AudioManager.save_settings()
 
 func _on_sfx_volume_changed(value):
-	Audio.set_sfx_volume(value)
-	Audio.save_settings()
+	AudioManager.set_sfx_volume(value)
+	AudioManager.save_settings()
 
 func _on_music_toggle_changed(enabled):
-	Audio.set_music_enabled(enabled)
-	Audio.save_settings()
+	AudioManager.set_music_enabled(enabled)
+	AudioManager.save_settings()
 
 func _on_sfx_toggle_changed(enabled):
-	Audio.set_sfx_enabled(enabled)
-	Audio.save_settings()
+	AudioManager.set_sfx_enabled(enabled)
+	AudioManager.save_settings()
 
 # Clean up when scene changes
 func _exit_tree():

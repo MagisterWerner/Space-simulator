@@ -1,4 +1,5 @@
-# weapon_component.gd - Enhanced with integrated audio
+# scripts/components/weapon_component.gd
+# Component that handles weapon functionality including firing, ammo, and overheating mechanics
 extends Component
 class_name WeaponComponent
 
@@ -70,22 +71,22 @@ func _initialize_audio() -> void:
 	if not enable_audio:
 		return
 		
-	if not Engine.has_singleton("Audio"):
+	if not Engine.has_singleton("AudioManager"):
 		push_warning("WeaponComponent: AudioManager not found as singleton")
 		return
 		
 	# Preload sounds if using AudioManager
-	if not Audio.has_method("is_sfx_loaded") or not Audio.is_sfx_loaded(fire_sound_name):
-		Audio.preload_sfx(fire_sound_name, "res://assets/audio/laser.sfxr", 10)
+	if not AudioManager.has_method("is_sfx_loaded") or not AudioManager.is_sfx_loaded(fire_sound_name):
+		AudioManager.preload_sfx(fire_sound_name, "res://assets/audio/laser.sfxr", 10)
 	
-	if reload_sound_name and not Audio.is_sfx_loaded(reload_sound_name):
-		Audio.preload_sfx(reload_sound_name, "res://assets/audio/reload.sfxr", 2)
+	if reload_sound_name and not AudioManager.is_sfx_loaded(reload_sound_name):
+		AudioManager.preload_sfx(reload_sound_name, "res://assets/audio/reload.sfxr", 2)
 	
-	if empty_sound_name and not Audio.is_sfx_loaded(empty_sound_name):
-		Audio.preload_sfx(empty_sound_name, "res://assets/audio/empty.sfxr", 2)
+	if empty_sound_name and not AudioManager.is_sfx_loaded(empty_sound_name):
+		AudioManager.preload_sfx(empty_sound_name, "res://assets/audio/empty.sfxr", 2)
 		
-	if overheat_sound_name and not Audio.is_sfx_loaded(overheat_sound_name):
-		Audio.preload_sfx(overheat_sound_name, "res://assets/audio/overheat.sfxr", 2)
+	if overheat_sound_name and not AudioManager.is_sfx_loaded(overheat_sound_name):
+		AudioManager.preload_sfx(overheat_sound_name, "res://assets/audio/overheat.sfxr", 2)
 
 func can_fire() -> bool:
 	if not enabled or _is_overheated:
@@ -246,33 +247,33 @@ func process_component(delta: float) -> void:
 
 # Audio methods
 func _play_fire_sound(position: Vector2) -> void:
-	if not enable_audio or not Engine.has_singleton("Audio"):
+	if not enable_audio or not Engine.has_singleton("AudioManager"):
 		return
 	
 	# Randomize pitch slightly for variety
 	var pitch_variation = randf_range(0.95, 1.05)
-	Audio.play_sfx(fire_sound_name, position, pitch_variation)
+	AudioManager.play_sfx(fire_sound_name, position, pitch_variation)
 
 func _play_reload_sound() -> void:
-	if not enable_audio or not Engine.has_singleton("Audio") or not reload_sound_name:
+	if not enable_audio or not Engine.has_singleton("AudioManager") or not reload_sound_name:
 		return
 		
 	var position = owner_entity.global_position if owner_entity is Node2D else Vector2.ZERO
-	Audio.play_sfx(reload_sound_name, position)
+	AudioManager.play_sfx(reload_sound_name, position)
 
 func _play_empty_sound() -> void:
-	if not enable_audio or not Engine.has_singleton("Audio") or not empty_sound_name:
+	if not enable_audio or not Engine.has_singleton("AudioManager") or not empty_sound_name:
 		return
 		
 	var position = owner_entity.global_position if owner_entity is Node2D else Vector2.ZERO
-	Audio.play_sfx(empty_sound_name, position)
+	AudioManager.play_sfx(empty_sound_name, position)
 
 func _play_overheat_sound() -> void:
-	if not enable_audio or not Engine.has_singleton("Audio") or not overheat_sound_name:
+	if not enable_audio or not Engine.has_singleton("AudioManager") or not overheat_sound_name:
 		return
 		
 	var position = owner_entity.global_position if owner_entity is Node2D else Vector2.ZERO
-	Audio.play_sfx(overheat_sound_name, position)
+	AudioManager.play_sfx(overheat_sound_name, position)
 
 # Strategy management
 func add_weapon_strategy(strategy) -> void:

@@ -1,3 +1,5 @@
+# autoload/seed_manager.gd
+# Manages procedural generation seeding and provides deterministic randomization methods
 extends Node
 
 signal seed_changed(new_seed)
@@ -22,8 +24,8 @@ func _ready() -> void:
 		set_random_seed()
 	
 	# Connect to game start signal
-	if has_node("/root/Events") and Events.has_signal("game_started"):
-		Events.game_started.connect(_on_game_started)
+	if has_node("/root/EventManager") and EventManager.has_signal("game_started"):
+		EventManager.game_started.connect(_on_game_started)
 
 func _on_game_started() -> void:
 	# Optional: Generate a new seed when starting a new game

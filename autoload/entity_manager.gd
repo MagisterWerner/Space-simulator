@@ -1,26 +1,10 @@
 # autoload/entity_manager.gd
 #
-# Entities Singleton
+# Entities Manager Singleton
 # =================
 # Purpose:
 #   Manages all game entities (players, ships, asteroids, stations).
 #   Provides centralized entity registration, spawning, and lookup.
-#
-# Interface:
-#   - Entity Registration: register_entity(), deregister_entity()
-#   - Entity Spawning: spawn_player(), spawn_enemy_ship(), spawn_asteroid(), spawn_station()
-#   - Entity Queries: get_nearest_entity(), get_entities_in_radius(), despawn_all()
-#   - Signals: entity_spawned, entity_despawned, player_spawned
-#
-# Usage:
-#   Access via the Entities autoload:
-#   ```
-#   # Spawn the player
-#   var player = Entities.spawn_player(spawn_position)
-#   
-#   # Find the nearest asteroid to the player
-#   var nearest_asteroid = Entities.get_nearest_entity(player.global_position, "asteroid")
-#   ```
 extends Node
 
 signal entity_spawned(entity, entity_type)
@@ -126,7 +110,7 @@ func spawn_player(spawn_position: Vector2 = Vector2.ZERO) -> Node:
 	_initialize_scenes()
 	
 	if not player_ship_scene:
-		push_error("EntityManagerSingleton: player_ship_scene not set")
+		push_error("EntityManager: player_ship_scene not set")
 		return null
 	
 	var player = player_ship_scene.instantiate()
@@ -145,7 +129,7 @@ func spawn_enemy_ship(type_index: int = 0, spawn_position: Vector2 = Vector2.ZER
 	_initialize_scenes()
 	
 	if enemy_ship_scenes.is_empty():
-		push_error("EntityManagerSingleton: enemy_ship_scenes array is empty")
+		push_error("EntityManager: enemy_ship_scenes array is empty")
 		return null
 	
 	if type_index < 0 or type_index >= enemy_ship_scenes.size():

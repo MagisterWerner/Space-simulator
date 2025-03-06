@@ -1,4 +1,5 @@
-# Updated main.gd to integrate the space background
+# scripts/main.gd
+# Main scene controller that initializes the game and handles core systems
 extends Node2D
 
 @onready var player_ship = $PlayerShip
@@ -24,16 +25,16 @@ func _ready() -> void:
 	if space_background and not space_background.initialized:
 		space_background.setup_background()
 	
-	# Check if the Game autoload exists in the scene tree
-	if has_node("/root/Game"):
+	# Check if the GameManager autoload exists in the scene tree
+	if has_node("/root/GameManager"):
 		# Start the game using the autoloaded GameManager
-		var game_manager = get_node("/root/Game")
+		var game_manager = get_node("/root/GameManager")
 		if game_manager.has_method("start_game"):
 			game_manager.start_game()
 		else:
-			push_error("Game autoload found but doesn't have start_game method")
+			push_error("GameManager autoload found but doesn't have start_game method")
 	else:
-		push_error("Game autoload not found - check project settings")
+		push_error("GameManager autoload not found - check project settings")
 		print("Available autoloads:")
 		for child in get_node("/root").get_children():
 			if child != get_tree().current_scene:
@@ -41,8 +42,8 @@ func _ready() -> void:
 
 func _process(_delta: float) -> void:
 	# Follow player from GameManager if available, otherwise use local reference
-	if has_node("/root/Game"):
-		var game_manager = get_node("/root/Game")
+	if has_node("/root/GameManager"):
+		var game_manager = get_node("/root/GameManager")
 		if game_manager.player_ship and is_instance_valid(game_manager.player_ship):
 			camera.position = game_manager.player_ship.position
 		else:

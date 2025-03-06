@@ -56,8 +56,8 @@ func setup_background() -> void:
 	
 	# If requested, use the global seed
 	var background_seed: int = 0
-	if use_game_seed and has_node("/root/Seed") and Seed.has_method("get_seed"):
-		background_seed = Seed.get_seed()
+	if use_game_seed and has_node("/root/SeedManager") and SeedManager.has_method("get_seed"):
+		background_seed = SeedManager.get_seed()
 		if debug_mode:
 			print("SpaceBackground: Using global seed: ", background_seed)
 	else:
@@ -92,8 +92,8 @@ func setup_background() -> void:
 
 func find_camera() -> void:
 	# First try finding the player ship through the EntityManager
-	if has_node("/root/Entities") and Entities.has_method("get_nearest_entity"):
-		var player = Entities.get_nearest_entity(Vector2.ZERO, "player")
+	if has_node("/root/EntityManager") and EntityManager.has_method("get_nearest_entity"):
+		var player = EntityManager.get_nearest_entity(Vector2.ZERO, "player")
 		if player and player.get_viewport().get_camera_2d():
 			camera = player.get_viewport().get_camera_2d()
 			if debug_mode:

@@ -1,3 +1,5 @@
+# autoload/game_manager.gd
+# Central system for managing overall game state, levels, and core gameplay systems
 extends Node
 
 signal game_started
@@ -56,31 +58,28 @@ func _initialize_systems() -> void:
 
 func _check_dependencies() -> void:
 	# Check if we have the necessary autoloads
-	_entities_ready = has_node("/root/Entities")
-	_resources_ready = has_node("/root/Resources")
-	_events_ready = has_node("/root/Events")
-	_seed_ready = has_node("/root/Seed")
+	_entities_ready = has_node("/root/EntityManager")
+	_resources_ready = has_node("/root/ResourceManager")
+	_events_ready = has_node("/root/EventManager")
+	_seed_ready = has_node("/root/SeedManager")
 	
 	var missing = []
-	if not _entities_ready: missing.append("Entities")
-	if not _resources_ready: missing.append("Resources")
-	if not _events_ready: missing.append("Events")
-	if not _seed_ready: missing.append("Seed")
+	if not _entities_ready: missing.append("EntityManager")
+	if not _resources_ready: missing.append("ResourceManager")
+	if not _events_ready: missing.append("EventManager")
+	if not _seed_ready: missing.append("SeedManager")
 	
-	# Fixed: Changed empty() to is_empty()
 	if not missing.is_empty():
 		push_warning("GameManager: Missing dependencies: " + ", ".join(missing))
 
 func _initialize_entity_scenes() -> void:
-	if has_node("/root/Entities"):
-		if Entities.has_method("_initialize_scenes"):
-			if not Entities._scenes_initialized:
-				Entities._initialize_scenes()
+	if has_node("/root/EntityManager"):
+		if EntityManager.has_method("_initialize_scenes"):
+			if not EntityManager._scenes_initialized:
+				EntityManager._initialize_scenes()
 
 func _connect_event_signals() -> void:
-	if has_node("/root/Events"):
-		var events = get_node("/root/Events")
-		
+	if has_node("/root/EventManager"):
 		# A safer way to connect signals with error checking
 		var signals_to_connect = {
 			"credits_changed": _on_player_credits_changed,
@@ -88,21 +87,19 @@ func _connect_event_signals() -> void:
 		}
 		
 		for signal_name in signals_to_connect:
-			if events.has_signal(signal_name):
-				if not events.is_connected(signal_name, signals_to_connect[signal_name]):
-					events.connect(signal_name, signals_to_connect[signal_name])
+			if EventManager.has_signal(signal_name):
+				if not EventManager.is_connected(signal_name, signals_to_connect[signal_name]):
+					EventManager.connect(signal_name, signals_to_connect[signal_name])
 			else:
-				push_warning("GameManager: Events is missing signal: " + signal_name)
+				push_warning("GameManager: EventManager is missing signal: " + signal_name)
 
 func _connect_resource_signals() -> void:
-	if has_node("/root/Resources"):
-		var resources = get_node("/root/Resources")
-		
-		if resources.has_signal("resource_changed"):
-			if not resources.is_connected("resource_changed", _on_resource_changed):
-				resources.resource_changed.connect(_on_resource_changed)
+	if has_node("/root/ResourceManager"):
+		if ResourceManager.has_signal("resource_changed"):
+			if not ResourceManager.is_connected("resource_changed", _on_resource_changed):
+				ResourceManager.resource_changed.connect(_on_resource_changed)
 		else:
-			push_warning("GameManager: Resources is missing signal: resource_changed")
+			push_warning("GameManager: ResourceManager is missing signal: resource_changed")
 
 # Game lifecycle methods
 func start_game() -> void:
@@ -121,25 +118,25 @@ func start_game() -> void:
 	# Spawn the player
 	var viewport_size = get_viewport().get_visible_rect().size
 	if _entities_ready:
-		player_ship = Entities.spawn_player(viewport_size / 2)
+		player_ship = EntityManager.spawn_player(viewport_size / 2)
 	else:
-		push_error("GameManager: Cannot spawn player - Entities autoload not found")
+		push_error("GameManager: Cannot spawn player - EntityManager autoload not found")
 		return
 	
 	# Initialize resources
 	if _resources_ready:
 		# Clear inventory
-		for resource_id in Resources.resource_data:
-			Resources.inventory[resource_id] = 0
+		for resource_id in ResourceManager.resource_data:
+			ResourceManager.inventory[resource_id] = 0
 		
 		# Set starting resources
-		Resources.add_resource(Resources.ResourceType.CREDITS, 1000)
-		Resources.add_resource(Resources.ResourceType.FUEL, 100)
+		ResourceManager.add_resource(ResourceManager.ResourceType.CREDITS, 1000)
+		ResourceManager.add_resource(ResourceManager.ResourceType.FUEL, 100)
 	
 	# Emit game started signal
 	game_started.emit()
 	if _events_ready:
-		Events.safe_emit("game_started")
+		EventManager.safe_emit("game_started")
 	
 	print("GameManager: Game started successfully")
 
@@ -154,7 +151,7 @@ func pause_game() -> void:
 	# Emit game paused signal
 	game_paused.emit()
 	if _events_ready:
-		Events.safe_emit("game_paused")
+		EventManager.safe_emit("game_paused")
 
 func resume_game() -> void:
 	if not game_running or not is_game_paused:
@@ -167,7 +164,7 @@ func resume_game() -> void:
 	# Emit game resumed signal
 	game_resumed.emit()
 	if _events_ready:
-		Events.safe_emit("game_resumed")
+		EventManager.safe_emit("game_resumed")
 
 func end_game() -> void:
 	if not game_running:
@@ -181,7 +178,7 @@ func end_game() -> void:
 	# Emit game over signal
 	game_over.emit()
 	if _events_ready:
-		Events.safe_emit("game_over")
+		EventManager.safe_emit("game_over")
 
 func restart_game() -> void:
 	# End the current game
@@ -190,7 +187,7 @@ func restart_game() -> void:
 	
 	# Clear all entities
 	if _entities_ready:
-		Entities.despawn_all()
+		EntityManager.despawn_all()
 	
 	# Start a new game
 	start_game()
@@ -198,7 +195,7 @@ func restart_game() -> void:
 	# Emit game restarted signal
 	game_restarted.emit()
 	if _events_ready:
-		Events.safe_emit("game_restarted")
+		EventManager.safe_emit("game_restarted")
 
 # Event handlers
 func _on_player_spawned(player) -> void:
@@ -224,21 +221,21 @@ func _on_player_died() -> void:
 
 func _on_player_earned_credits(amount: float) -> void:
 	if _resources_ready:
-		Resources.add_resource(Resources.ResourceType.CREDITS, amount)
+		ResourceManager.add_resource(ResourceManager.ResourceType.CREDITS, amount)
 
 func _on_player_spent_credits(amount: float) -> void:
 	if _resources_ready:
-		Resources.remove_resource(Resources.ResourceType.CREDITS, amount)
+		ResourceManager.remove_resource(ResourceManager.ResourceType.CREDITS, amount)
 
 func _on_player_credits_changed(new_amount: float) -> void:
 	player_credits_changed.emit(new_amount)
 
 func _on_resource_changed(resource_id: int, new_amount: float, _old_amount: float) -> void:
 	# Handle resource changes
-	if _resources_ready and resource_id == Resources.ResourceType.CREDITS:
+	if _resources_ready and resource_id == ResourceManager.ResourceType.CREDITS:
 		player_credits_changed.emit(new_amount)
 		if _events_ready:
-			Events.safe_emit("credits_changed", [new_amount])
+			EventManager.safe_emit("credits_changed", [new_amount])
 
 # Upgrade system
 func _initialize_available_upgrades() -> void:
@@ -298,7 +295,7 @@ func purchase_upgrade(upgrade_index: int, component_name: String) -> bool:
 	var upgrade = available_upgrades[upgrade_index]
 	
 	# Check if player has enough credits
-	if _resources_ready and not Resources.has_resource(Resources.ResourceType.CREDITS, upgrade.price):
+	if _resources_ready and not ResourceManager.has_resource(ResourceManager.ResourceType.CREDITS, upgrade.price):
 		return false
 	
 	# Apply the upgrade to the player ship
@@ -306,7 +303,7 @@ func purchase_upgrade(upgrade_index: int, component_name: String) -> bool:
 		if player_ship.add_upgrade_strategy(upgrade, component_name):
 			# Deduct credits
 			if _resources_ready:
-				Resources.remove_resource(Resources.ResourceType.CREDITS, upgrade.price)
+				ResourceManager.remove_resource(ResourceManager.ResourceType.CREDITS, upgrade.price)
 			
 			# Add to player's upgrades
 			player_upgrades.append({
@@ -317,8 +314,8 @@ func purchase_upgrade(upgrade_index: int, component_name: String) -> bool:
 			# Emit event
 			upgrade_purchased.emit(upgrade, component_name)
 			if _events_ready:
-				Events.safe_emit("upgrade_purchased", [upgrade, component_name, upgrade.price])
-				Events.safe_emit("credits_changed", [Resources.get_resource_amount(Resources.ResourceType.CREDITS)])
+				EventManager.safe_emit("upgrade_purchased", [upgrade, component_name, upgrade.price])
+				EventManager.safe_emit("credits_changed", [ResourceManager.get_resource_amount(ResourceManager.ResourceType.CREDITS)])
 			
 			return true
 	
@@ -333,7 +330,7 @@ func remove_upgrade(upgrade_index: int) -> bool:
 	if player_ship and is_instance_valid(player_ship):
 		player_ship.remove_upgrade_strategy(upgrade_info.upgrade)
 		if _events_ready:
-			Events.safe_emit("upgrade_removed", [upgrade_info.upgrade, upgrade_info.component])
+			EventManager.safe_emit("upgrade_removed", [upgrade_info.upgrade, upgrade_info.component])
 		player_upgrades.remove_at(upgrade_index)
 		return true
 	
@@ -383,8 +380,8 @@ func save_game(save_id: String = "") -> bool:
 			"upgrades": player_upgrades,
 			# Add more player state here
 		},
-		"resources": Resources.inventory if _resources_ready else {},
-		"seed": Seed.get_seed() if _seed_ready else 0,
+		"resources": ResourceManager.inventory if _resources_ready else {},
+		"seed": SeedManager.get_seed() if _seed_ready else 0,
 		# Add more game state here
 	}
 	
@@ -435,7 +432,7 @@ func load_game(save_id: String) -> bool:
 	
 	# Restore game state
 	if _seed_ready and save_data.has("seed"):
-		Seed.set_seed(save_data.seed)
+		SeedManager.set_seed(save_data.seed)
 	
 	# Start a new game
 	start_game()
@@ -456,7 +453,7 @@ func load_game(save_id: String) -> bool:
 	# Restore resources
 	if _resources_ready and save_data.has("resources"):
 		for resource_id in save_data.resources:
-			Resources.inventory[int(resource_id)] = save_data.resources[resource_id]
+			ResourceManager.inventory[int(resource_id)] = save_data.resources[resource_id]
 	
 	save_game_loaded.emit(save_id)
 	return true

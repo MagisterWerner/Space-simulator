@@ -1,13 +1,11 @@
-extends Node
-
+# autoload/audio_manager.gd
 # Audio Manager for handling background music and sound effects
 # Designed for high-performance bullet hell style games
 # Set this as an autoload singleton
+extends Node
 
 # Signal declarations
-@warning_ignore("unused_signal")
 signal music_changed(track_name)
-@warning_ignore("unused_signal")
 signal volume_changed(bus_name, volume_db)
 
 # Constants
@@ -43,13 +41,13 @@ const DEFAULT_POOL_SIZE = 10
 const MAX_POOL_SIZE = 30
 
 # Initialization
-func _ready():
+func _ready() -> void:
 	_setup_audio_buses()
 	_create_music_players()
 	_load_settings()
 
 # Create necessary audio buses if they don't exist
-func _setup_audio_buses():
+func _setup_audio_buses() -> void:
 	var _audio_bus_count = AudioServer.get_bus_count()
 	
 	# Check for Master bus (should always exist as bus 0)
@@ -76,7 +74,7 @@ func _setup_audio_buses():
 	_apply_volume_settings()
 
 # Create AudioStreamPlayers for music
-func _create_music_players():
+func _create_music_players() -> void:
 	_music_player = AudioStreamPlayer.new()
 	_music_player.bus = MUSIC_BUS
 	_music_player.volume_db = 0
@@ -88,7 +86,7 @@ func _create_music_players():
 	add_child(_next_music_player)
 
 # Load saved settings
-func _load_settings():
+func _load_settings() -> void:
 	if FileAccess.file_exists("user://audio_settings.cfg"):
 		var config_file = ConfigFile.new()
 		var err = config_file.load("user://audio_settings.cfg")
@@ -104,7 +102,7 @@ func _load_settings():
 			_apply_volume_settings()
 
 # Save settings
-func save_settings():
+func save_settings() -> void:
 	var config_file = ConfigFile.new()
 	
 	config_file.set_value("audio", "music_enabled", config.music_enabled)
@@ -118,7 +116,7 @@ func save_settings():
 	config_file.save("user://audio_settings.cfg")
 
 # Apply volume settings to buses
-func _apply_volume_settings():
+func _apply_volume_settings() -> void:
 	var master_bus_idx = AudioServer.get_bus_index(MASTER_BUS)
 	var music_bus_idx = AudioServer.get_bus_index(MUSIC_BUS)
 	var sfx_bus_idx = AudioServer.get_bus_index(SFX_BUS)
@@ -139,19 +137,19 @@ func _apply_volume_settings():
 		AudioServer.set_bus_mute(sfx_bus_idx, !config.sfx_enabled || config.sfx_volume <= 0)
 
 # Convert linear volume (0.0 to 1.0) to decibels
-func _linear_to_db(linear_value):
+func _linear_to_db(linear_value: float) -> float:
 	if linear_value <= 0:
 		return MIN_DB
 	return 20.0 * log(linear_value) / log(10.0)
 
 # Convert decibels to linear volume (0.0 to 1.0)
-func _db_to_linear(db_value):
+func _db_to_linear(db_value: float) -> float:
 	return pow(10.0, db_value / 20.0)
 
 # MUSIC METHODS
 
 # Preload a music track
-func preload_music(track_name, file_path):
+func preload_music(track_name: String, file_path: String) -> void:
 	if _loaded_music.has(track_name):
 		return
 	
@@ -163,14 +161,14 @@ func preload_music(track_name, file_path):
 	_loaded_music[track_name] = stream
 
 # Unload a music track
-func unload_music(track_name):
+func unload_music(track_name: String) -> void:
 	if _loaded_music.has(track_name):
 		if _current_music == track_name:
 			stop_music()
 		_loaded_music.erase(track_name)
 
 # Play a music track with optional crossfade
-func play_music(track_name, crossfade=true):
+func play_music(track_name: String, crossfade: bool = true) -> void:
 	if !config.music_enabled:
 		return
 	
@@ -204,10 +202,10 @@ func play_music(track_name, crossfade=true):
 		_music_player.play()
 	
 	_current_music = track_name
-	emit_signal("music_changed", track_name)
+	music_changed.emit(track_name)
 
 # Stop the currently playing music
-func stop_music():
+func stop_music() -> void:
 	if _music_tween:
 		_music_tween.kill()
 	
@@ -216,12 +214,12 @@ func stop_music():
 	_current_music = null
 
 # Pause the music
-func pause_music():
+func pause_music() -> void:
 	_music_player.stream_paused = true
 	_next_music_player.stream_paused = true
 
 # Resume the music
-func resume_music():
+func resume_music() -> void:
 	if !config.music_enabled:
 		return
 	
@@ -229,7 +227,7 @@ func resume_music():
 	_next_music_player.stream_paused = false
 
 # Swap music players after crossfade
-func _swap_music_players():
+func _swap_music_players() -> void:
 	var temp = _music_player
 	_music_player = _next_music_player
 	_next_music_player = temp
@@ -238,7 +236,7 @@ func _swap_music_players():
 # SOUND EFFECT METHODS
 
 # Preload a sound effect
-func preload_sfx(sfx_name, file_path, pool_size=DEFAULT_POOL_SIZE):
+func preload_sfx(sfx_name: String, file_path: String, pool_size: int = DEFAULT_POOL_SIZE) -> void:
 	if _loaded_sfx.has(sfx_name):
 		return
 	
@@ -251,11 +249,11 @@ func preload_sfx(sfx_name, file_path, pool_size=DEFAULT_POOL_SIZE):
 	_create_sfx_pool(sfx_name, pool_size)
 
 # Check if a sound is loaded
-func is_sfx_loaded(sfx_name) -> bool:
+func is_sfx_loaded(sfx_name: String) -> bool:
 	return _loaded_sfx.has(sfx_name)
 
 # Unload a sound effect
-func unload_sfx(sfx_name):
+func unload_sfx(sfx_name: String) -> void:
 	if _loaded_sfx.has(sfx_name):
 		_loaded_sfx.erase(sfx_name)
 		
@@ -266,7 +264,7 @@ func unload_sfx(sfx_name):
 			_sfx_pools.erase(sfx_name)
 
 # Create a pool of audio players for a sound effect
-func _create_sfx_pool(sfx_name, pool_size):
+func _create_sfx_pool(sfx_name: String, pool_size: int) -> void:
 	if !_loaded_sfx.has(sfx_name):
 		return
 	
@@ -293,7 +291,7 @@ func _create_sfx_pool(sfx_name, pool_size):
 	_sfx_pools[sfx_name] = pool
 
 # Resize a sound effect pool
-func resize_sfx_pool(sfx_name, new_size):
+func resize_sfx_pool(sfx_name: String, new_size: int) -> void:
 	new_size = clamp(new_size, 1, MAX_POOL_SIZE)
 	
 	if !_sfx_pools.has(sfx_name):
@@ -334,7 +332,7 @@ func resize_sfx_pool(sfx_name, new_size):
 					player.set_meta("remove_when_done", true)
 
 # Handle finished sound effect
-func _on_sfx_finished(player, sfx_name):
+func _on_sfx_finished(player: Node, sfx_name: String) -> void:
 	if player.has_meta("remove_when_done") and player.get_meta("remove_when_done"):
 		player.queue_free()
 		if _sfx_pools.has(sfx_name):
@@ -343,7 +341,7 @@ func _on_sfx_finished(player, sfx_name):
 				_sfx_pools[sfx_name].remove_at(idx)
 
 # Play a sound effect
-func play_sfx(sfx_name, position=null, pitch_scale=1.0, volume_db=0.0):
+func play_sfx(sfx_name: String, position = null, pitch_scale: float = 1.0, volume_db: float = 0.0) -> Node:
 	if !config.sfx_enabled:
 		return null
 	
@@ -386,7 +384,7 @@ func play_sfx(sfx_name, position=null, pitch_scale=1.0, volume_db=0.0):
 	return oldest_player
 
 # Find an available sound effect player from pool
-func _find_available_sfx_player(sfx_name):
+func _find_available_sfx_player(sfx_name: String) -> Node:
 	if !_sfx_pools.has(sfx_name):
 		return null
 	
@@ -398,7 +396,7 @@ func _find_available_sfx_player(sfx_name):
 	return null
 
 # Stop all instances of a sound effect
-func stop_sfx(sfx_name):
+func stop_sfx(sfx_name: String) -> void:
 	if !_sfx_pools.has(sfx_name):
 		return
 	
@@ -406,32 +404,32 @@ func stop_sfx(sfx_name):
 		player.stop()
 
 # Stop all sound effects
-func stop_all_sfx():
+func stop_all_sfx() -> void:
 	for sfx_name in _sfx_pools.keys():
 		stop_sfx(sfx_name)
 
 # VOLUME CONTROL
 
 # Set master volume (0.0 to 1.0)
-func set_master_volume(volume):
+func set_master_volume(volume: float) -> void:
 	config.master_volume = clamp(volume, 0.0, 1.0)
 	_apply_volume_settings()
-	emit_signal("volume_changed", MASTER_BUS, _linear_to_db(config.master_volume))
+	volume_changed.emit(MASTER_BUS, _linear_to_db(config.master_volume))
 
 # Set music volume (0.0 to 1.0)
-func set_music_volume(volume):
+func set_music_volume(volume: float) -> void:
 	config.music_volume = clamp(volume, 0.0, 1.0)
 	_apply_volume_settings()
-	emit_signal("volume_changed", MUSIC_BUS, _linear_to_db(config.music_volume))
+	volume_changed.emit(MUSIC_BUS, _linear_to_db(config.music_volume))
 
 # Set SFX volume (0.0 to 1.0)
-func set_sfx_volume(volume):
+func set_sfx_volume(volume: float) -> void:
 	config.sfx_volume = clamp(volume, 0.0, 1.0)
 	_apply_volume_settings()
-	emit_signal("volume_changed", SFX_BUS, _linear_to_db(config.sfx_volume))
+	volume_changed.emit(SFX_BUS, _linear_to_db(config.sfx_volume))
 
 # Enable/disable music
-func set_music_enabled(enabled):
+func set_music_enabled(enabled: bool) -> void:
 	config.music_enabled = enabled
 	_apply_volume_settings()
 	
@@ -441,7 +439,7 @@ func set_music_enabled(enabled):
 		resume_music()
 
 # Enable/disable sound effects
-func set_sfx_enabled(enabled):
+func set_sfx_enabled(enabled: bool) -> void:
 	config.sfx_enabled = enabled
 	_apply_volume_settings()
 	
@@ -449,11 +447,11 @@ func set_sfx_enabled(enabled):
 		stop_all_sfx()
 
 # Set music fade duration
-func set_music_fade_duration(duration):
+func set_music_fade_duration(duration: float) -> void:
 	config.music_fade_duration = max(0.1, duration)
 
 # Enable/disable positional audio
-func set_positional_audio(enabled):
+func set_positional_audio(enabled: bool) -> void:
 	var previous_value = config.positional_audio
 	config.positional_audio = enabled
 	
@@ -472,15 +470,15 @@ func set_positional_audio(enabled):
 			_create_sfx_pool(sfx_name, pool_size)
 
 # Utility method to get current music track
-func get_current_music():
+func get_current_music() -> String:
 	return _current_music
 
 # Utility method to get if music is playing
-func is_music_playing():
+func is_music_playing() -> bool:
 	return _music_player.playing || _next_music_player.playing
 
 # Helper for batch loading multiple files
-func preload_sfx_directory(directory_path, recursive=false):
+func preload_sfx_directory(directory_path: String, recursive: bool = false) -> void:
 	var dir = DirAccess.open(directory_path)
 	if dir:
 		dir.list_dir_begin()
@@ -502,7 +500,7 @@ func preload_sfx_directory(directory_path, recursive=false):
 		dir.list_dir_end()
 
 # Helper for batch loading multiple music files
-func preload_music_directory(directory_path, recursive=false):
+func preload_music_directory(directory_path: String, recursive: bool = false) -> void:
 	var dir = DirAccess.open(directory_path)
 	if dir:
 		dir.list_dir_begin()
