@@ -28,6 +28,7 @@ Resources="*res://autoload/resource_manager.gd"
 Entities="*res://autoload/entity_manager.gd"
 Game="*res://autoload/game_manager.gd"
 Seed="*res://autoload/seed_manager.gd"
+Audio="*res://autoload/audio_manager.gd"
 
 [category]
 
@@ -51,7 +52,7 @@ window/per_pixel_transparency/allowed=true
 
 [editor_plugins]
 
-enabled=PackedStringArray()
+enabled=PackedStringArray("res://addons/gdfxr/plugin.cfg")
 
 [filesystem]
 
