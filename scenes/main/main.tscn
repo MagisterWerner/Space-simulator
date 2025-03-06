@@ -31,7 +31,7 @@ texture = ExtResource("4_cqtaa")
 [node name="WorldGrid" parent="." instance=ExtResource("5_84hlr")]
 grid_size = 1
 
-[node name="Planet" type="Node2D" parent="."]
+[node name="Planet2" type="Node2D" parent="."]
 position = Vector2(429, 229)
 script = ExtResource("6_v31f5")
 auto_spawn = true
