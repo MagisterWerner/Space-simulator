@@ -1,4 +1,4 @@
-[gd_scene load_steps=17 format=3 uid="uid://rhas31gnv33u"]
+[gd_scene load_steps=16 format=3 uid="uid://rhas31gnv33u"]
 
 [ext_resource type="Script" path="res://scripts/entities/player_ship.gd" id="1_a8k2q"]
 [ext_resource type="Texture2D" uid="uid://rmbujdpioval" path="res://assets/sprites/player_ship.png" id="2_n7prj"]
@@ -14,7 +14,6 @@
 [ext_resource type="Script" path="res://scripts/states/ship_damaged_state.gd" id="12_b76de"]
 [ext_resource type="Script" path="res://scripts/states/ship_dead_state.gd" id="13_n8si1"]
 [ext_resource type="Script" path="res://scripts/states/ship_respawning_state.gd" id="14_7dcri"]
-[ext_resource type="Script" path="res://scripts/components/thruster_audio.gd" id="15_cbh4u"]
 
 [sub_resource type="Gradient" id="Gradient_u2vx4"]
 offsets = PackedFloat32Array(0, 0.486667, 0.846667, 1)
@@ -109,9 +108,6 @@ gravity = Vector2(0, 0)
 initial_velocity_min = 4.0
 initial_velocity_max = 8.0
 color_ramp = SubResource("Gradient_u2vx4")
-
-[node name="ThrusterAudioController" type="Node" parent="."]
-script = ExtResource("15_cbh4u")
 
 [node name="HealthComponent" type="Node" parent="."]
 script = ExtResource("3_e3lqq")

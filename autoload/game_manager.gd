@@ -1,7 +1,4 @@
-# scripts/autoload/game_manager.gd - Restructured with dependency management
-
 extends Node
-class_name GameManagerSingleton
 
 signal game_started
 signal game_paused

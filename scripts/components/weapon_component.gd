@@ -1,4 +1,4 @@
-# weapon_component.gd
+# weapon_component.gd - Enhanced with integrated audio
 extends Component
 class_name WeaponComponent
 
@@ -33,6 +33,13 @@ signal weapon_cooled
 @export_category("Positioning")
 @export var muzzle_path: NodePath
 
+@export_category("Audio")
+@export var enable_audio: bool = true
+@export var fire_sound_name: String = "laser"
+@export var reload_sound_name: String = "reload"
+@export var empty_sound_name: String = "empty"
+@export var overheat_sound_name: String = "overheat"
+
 var _current_heat: float = 0.0
 var _can_fire: bool = true
 var _is_reloading: bool = false
@@ -40,7 +47,7 @@ var _is_overheated: bool = false
 var _last_fire_time: float = 0.0
 var _overheated_time: float = 0.0
 var _weapon_strategies: Array = []
-var _muzzle_node: Node = null  # Changed from Node2D to Node
+var _muzzle_node: Node = null
 
 func setup() -> void:
 	_current_heat = 0.0
@@ -55,6 +62,30 @@ func setup() -> void:
 		current_ammo = max_ammo
 	
 	ammo_changed.emit(current_ammo, max_ammo)
+	
+	# Initialize audio
+	_initialize_audio()
+
+func _initialize_audio() -> void:
+	if not enable_audio:
+		return
+		
+	if not Engine.has_singleton("Audio"):
+		push_warning("WeaponComponent: AudioManager not found as singleton")
+		return
+		
+	# Preload sounds if using AudioManager
+	if not Audio.has_method("is_sfx_loaded") or not Audio.is_sfx_loaded(fire_sound_name):
+		Audio.preload_sfx(fire_sound_name, "res://assets/audio/laser.sfxr", 10)
+	
+	if reload_sound_name and not Audio.is_sfx_loaded(reload_sound_name):
+		Audio.preload_sfx(reload_sound_name, "res://assets/audio/reload.sfxr", 2)
+	
+	if empty_sound_name and not Audio.is_sfx_loaded(empty_sound_name):
+		Audio.preload_sfx(empty_sound_name, "res://assets/audio/empty.sfxr", 2)
+		
+	if overheat_sound_name and not Audio.is_sfx_loaded(overheat_sound_name):
+		Audio.preload_sfx(overheat_sound_name, "res://assets/audio/overheat.sfxr", 2)
 
 func can_fire() -> bool:
 	if not enabled or _is_overheated:
@@ -72,6 +103,9 @@ func can_fire() -> bool:
 
 func fire() -> bool:
 	if not can_fire():
+		# Play empty click sound if we're out of ammo
+		if enable_audio and not unlimited_ammo and current_ammo <= 0 and empty_sound_name:
+			_play_empty_sound()
 		return false
 	
 	var current_time = Time.get_ticks_msec() / 1000.0
@@ -131,6 +165,10 @@ func fire() -> bool:
 		if strategy.has_method("modify_projectile"):
 			strategy.modify_projectile(projectile_instance)
 	
+	# Play firing sound
+	if enable_audio:
+		_play_fire_sound(spawn_pos)
+	
 	# Consume ammo
 	if not unlimited_ammo:
 		current_ammo -= 1
@@ -158,6 +196,10 @@ func start_reload() -> void:
 	_is_reloading = true
 	_can_fire = false
 	
+	# Play reload sound
+	if enable_audio and reload_sound_name:
+		_play_reload_sound()
+	
 	# Create a timer for reload
 	var timer = get_tree().create_timer(reload_time)
 	timer.timeout.connect(_on_reload_complete)
@@ -176,6 +218,11 @@ func _overheat() -> void:
 	_is_overheated = true
 	_can_fire = false
 	_overheated_time = Time.get_ticks_msec() / 1000.0
+	
+	# Play overheat sound
+	if enable_audio and overheat_sound_name:
+		_play_overheat_sound()
+		
 	weapon_overheated.emit()
 	debug_print("Weapon overheated")
 
@@ -197,6 +244,37 @@ func process_component(delta: float) -> void:
 		else:
 			_current_heat = max(0.0, _current_heat - (cooling_rate * delta))
 
+# Audio methods
+func _play_fire_sound(position: Vector2) -> void:
+	if not enable_audio or not Engine.has_singleton("Audio"):
+		return
+	
+	# Randomize pitch slightly for variety
+	var pitch_variation = randf_range(0.95, 1.05)
+	Audio.play_sfx(fire_sound_name, position, pitch_variation)
+
+func _play_reload_sound() -> void:
+	if not enable_audio or not Engine.has_singleton("Audio") or not reload_sound_name:
+		return
+		
+	var position = owner_entity.global_position if owner_entity is Node2D else Vector2.ZERO
+	Audio.play_sfx(reload_sound_name, position)
+
+func _play_empty_sound() -> void:
+	if not enable_audio or not Engine.has_singleton("Audio") or not empty_sound_name:
+		return
+		
+	var position = owner_entity.global_position if owner_entity is Node2D else Vector2.ZERO
+	Audio.play_sfx(empty_sound_name, position)
+
+func _play_overheat_sound() -> void:
+	if not enable_audio or not Engine.has_singleton("Audio") or not overheat_sound_name:
+		return
+		
+	var position = owner_entity.global_position if owner_entity is Node2D else Vector2.ZERO
+	Audio.play_sfx(overheat_sound_name, position)
+
+# Strategy management
 func add_weapon_strategy(strategy) -> void:
 	if not _weapon_strategies.has(strategy):
 		_weapon_strategies.append(strategy)

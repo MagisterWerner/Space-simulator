@@ -120,6 +120,30 @@ func safe_emit(signal_name: StringName, args: Array = []) -> void:
 # === OPTIONAL: DYNAMIC EVENTS ===
 # Uncomment if you need to add signals at runtime
 
+var _dynamic_signals: Array = []
+
+func add_dynamic_signal(signal_name: String) -> void:
+	if has_signal(signal_name) or _dynamic_signals.has(signal_name):
+		return
+		
+	add_user_signal(signal_name)
+	_dynamic_signals.append(signal_name)
+
+func remove_dynamic_signal(signal_name: String) -> void:
+	if not _dynamic_signals.has(signal_name):
+		return
+		
+	# This is a bit of a hack, but Godot doesn't have a way to remove signals
+	# Just disconnect everything from it
+	var connections = get_signal_connection_list(signal_name)
+	for connection in connections:
+		disconnect(signal_name, connection["callable"])
+		
+	_dynamic_signals.erase(signal_name)
+
+# === OPTIONAL: DYNAMIC EVENTS ===
+# Uncomment if you need to add signals at runtime
+
 #var _dynamic_signals: Array = []
 #
 #func add_dynamic_signal(signal_name: String) -> void:

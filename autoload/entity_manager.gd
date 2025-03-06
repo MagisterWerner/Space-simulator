@@ -21,9 +21,7 @@
 #   # Find the nearest asteroid to the player
 #   var nearest_asteroid = Entities.get_nearest_entity(player.global_position, "asteroid")
 #   ```
-#
 extends Node
-class_name EntityManager
 
 signal entity_spawned(entity, entity_type)
 signal entity_despawned(entity, entity_type)
@@ -128,7 +126,7 @@ func spawn_player(spawn_position: Vector2 = Vector2.ZERO) -> Node:
 	_initialize_scenes()
 	
 	if not player_ship_scene:
-		push_error("EntityManager: player_ship_scene not set")
+		push_error("EntityManagerSingleton: player_ship_scene not set")
 		return null
 	
 	var player = player_ship_scene.instantiate()
@@ -147,7 +145,7 @@ func spawn_enemy_ship(type_index: int = 0, spawn_position: Vector2 = Vector2.ZER
 	_initialize_scenes()
 	
 	if enemy_ship_scenes.is_empty():
-		push_error("EntityManager: enemy_ship_scenes array is empty")
+		push_error("EntityManagerSingleton: enemy_ship_scenes array is empty")
 		return null
 	
 	if type_index < 0 or type_index >= enemy_ship_scenes.size():

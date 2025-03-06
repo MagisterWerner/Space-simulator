@@ -1,5 +1,4 @@
 extends Node
-class_name AudioManager
 
 # Audio Manager for handling background music and sound effects
 # Designed for high-performance bullet hell style games
@@ -250,6 +249,10 @@ func preload_sfx(sfx_name, file_path, pool_size=DEFAULT_POOL_SIZE):
 	
 	_loaded_sfx[sfx_name] = stream
 	_create_sfx_pool(sfx_name, pool_size)
+
+# Check if a sound is loaded
+func is_sfx_loaded(sfx_name) -> bool:
+	return _loaded_sfx.has(sfx_name)
 
 # Unload a sound effect
 func unload_sfx(sfx_name):

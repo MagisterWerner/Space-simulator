@@ -26,7 +26,7 @@
 #   ```
 #
 extends Node
-class_name ResourceManager
+class_name ResourceManagerSingleton
 
 signal resource_added(resource_id, amount)
 signal resource_removed(resource_id, amount)

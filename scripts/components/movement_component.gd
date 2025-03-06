@@ -1,4 +1,4 @@
-# movement_component.gd
+# movement_component.gd - Enhanced with integrated audio
 extends Component
 class_name MovementComponent
 
@@ -8,9 +8,9 @@ signal boost_depleted
 signal boost_recharged
 
 @export_category("Movement Properties")
-@export var thrust_force: float = 200.0  # Reduced to prevent excessive acceleration
-@export var reverse_force: float = 100.0  # Also reduced for better control
-@export var rotation_force: float = 300.0  # Significantly reduced to prevent spin-out
+@export var thrust_force: float = 200.0
+@export var reverse_force: float = 100.0
+@export var rotation_force: float = 300.0
 @export var max_speed: float = 700.0
 @export var dampening_factor: float = 0.98
 
@@ -33,6 +33,13 @@ signal boost_recharged
 @export var left_position_path: NodePath = "ThrusterPositions/Left"
 @export var right_position_path: NodePath = "ThrusterPositions/Right"
 
+@export_category("Audio")
+@export var enable_audio: bool = true
+@export var thruster_sound_name: String = "thruster"
+@export var main_thruster_volume_db: float = 0.0
+@export var rotation_thruster_volume_db: float = -6.0
+@export var boost_sound_name: String = "boost"
+
 var _is_thrusting_forward: bool = false
 var _is_thrusting_backward: bool = false
 var _rotation_direction: float = 0.0
@@ -50,6 +57,14 @@ var _right_thruster_rear: Node
 var _right_thruster_front: Node
 var _left_position: Node2D
 var _right_position: Node2D
+
+# Audio state tracking
+var _main_thruster_player = null
+var _rotation_thruster_player = null
+var _boost_thruster_player = null
+var _main_thruster_active: bool = false
+var _rotation_thruster_active: bool = false
+var _boost_sound_active: bool = false
 
 # Static flag for tracking console messages across all movement components
 static var _has_logged_init: bool = false
@@ -72,7 +87,40 @@ func setup() -> void:
 	# Find thruster nodes - try both with and without paths
 	_find_thruster_nodes()
 	
+	# Initialize audio
+	_initialize_audio()
+	
 	debug_print("Movement component setup complete")
+
+func _initialize_audio() -> void:
+	if not enable_audio:
+		return
+		
+	if not Engine.has_singleton("Audio"):
+		push_warning("MovementComponent: AudioManager not found as singleton")
+		return
+		
+	# Preload the thruster sound if using AudioManager
+	if not Audio.has_method("is_sfx_loaded") or not Audio.is_sfx_loaded(thruster_sound_name):
+		Audio.preload_sfx(thruster_sound_name, "res://assets/audio/thruster.wav", 2)
+	
+	# Preload boost sound if it's different
+	if boost_sound_name != thruster_sound_name:
+		if not Audio.has_method("is_sfx_loaded") or not Audio.is_sfx_loaded(boost_sound_name):
+			Audio.preload_sfx(boost_sound_name, "res://assets/audio/boost.wav", 1)
+
+func _on_enable() -> void:
+	# Start any active audio again if it was playing before
+	if _is_thrusting_forward:
+		_start_main_thruster_sound()
+	if _rotation_direction != 0:
+		_start_rotation_thruster_sound()
+	if _is_boosting:
+		_start_boost_sound()
+
+func _on_disable() -> void:
+	# Stop all audio when component is disabled
+	_stop_all_thruster_sounds()
 
 func _find_thruster_nodes() -> void:
 	# First try using the exported paths
@@ -240,29 +288,73 @@ func physics_process_component(delta: float) -> void:
 	
 	# Apply speed dampening
 	_rigid_body.linear_velocity *= dampening_factor
+	
+	# Update audio positions
+	_update_audio_positions()
+
+func _update_audio_positions() -> void:
+	if not owner_entity or not enable_audio:
+		return
+		
+	# Update position for active sound players
+	if _main_thruster_active and _main_thruster_player:
+		_main_thruster_player.position = owner_entity.global_position
+	
+	if _rotation_thruster_active and _rotation_thruster_player:
+		_rotation_thruster_player.position = owner_entity.global_position
+		
+	if _boost_sound_active and _boost_thruster_player:
+		_boost_thruster_player.position = owner_entity.global_position
 
 func thrust_forward(activate: bool = true) -> void:
-	if _is_thrusting_forward != activate:
-		_is_thrusting_forward = activate
+	var was_active = _is_thrusting_forward
+	_is_thrusting_forward = activate
+	
+	if enable_audio and was_active != _is_thrusting_forward:
+		if _is_thrusting_forward:
+			_start_main_thruster_sound()
+		else:
+			_stop_main_thruster_sound()
+	
+	if _is_thrusting_forward != was_active:
 		thrusting_changed.emit(_is_thrusting_forward)
 
 func thrust_backward(activate: bool = true) -> void:
 	_is_thrusting_backward = activate
+	
+	# No specific audio for reverse thrusters in this implementation
+	# Using the visibility of front thrusters for this
 
 func rotate_left() -> void:
+	var was_rotating = _rotation_direction != 0
 	_rotation_direction = -1.0
+	
+	if enable_audio and not was_rotating:
+		_start_rotation_thruster_sound()
 
 func rotate_right() -> void:
+	var was_rotating = _rotation_direction != 0
 	_rotation_direction = 1.0
+	
+	if enable_audio and not was_rotating:
+		_start_rotation_thruster_sound()
 
 func stop_rotation() -> void:
+	var was_rotating = _rotation_direction != 0
 	_rotation_direction = 0.0
+	
+	if enable_audio and was_rotating:
+		_stop_rotation_thruster_sound()
 
 func start_boost() -> void:
 	if not boost_enabled or _is_boosting or _boost_cooldown_remaining > 0 or _current_boost_fuel <= 0:
 		return
 	
 	_is_boosting = true
+	
+	if enable_audio:
+		_start_boost_sound()
+		
 	boost_activated.emit()
 	debug_print("Boost activated")
 
@@ -272,8 +364,101 @@ func stop_boost() -> void:
 	
 	_is_boosting = false
 	_boost_cooldown_remaining = boost_cooldown
+	
+	if enable_audio:
+		_stop_boost_sound()
+		
 	debug_print("Boost stopped")
 
+# Audio control methods
+func _start_main_thruster_sound() -> void:
+	if not enable_audio or _main_thruster_active or not Engine.has_singleton("Audio"):
+		return
+	
+	_main_thruster_active = true
+	_main_thruster_player = Audio.play_sfx(
+		thruster_sound_name, 
+		owner_entity.global_position, 
+		1.0, 
+		main_thruster_volume_db
+	)
+	
+	# Configure for looping
+	if _main_thruster_player and _main_thruster_player.stream and not _main_thruster_player.stream.loop_mode:
+		var stream = _main_thruster_player.stream as AudioStreamWAV
+		if stream:
+			stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
+			stream.loop_begin = 0
+			stream.loop_end = stream.data.size()
+
+func _stop_main_thruster_sound() -> void:
+	if not _main_thruster_active:
+		return
+	
+	_main_thruster_active = false
+	
+	if _main_thruster_player:
+		_main_thruster_player.stop()
+		_main_thruster_player = null
+
+func _start_rotation_thruster_sound() -> void:
+	if not enable_audio or _rotation_thruster_active or not Engine.has_singleton("Audio"):
+		return
+	
+	_rotation_thruster_active = true
+	_rotation_thruster_player = Audio.play_sfx(
+		thruster_sound_name, 
+		owner_entity.global_position, 
+		1.1, # Slightly higher pitch
+		rotation_thruster_volume_db
+	)
+	
+	# Configure for looping
+	if _rotation_thruster_player and _rotation_thruster_player.stream and not _rotation_thruster_player.stream.loop_mode:
+		var stream = _rotation_thruster_player.stream as AudioStreamWAV
+		if stream:
+			stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
+			stream.loop_begin = 0
+			stream.loop_end = stream.data.size()
+
+func _stop_rotation_thruster_sound() -> void:
+	if not _rotation_thruster_active:
+		return
+	
+	_rotation_thruster_active = false
+	
+	if _rotation_thruster_player:
+		_rotation_thruster_player.stop()
+		_rotation_thruster_player = null
+
+func _start_boost_sound() -> void:
+	if not enable_audio or _boost_sound_active or not Engine.has_singleton("Audio"):
+		return
+	
+	_boost_sound_active = true
+	_boost_thruster_player = Audio.play_sfx(
+		boost_sound_name, 
+		owner_entity.global_position, 
+		0.9, # Slightly lower pitch for boost
+		0.0  # Full volume
+	)
+
+func _stop_boost_sound() -> void:
+	if not _boost_sound_active:
+		return
+	
+	_boost_sound_active = false
+	
+	if _boost_thruster_player:
+		_boost_thruster_player.stop()
+		_boost_thruster_player = null
+
+func _stop_all_thruster_sounds() -> void:
+	_stop_main_thruster_sound()
+	_stop_rotation_thruster_sound()
+	_stop_boost_sound()
+
+# Helpers
 func get_boost_fuel_percent() -> float:
 	return _current_boost_fuel / boost_fuel
 

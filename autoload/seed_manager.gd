@@ -1,7 +1,4 @@
-# scripts/autoload/seed_manager.gd - Improved with deterministic noise generation
-
 extends Node
-class_name SeedManagerSingleton
 
 signal seed_changed(new_seed)
 
