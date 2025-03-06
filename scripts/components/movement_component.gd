@@ -8,9 +8,9 @@ signal boost_depleted
 signal boost_recharged
 
 @export_category("Movement Properties")
-@export var thrust_force: float = 16.0  # Multiplier for forward impulse
-@export var reverse_force: float = 4.0  # Multiplier for backward impulse
-@export var rotation_force: float = 0.8  # Multiplier for rotation impulse
+@export var thrust_force: float = 200.0  # Reduced to prevent excessive acceleration
+@export var reverse_force: float = 100.0  # Also reduced for better control
+@export var rotation_force: float = 300.0  # Significantly reduced to prevent spin-out
 @export var max_speed: float = 700.0
 @export var dampening_factor: float = 0.98
 
@@ -59,7 +59,6 @@ func setup() -> void:
 		_rigid_body = owner_entity
 		
 		# Using a static flag to ensure the message only prints once
-		# This prevents duplicate log messages while still allowing normal initialization
 		if not _has_logged_init:
 			print("MovementComponent: Successfully attached to RigidBody2D")
 			_has_logged_init = true
@@ -179,32 +178,43 @@ func physics_process_component(delta: float) -> void:
 	if _boost_cooldown_remaining > 0:
 		_boost_cooldown_remaining -= delta
 	
-	# Handle forward movement (based on original Player.gd)
+	# IMPORTANT: The ship sprite is oriented pointing right (0 degrees)
+	# So for correct "forward" motion, we need to match this orientation
+	
+	# Handle forward thrust (right direction since ship points right)
 	if _is_thrusting_forward:
-		_rigid_body.apply_central_impulse(Vector2(0, -modified_thrust).rotated(_rigid_body.rotation))
+		# Apply force in the direction the ship is facing
+		var forward_direction = Vector2.RIGHT.rotated(_rigid_body.rotation) * modified_thrust
+		_rigid_body.apply_central_force(forward_direction)
 		_set_thruster_emission(_main_thruster, true)
 	else:
 		_set_thruster_emission(_main_thruster, false)
 	
-	# Handle backward movement and rotation while moving backward
+	# Handle backward movement (left direction since ship points right)
 	if _is_thrusting_backward:
-		_rigid_body.apply_central_impulse(Vector2(0, +modified_reverse).rotated(_rigid_body.rotation))
+		# Apply force opposite to the direction the ship is facing
+		var backward_direction = Vector2.LEFT.rotated(_rigid_body.rotation) * modified_reverse
+		_rigid_body.apply_central_force(backward_direction)
 		
 		# When moving backward, use front thrusters for turning
 		if _rotation_direction > 0 and _right_position != null:  # Turn right while moving backward
 			_set_thruster_emission(_right_thruster_front, true)
 			_set_thruster_emission(_left_thruster_front, false)
-			_rigid_body.apply_impulse(
-				Vector2(0, +modified_rotation).rotated(_rigid_body.rotation),
-				_right_position.position.rotated(_rigid_body.rotation)
-			)
+			
+			if _right_position:
+				var force_pos = _right_position.global_position - _rigid_body.global_position
+				var torque_force = modified_rotation * 0.3 # Reduced for better control
+				_rigid_body.apply_torque(torque_force)
+			
 		elif _rotation_direction < 0 and _left_position != null:  # Turn left while moving backward
 			_set_thruster_emission(_left_thruster_front, true)
 			_set_thruster_emission(_right_thruster_front, false)
-			_rigid_body.apply_impulse(
-				Vector2(0, +modified_rotation).rotated(_rigid_body.rotation),
-				_left_position.position.rotated(_rigid_body.rotation)
-			)
+			
+			if _left_position:
+				var force_pos = _left_position.global_position - _rigid_body.global_position
+				var torque_force = -modified_rotation * 0.3 # Reduced for better control
+				_rigid_body.apply_torque(torque_force)
+			
 		else:  # Just moving backward without turning
 			_set_thruster_emission(_left_thruster_front, true)
 			_set_thruster_emission(_right_thruster_front, true)
@@ -214,21 +224,15 @@ func physics_process_component(delta: float) -> void:
 	
 	# Handle rotation while not moving backward
 	if not _is_thrusting_backward:
-		if _rotation_direction > 0 and _left_position != null:  # Turn right (using left thruster)
+		if _rotation_direction > 0:  # Turn right (using left thruster)
 			_set_thruster_emission(_left_thruster_rear, true)
-			_rigid_body.apply_impulse(
-				Vector2(0, -modified_rotation).rotated(_rigid_body.rotation),
-				_left_position.position.rotated(_rigid_body.rotation)
-			)
+			_rigid_body.apply_torque(modified_rotation)
 		else:
 			_set_thruster_emission(_left_thruster_rear, false)
 		
-		if _rotation_direction < 0 and _right_position != null:  # Turn left (using right thruster)
+		if _rotation_direction < 0:  # Turn left (using right thruster)
 			_set_thruster_emission(_right_thruster_rear, true)
-			_rigid_body.apply_impulse(
-				Vector2(0, -modified_rotation).rotated(_rigid_body.rotation),
-				_right_position.position.rotated(_rigid_body.rotation)
-			)
+			_rigid_body.apply_torque(-modified_rotation)
 		else:
 			_set_thruster_emission(_right_thruster_rear, false)
 	

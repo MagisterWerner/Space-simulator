@@ -20,3 +20,7 @@ position_smoothing_speed = 3.0
 [node name="EnemyShip1" type="Sprite2D" parent="."]
 position = Vector2(453, 251)
 texture = ExtResource("4_cqtaa")
+
+[node name="EnemyShip1" type="Sprite2D" parent="EnemyShip1"]
+position = Vector2(-325, -167)
+texture = ExtResource("4_cqtaa")

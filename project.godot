@@ -148,6 +148,13 @@ p1_down={
 ]
 }
 
+[physics]
+
+2d/run_on_separate_thread=true
+2d/default_gravity=0.0
+2d/default_gravity_vector=Vector2(0, 0)
+2d/default_angular_damp=0.5
+
 [rendering]
 
 textures/canvas_textures/default_texture_filter=0

@@ -3,18 +3,15 @@ extends State
 class_name ShipIdleState
 
 func enter(_params: Dictionary = {}) -> void:
-	var ship = owner as PlayerShip
-	if ship:
-		var movement = ship.get_node_or_null("MovementComponent") as MovementComponent
-		if movement:
-			movement.thrust_forward(false)
-			movement.thrust_backward(false)
-			movement.stop_rotation()
-			movement.stop_boost()
+	# We no longer stop all movement when entering idle state
+	# This allows the PlayerShip script to handle movement directly
+	pass
 
 func update(_delta: float) -> void:
-	# Check for input to transition to other states
-	if Input.is_action_pressed("move_up") or Input.is_action_pressed("move_down"):
-		state_machine.transition_to("moving")
-	elif Input.is_action_pressed("move_left") or Input.is_action_pressed("move_right"):
-		state_machine.transition_to("rotating")
+	# Ship state transitions are now handled in the PlayerShip script
+	# This state just represents the ship being in its default/resting state
+	pass
+
+func exit() -> void:
+	# Clean exit with no behavior changes
+	pass

@@ -117,6 +117,11 @@ script = ExtResource("4_kk8v0")
 
 [node name="MovementComponent" type="Node" parent="."]
 script = ExtResource("5_dy5mj")
+thrust_force = 1000.0
+reverse_force = 500.0
+rotation_force = 500.0
+max_speed = 2000.0
+dampening_factor = 0.99
 main_thruster_path = NodePath("../MainThruster")
 left_thruster_rear_path = NodePath("../ThrusterPositions/Left/RearThruster")
 left_thruster_front_path = NodePath("../ThrusterPositions/Left/FrontThruster")
