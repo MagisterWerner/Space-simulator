@@ -36,10 +36,16 @@ signal boost_recharged
 
 @export_category("Audio")
 @export var enable_audio: bool = true
-@export var thruster_sound_name: String = "thruster"
+@export var main_thruster_sound_name: String = "thruster"
+@export var rotation_thruster_sound_name: String = "thruster"
+@export var backward_thruster_sound_name: String = "thruster"
+@export var boost_sound_name: String = "boost"
 @export var main_thruster_volume_db: float = 0.0
 @export var rotation_thruster_volume_db: float = -6.0
-@export var boost_sound_name: String = "boost"
+@export var backward_thruster_volume_db: float = -3.0
+@export var main_thruster_pitch: float = 1.0
+@export var rotation_thruster_pitch: float = 1.1
+@export var backward_thruster_pitch: float = 0.9
 
 var _is_thrusting_forward: bool = false
 var _is_thrusting_backward: bool = false
@@ -62,10 +68,13 @@ var _right_position: Node2D
 # Audio state tracking
 var _main_thruster_player = null
 var _rotation_thruster_player = null
+var _backward_thruster_player = null
 var _boost_thruster_player = null
 var _main_thruster_active: bool = false
 var _rotation_thruster_active: bool = false
+var _backward_thruster_active: bool = false
 var _boost_sound_active: bool = false
+var _audio_manager = null
 
 # Static flag for tracking console messages across all movement components
 static var _has_logged_init: bool = false
@@ -88,27 +97,84 @@ func setup() -> void:
 	# Find thruster nodes - try both with and without paths
 	_find_thruster_nodes()
 	
-	# Initialize audio
-	_initialize_audio()
+	# Get a direct reference to AudioManager at setup time
+	_audio_manager = _get_audio_manager()
+	
+	# Initialize audio with a slight delay to ensure AudioManager is ready
+	call_deferred("_initialize_audio")
 	
 	debug_print("Movement component setup complete")
+
+func _get_audio_manager():
+	# Try multiple approaches to get the AudioManager
+	var audio_mgr = null
+	
+	# First try getting it as an autoload from the root
+	if Engine.get_main_loop() and Engine.get_main_loop().root.has_node("AudioManager"):
+		audio_mgr = Engine.get_main_loop().root.get_node("AudioManager")
+		debug_print("Found AudioManager via root node")
+		return audio_mgr
+	
+	# Try the simpler approach if the previous didn't work
+	audio_mgr = get_node_or_null("/root/AudioManager")
+	if audio_mgr:
+		debug_print("Found AudioManager via direct path")
+		return audio_mgr
+	
+	# Manually load the script if all else fails
+	var script = load("res://autoload/audio_manager.gd")
+	if script:
+		audio_mgr = script.new()
+		debug_print("Created AudioManager instance manually")
+		return audio_mgr
+	
+	push_warning("MovementComponent: AudioManager not found")
+	return null
 
 func _initialize_audio() -> void:
 	if not enable_audio:
 		return
-		
-	if not Engine.has_singleton("AudioManager"):
-		push_warning("MovementComponent: AudioManager not found as singleton")
-		return
-		
-	# Preload the thruster sound if using AudioManager
-	if not AudioManager.has_method("is_sfx_loaded") or not AudioManager.is_sfx_loaded(thruster_sound_name):
-		AudioManager.preload_sfx(thruster_sound_name, "res://assets/audio/thruster.wav", 2)
 	
-	# Preload boost sound if it's different
-	if boost_sound_name != thruster_sound_name:
-		if not AudioManager.has_method("is_sfx_loaded") or not AudioManager.is_sfx_loaded(boost_sound_name):
-			AudioManager.preload_sfx(boost_sound_name, "res://assets/audio/boost.wav", 1)
+	if _audio_manager == null:
+		_audio_manager = _get_audio_manager()
+		if _audio_manager == null:
+			push_warning("MovementComponent: AudioManager still not available after deferred initialization")
+			return
+	
+	debug_print("Initializing audio with manager: " + str(_audio_manager))
+	
+	# Preload the thruster sounds if not already loaded
+	if _audio_manager.has_method("is_sfx_loaded"):
+		# Main thruster sound
+		if not _audio_manager.is_sfx_loaded(main_thruster_sound_name):
+			var sound_path = "res://assets/audio/thruster.wav"
+			if ResourceLoader.exists(sound_path):
+				_audio_manager.preload_sfx(main_thruster_sound_name, sound_path, 2)
+				debug_print("Preloaded main thruster sound from: " + sound_path)
+			else:
+				push_warning("MovementComponent: Thruster sound file not found: " + sound_path)
+		
+		# Rotation thruster sound (if different from main)
+		if rotation_thruster_sound_name != main_thruster_sound_name and not _audio_manager.is_sfx_loaded(rotation_thruster_sound_name):
+			var sound_path = "res://assets/audio/thruster.wav"
+			if ResourceLoader.exists(sound_path):
+				_audio_manager.preload_sfx(rotation_thruster_sound_name, sound_path, 2)
+				debug_print("Preloaded rotation thruster sound")
+		
+		# Backward thruster sound (if different from others)
+		if backward_thruster_sound_name != main_thruster_sound_name and backward_thruster_sound_name != rotation_thruster_sound_name and not _audio_manager.is_sfx_loaded(backward_thruster_sound_name):
+			var sound_path = "res://assets/audio/thruster.wav"
+			if ResourceLoader.exists(sound_path):
+				_audio_manager.preload_sfx(backward_thruster_sound_name, sound_path, 2)
+				debug_print("Preloaded backward thruster sound")
+		
+		# Boost sound (if different from thrusters)
+		if boost_sound_name != main_thruster_sound_name and boost_sound_name != rotation_thruster_sound_name and boost_sound_name != backward_thruster_sound_name and not _audio_manager.is_sfx_loaded(boost_sound_name):
+			var boost_path = "res://assets/audio/thruster.wav"  # Default to thruster if boost not found
+			if ResourceLoader.exists("res://assets/audio/boost.wav"):
+				boost_path = "res://assets/audio/boost.wav"
+			_audio_manager.preload_sfx(boost_sound_name, boost_path, 1)
+			debug_print("Preloaded boost sound")
 
 func _on_enable() -> void:
 	# Start any active audio again if it was playing before
@@ -116,6 +182,8 @@ func _on_enable() -> void:
 		_start_main_thruster_sound()
 	if _rotation_direction != 0:
 		_start_rotation_thruster_sound()
+	if _is_thrusting_backward:
+		_start_backward_thruster_sound()
 	if _is_boosting:
 		_start_boost_sound()
 
@@ -245,6 +313,10 @@ func physics_process_component(delta: float) -> void:
 		var backward_direction = Vector2.LEFT.rotated(_rigid_body.rotation) * modified_reverse
 		_rigid_body.apply_central_force(backward_direction)
 		
+		# Start backward thruster sound if not already playing
+		if enable_audio and not _backward_thruster_active:
+			_start_backward_thruster_sound()
+		
 		# When moving backward, use front thrusters for turning
 		if _rotation_direction > 0 and _right_position != null:  # Turn right while moving backward
 			_set_thruster_emission(_right_thruster_front, true)
@@ -268,6 +340,10 @@ func physics_process_component(delta: float) -> void:
 	else:
 		_set_thruster_emission(_left_thruster_front, false)
 		_set_thruster_emission(_right_thruster_front, false)
+		
+		# Stop backward thruster sound if it was playing
+		if _backward_thruster_active:
+			_stop_backward_thruster_sound()
 	
 	# Handle rotation while not moving backward
 	if not _is_thrusting_backward:
@@ -304,6 +380,9 @@ func _update_audio_positions() -> void:
 	if _rotation_thruster_active and _rotation_thruster_player:
 		_rotation_thruster_player.position = owner_entity.global_position
 		
+	if _backward_thruster_active and _backward_thruster_player:
+		_backward_thruster_player.position = owner_entity.global_position
+		
 	if _boost_sound_active and _boost_thruster_player:
 		_boost_thruster_player.position = owner_entity.global_position
 
@@ -323,8 +402,7 @@ func thrust_forward(activate: bool = true) -> void:
 func thrust_backward(activate: bool = true) -> void:
 	_is_thrusting_backward = activate
 	
-	# No specific audio for reverse thrusters in this implementation
-	# Using the visibility of front thrusters for this
+	# Audio is now handled in the physics_process_component for backward movement
 
 func rotate_left() -> void:
 	var was_rotating = _rotation_direction != 0
@@ -373,24 +451,28 @@ func stop_boost() -> void:
 
 # Audio control methods
 func _start_main_thruster_sound() -> void:
-	if not enable_audio or _main_thruster_active or not Engine.has_singleton("AudioManager"):
+	if not enable_audio or _main_thruster_active or _audio_manager == null:
 		return
 	
 	_main_thruster_active = true
-	_main_thruster_player = AudioManager.play_sfx(
-		thruster_sound_name, 
-		owner_entity.global_position, 
-		1.0, 
-		main_thruster_volume_db
-	)
 	
-	# Configure for looping
-	if _main_thruster_player and _main_thruster_player.stream and not _main_thruster_player.stream.loop_mode:
-		var stream = _main_thruster_player.stream as AudioStreamWAV
-		if stream:
-			stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
-			stream.loop_begin = 0
-			stream.loop_end = stream.data.size()
+	if _audio_manager.has_method("play_sfx"):
+		_main_thruster_player = _audio_manager.play_sfx(
+			main_thruster_sound_name, 
+			owner_entity.global_position, 
+			main_thruster_pitch, 
+			main_thruster_volume_db
+		)
+		
+		# Configure for looping
+		if _main_thruster_player and _main_thruster_player.stream and not _main_thruster_player.stream.loop_mode:
+			var stream = _main_thruster_player.stream as AudioStreamWAV
+			if stream:
+				stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
+				stream.loop_begin = 0
+				stream.loop_end = stream.data.size()
+	else:
+		debug_print("AudioManager found but play_sfx method not available")
 
 func _stop_main_thruster_sound() -> void:
 	if not _main_thruster_active:
@@ -403,24 +485,26 @@ func _stop_main_thruster_sound() -> void:
 		_main_thruster_player = null
 
 func _start_rotation_thruster_sound() -> void:
-	if not enable_audio or _rotation_thruster_active or not Engine.has_singleton("AudioManager"):
+	if not enable_audio or _rotation_thruster_active or _audio_manager == null:
 		return
 	
 	_rotation_thruster_active = true
-	_rotation_thruster_player = AudioManager.play_sfx(
-		thruster_sound_name, 
-		owner_entity.global_position, 
-		1.1, # Slightly higher pitch
-		rotation_thruster_volume_db
-	)
 	
-	# Configure for looping
-	if _rotation_thruster_player and _rotation_thruster_player.stream and not _rotation_thruster_player.stream.loop_mode:
-		var stream = _rotation_thruster_player.stream as AudioStreamWAV
-		if stream:
-			stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
-			stream.loop_begin = 0
-			stream.loop_end = stream.data.size()
+	if _audio_manager.has_method("play_sfx"):
+		_rotation_thruster_player = _audio_manager.play_sfx(
+			rotation_thruster_sound_name, 
+			owner_entity.global_position, 
+			rotation_thruster_pitch,
+			rotation_thruster_volume_db
+		)
+		
+		# Configure for looping
+		if _rotation_thruster_player and _rotation_thruster_player.stream and not _rotation_thruster_player.stream.loop_mode:
+			var stream = _rotation_thruster_player.stream as AudioStreamWAV
+			if stream:
+				stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
+				stream.loop_begin = 0
+				stream.loop_end = stream.data.size()
 
 func _stop_rotation_thruster_sound() -> void:
 	if not _rotation_thruster_active:
@@ -432,17 +516,55 @@ func _stop_rotation_thruster_sound() -> void:
 		_rotation_thruster_player.stop()
 		_rotation_thruster_player = null
 
+func _start_backward_thruster_sound() -> void:
+	if not enable_audio or _backward_thruster_active or _audio_manager == null:
+		return
+	
+	_backward_thruster_active = true
+	
+	if _audio_manager.has_method("play_sfx"):
+		_backward_thruster_player = _audio_manager.play_sfx(
+			backward_thruster_sound_name, 
+			owner_entity.global_position, 
+			backward_thruster_pitch,
+			backward_thruster_volume_db
+		)
+		
+		# Configure for looping
+		if _backward_thruster_player and _backward_thruster_player.stream and not _backward_thruster_player.stream.loop_mode:
+			var stream = _backward_thruster_player.stream as AudioStreamWAV
+			if stream:
+				stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
+				stream.loop_begin = 0
+				stream.loop_end = stream.data.size()
+	else:
+		debug_print("AudioManager found but play_sfx method not available for backward thruster")
+
+func _stop_backward_thruster_sound() -> void:
+	if not _backward_thruster_active:
+		return
+	
+	_backward_thruster_active = false
+	
+	if _backward_thruster_player:
+		_backward_thruster_player.stop()
+		_backward_thruster_player = null
+
 func _start_boost_sound() -> void:
-	if not enable_audio or _boost_sound_active or not Engine.has_singleton("AudioManager"):
+	if not enable_audio or _boost_sound_active or _audio_manager == null:
 		return
 	
 	_boost_sound_active = true
-	_boost_thruster_player = AudioManager.play_sfx(
-		boost_sound_name, 
-		owner_entity.global_position, 
-		0.9, # Slightly lower pitch for boost
-		0.0  # Full volume
-	)
+	
+	if _audio_manager.has_method("play_sfx"):
+		_boost_thruster_player = _audio_manager.play_sfx(
+			boost_sound_name, 
+			owner_entity.global_position, 
+			0.9, # Slightly lower pitch for boost
+			0.0  # Full volume
+		)
+	else:
+		debug_print("AudioManager found but play_sfx method not available for boost sound")
 
 func _stop_boost_sound() -> void:
 	if not _boost_sound_active:
@@ -457,6 +579,7 @@ func _stop_boost_sound() -> void:
 func _stop_all_thruster_sounds() -> void:
 	_stop_main_thruster_sound()
 	_stop_rotation_thruster_sound()
+	_stop_backward_thruster_sound()
 	_stop_boost_sound()
 
 # Helpers

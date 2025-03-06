@@ -129,6 +129,11 @@ right_thruster_rear_path = NodePath("../ThrusterPositions/Right/RearThruster")
 right_thruster_front_path = NodePath("../ThrusterPositions/Right/FrontThruster")
 left_position_path = NodePath("../ThrusterPositions/Left")
 right_position_path = NodePath("../ThrusterPositions/Right")
+main_thruster_volume_db = -10.0
+rotation_thruster_volume_db = -20.0
+backward_thruster_volume_db = -20.0
+rotation_thruster_pitch = 1.0
+backward_thruster_pitch = 1.0
 
 [node name="WeaponComponent" type="Node" parent="."]
 script = ExtResource("6_mndbk")

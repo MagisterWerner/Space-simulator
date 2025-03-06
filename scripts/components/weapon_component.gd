@@ -49,6 +49,7 @@ var _last_fire_time: float = 0.0
 var _overheated_time: float = 0.0
 var _weapon_strategies: Array = []
 var _muzzle_node: Node = null
+var _audio_manager = null
 
 func setup() -> void:
 	_current_heat = 0.0
@@ -64,29 +65,73 @@ func setup() -> void:
 	
 	ammo_changed.emit(current_ammo, max_ammo)
 	
-	# Initialize audio
-	_initialize_audio()
+	# Get a direct reference to AudioManager at setup time
+	_audio_manager = _get_audio_manager()
+	
+	# Initialize audio with a slight delay to ensure AudioManager is ready
+	call_deferred("_initialize_audio")
+
+func _get_audio_manager():
+	# Try multiple approaches to get the AudioManager
+	var audio_mgr = null
+	
+	# First try getting it as an autoload from the root
+	if Engine.get_main_loop() and Engine.get_main_loop().root.has_node("AudioManager"):
+		audio_mgr = Engine.get_main_loop().root.get_node("AudioManager")
+		debug_print("Found AudioManager via root node")
+		return audio_mgr
+	
+	# Try the simpler approach if the previous didn't work
+	audio_mgr = get_node_or_null("/root/AudioManager")
+	if audio_mgr:
+		debug_print("Found AudioManager via direct path")
+		return audio_mgr
+	
+	# Manually load the script if all else fails
+	var script = load("res://autoload/audio_manager.gd")
+	if script:
+		audio_mgr = script.new()
+		debug_print("Created AudioManager instance manually")
+		return audio_mgr
+	
+	push_warning("WeaponComponent: AudioManager not found")
+	return null
 
 func _initialize_audio() -> void:
 	if not enable_audio:
 		return
-		
-	if not Engine.has_singleton("AudioManager"):
-		push_warning("WeaponComponent: AudioManager not found as singleton")
-		return
-		
+	
+	if _audio_manager == null:
+		_audio_manager = _get_audio_manager()
+		if _audio_manager == null:
+			push_warning("WeaponComponent: AudioManager still not available after deferred initialization")
+			return
+	
+	debug_print("Initializing audio with manager: " + str(_audio_manager))
+	
 	# Preload sounds if using AudioManager
-	if not AudioManager.has_method("is_sfx_loaded") or not AudioManager.is_sfx_loaded(fire_sound_name):
-		AudioManager.preload_sfx(fire_sound_name, "res://assets/audio/laser.sfxr", 10)
+	if _audio_manager.has_method("is_sfx_loaded") and not _audio_manager.is_sfx_loaded(fire_sound_name):
+		var sound_path = "res://assets/audio/laser.sfxr"
+		if ResourceLoader.exists(sound_path):
+			_audio_manager.preload_sfx(fire_sound_name, sound_path, 10)
+			debug_print("Preloaded laser sound from: " + sound_path)
+		else:
+			push_warning("WeaponComponent: Laser sound file not found: " + sound_path)
 	
-	if reload_sound_name and not AudioManager.is_sfx_loaded(reload_sound_name):
-		AudioManager.preload_sfx(reload_sound_name, "res://assets/audio/reload.sfxr", 2)
+	if reload_sound_name and _audio_manager.has_method("is_sfx_loaded") and not _audio_manager.is_sfx_loaded(reload_sound_name):
+		var reload_path = "res://assets/audio/reload.sfxr"
+		if ResourceLoader.exists(reload_path):
+			_audio_manager.preload_sfx(reload_sound_name, reload_path, 2)
 	
-	if empty_sound_name and not AudioManager.is_sfx_loaded(empty_sound_name):
-		AudioManager.preload_sfx(empty_sound_name, "res://assets/audio/empty.sfxr", 2)
+	if empty_sound_name and _audio_manager.has_method("is_sfx_loaded") and not _audio_manager.is_sfx_loaded(empty_sound_name):
+		var empty_path = "res://assets/audio/empty.sfxr"
+		if ResourceLoader.exists(empty_path):
+			_audio_manager.preload_sfx(empty_sound_name, empty_path, 2)
 		
-	if overheat_sound_name and not AudioManager.is_sfx_loaded(overheat_sound_name):
-		AudioManager.preload_sfx(overheat_sound_name, "res://assets/audio/overheat.sfxr", 2)
+	if overheat_sound_name and _audio_manager.has_method("is_sfx_loaded") and not _audio_manager.is_sfx_loaded(overheat_sound_name):
+		var overheat_path = "res://assets/audio/overheat.sfxr"
+		if ResourceLoader.exists(overheat_path):
+			_audio_manager.preload_sfx(overheat_sound_name, overheat_path, 2)
 
 func can_fire() -> bool:
 	if not enabled or _is_overheated:
@@ -247,33 +292,42 @@ func process_component(delta: float) -> void:
 
 # Audio methods
 func _play_fire_sound(position: Vector2) -> void:
-	if not enable_audio or not Engine.has_singleton("AudioManager"):
+	if not enable_audio or _audio_manager == null:
 		return
 	
-	# Randomize pitch slightly for variety
-	var pitch_variation = randf_range(0.95, 1.05)
-	AudioManager.play_sfx(fire_sound_name, position, pitch_variation)
+	if _audio_manager.has_method("play_sfx"):
+		# Randomize pitch slightly for variety
+		var pitch_variation = randf_range(0.95, 1.05)
+		_audio_manager.play_sfx(fire_sound_name, position, pitch_variation)
+	else:
+		debug_print("AudioManager found but play_sfx method not available")
 
 func _play_reload_sound() -> void:
-	if not enable_audio or not Engine.has_singleton("AudioManager") or not reload_sound_name:
+	if not enable_audio or _audio_manager == null or not reload_sound_name:
 		return
 		
 	var position = owner_entity.global_position if owner_entity is Node2D else Vector2.ZERO
-	AudioManager.play_sfx(reload_sound_name, position)
+	
+	if _audio_manager.has_method("play_sfx"):
+		_audio_manager.play_sfx(reload_sound_name, position)
 
 func _play_empty_sound() -> void:
-	if not enable_audio or not Engine.has_singleton("AudioManager") or not empty_sound_name:
+	if not enable_audio or _audio_manager == null or not empty_sound_name:
 		return
 		
 	var position = owner_entity.global_position if owner_entity is Node2D else Vector2.ZERO
-	AudioManager.play_sfx(empty_sound_name, position)
+	
+	if _audio_manager.has_method("play_sfx"):
+		_audio_manager.play_sfx(empty_sound_name, position)
 
 func _play_overheat_sound() -> void:
-	if not enable_audio or not Engine.has_singleton("AudioManager") or not overheat_sound_name:
+	if not enable_audio or _audio_manager == null or not overheat_sound_name:
 		return
 		
 	var position = owner_entity.global_position if owner_entity is Node2D else Vector2.ZERO
-	AudioManager.play_sfx(overheat_sound_name, position)
+	
+	if _audio_manager.has_method("play_sfx"):
+		_audio_manager.play_sfx(overheat_sound_name, position)
 
 # Strategy management
 func add_weapon_strategy(strategy) -> void:
