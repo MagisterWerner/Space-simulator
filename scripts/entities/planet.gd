@@ -10,44 +10,21 @@ signal planet_loaded(planet)
 @export var max_orbit_deviation: float = 0.15
 @export var moon_orbit_factor: float = 0.05
 
-# These properties will be set by PlanetGenerationManager
 var seed_value: int = 0
 var pixel_size: int = 256
 var planet_texture: Texture2D
 var atmosphere_texture: Texture2D
 var theme_id: int
-var planet_name: String = ""
+var planet_name: String
 var atmosphere_data: Dictionary
-var moons: Array = []
+var moons = []
 var grid_x: int = 0
 var grid_y: int = 0
-var planet_gen_manager = null
+
+var name_component
 
 func _ready():
-	# Get reference to name component
-	var name_component = get_node_or_null("NameComponent")
-	planet_gen_manager = get_node_or_null("/root/PlanetGenerationManager")
-	
-	# Generate textures if not already set (fallback mechanism)
-	if not planet_texture:
-		_generate_planet_data()
-	
-	# Set up name if we have the component
-	if name_component:
-		if name_component.has_method("initialize"):
-			name_component.initialize(seed_value, grid_x, grid_y)
-			planet_name = name_component.get_entity_name()
-		else:
-			planet_name = "Planet-" + str(seed_value % 1000)
-	else:
-		planet_name = "Planet-" + str(seed_value % 1000)
-	
-	# Create moons after initialization
-	call_deferred("_create_moons")
-	z_index = 6
-	
-	# Emit signal that planet has loaded
-	planet_loaded.emit(self)
+	name_component = get_node_or_null("NameComponent")
 
 func _process(delta):
 	queue_redraw()
@@ -75,29 +52,61 @@ func _update_moons(delta):
 			
 			moon.z_index = 10 if sin(moon_angle) <= 0 else 5
 
-# Generate planet textures if they aren't set already
-func _generate_planet_data() -> void:
+func initialize(params: Dictionary):
+	seed_value = params.seed_value
+	grid_x = params.grid_x
+	grid_y = params.grid_y
+	
+	if "max_moons" in params: max_moons = params.max_moons
+	if "moon_chance" in params: moon_chance = params.moon_chance
+	if "min_moon_distance_factor" in params: min_moon_distance_factor = params.min_moon_distance_factor
+	if "max_moon_distance_factor" in params: max_moon_distance_factor = params.max_moon_distance_factor
+	if "max_orbit_deviation" in params: max_orbit_deviation = params.max_orbit_deviation
+	if "moon_orbit_factor" in params: moon_orbit_factor = params.moon_orbit_factor
+	
+	var planet_gen_params = _generate_planet_data(seed_value)
+	theme_id = planet_gen_params.theme
+	pixel_size = planet_gen_params.pixel_size
+	planet_texture = planet_gen_params.texture
+	atmosphere_data = planet_gen_params.atmosphere
+	atmosphere_texture = planet_gen_params.atmosphere_texture
+	
+	name_component = get_node_or_null("NameComponent")
+	if name_component:
+		name_component.initialize(seed_value, grid_x, grid_y)
+		planet_name = name_component.get_entity_name()
+	else:
+		planet_name = "Planet-" + str(seed_value % 1000)
+	
+	call_deferred("_create_moons")
+	z_index = 6
+	
+	emit_signal("planet_loaded", self)
+
+func _generate_planet_data(seed_value: int) -> Dictionary:
 	var planet_generator = PlanetGenerator.new()
 	var textures = planet_generator.create_planet_texture(seed_value)
 	
 	var atmosphere_generator = AtmosphereGenerator.new()
 	var theme = planet_generator.get_planet_theme(seed_value)
-	var atm_data = atmosphere_generator.generate_atmosphere_data(theme, seed_value)
-	var atm_texture = atmosphere_generator.generate_atmosphere_texture(
+	var atmosphere_data = atmosphere_generator.generate_atmosphere_data(theme, seed_value)
+	var atmosphere_texture = atmosphere_generator.generate_atmosphere_texture(
 		theme, 
 		seed_value,
-		atm_data.color,
-		atm_data.thickness
+		atmosphere_data.color,
+		atmosphere_data.thickness
 	)
 	
-	planet_texture = textures[0]
-	theme_id = theme
-	pixel_size = 256
-	atmosphere_data = atm_data
-	atmosphere_texture = atm_texture
+	return {
+		"texture": textures[0],
+		"theme": theme,
+		"pixel_size": 256,
+		"atmosphere": atmosphere_data,
+		"atmosphere_texture": atmosphere_texture
+	}
 
 func _create_moons():
-	var moon_scene = load("res://scenes/world/moon.tscn")
+	var moon_scene = load("res://scenes/moon.tscn")
 	if not moon_scene:
 		print("Error: Moon scene couldn't be loaded")
 		return
@@ -108,20 +117,8 @@ func _create_moons():
 	var has_moons = rng.randi() % 100 < moon_chance
 	var num_moons = rng.randi_range(1, max_moons) if has_moons else 0
 	
-	# Try to get pre-generated moon textures
-	var moon_textures = []
-	if planet_gen_manager and planet_gen_manager.initialized:
-		moon_textures = planet_gen_manager.get_moon_textures_for_planet(seed_value, num_moons)
-	
 	for m in range(num_moons):
 		var moon_seed = seed_value + m * 100
-		var moon_texture = null
-		var moon_size = 0
-		
-		# Use pre-generated texture if available
-		if m < moon_textures.size():
-			moon_texture = moon_textures[m].texture
-			moon_size = moon_textures[m].size
 		
 		var moon_instance = moon_scene.instantiate()
 		if not moon_instance:
@@ -130,18 +127,17 @@ func _create_moons():
 		var min_distance = pixel_size / 2.0 * min_moon_distance_factor
 		var max_distance = pixel_size / 2.0 * max_moon_distance_factor
 		
-		# Set up moon properties
-		moon_instance.seed_value = moon_seed
-		moon_instance.parent_planet = self
-		moon_instance.distance = rng.randf_range(min_distance, max_distance)
-		moon_instance.base_angle = rng.randf_range(0, TAU)
-		moon_instance.orbit_speed = rng.randf_range(0.2, 0.5) * moon_orbit_factor
-		moon_instance.orbit_deviation = rng.randf_range(-max_orbit_deviation, max_orbit_deviation)
-		moon_instance.phase_offset = rng.randf_range(0, TAU)
-		
-		if moon_texture:
-			moon_instance.moon_texture = moon_texture
-			moon_instance.pixel_size = moon_size
+		var moon_params = {
+			"seed_value": moon_seed,
+			"parent_planet": self,
+			"distance": rng.randf_range(min_distance, max_distance),
+			"base_angle": rng.randf_range(0, TAU),
+			"orbit_speed": rng.randf_range(0.2, 0.5) * moon_orbit_factor,
+			"orbit_deviation": rng.randf_range(-max_orbit_deviation, max_orbit_deviation),
+			"phase_offset": rng.randf_range(0, TAU),
+			"parent_name": planet_name
+		}
 		
 		add_child(moon_instance)
+		moon_instance.initialize(moon_params)
 		moons.append(moon_instance)
