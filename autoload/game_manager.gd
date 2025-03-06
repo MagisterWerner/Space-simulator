@@ -39,18 +39,6 @@
 #   - ResourceManager
 #   - EventManager
 #   - SeedManager
-#
-# Usage Example:
-#   # Start a new game
-#   GameManager.start_game()
-#   
-#   # Purchase an upgrade for the player's weapon
-#   var upgrade_index = 0
-#   GameManager.purchase_upgrade(upgrade_index, "WeaponComponent")
-#   
-#   # Save and load the game
-#   GameManager.save_game("mysave")
-#   GameManager.load_game("mysave")
 
 extends Node
 
@@ -157,7 +145,7 @@ func _connect_resource_signals() -> void:
 func start_game() -> void:
 	if game_running:
 		return
-	
+		
 	# Make sure dependencies are initialized
 	if not _dependencies_initialized:
 		_initialize_systems()
@@ -167,10 +155,42 @@ func start_game() -> void:
 	is_game_paused = false
 	player_upgrades.clear()
 	
+	# Check if PlanetGenerationManager has a starting planet ready
+	var planet_gen_manager = get_node_or_null("/root/PlanetGenerationManager")
+	var spawn_position = Vector2.ZERO
+	
+	if planet_gen_manager and planet_gen_manager.starting_planet_generated:
+		# Use starting planet position
+		spawn_position = planet_gen_manager.get_starting_planet_position()
+		
+		# Offset slightly to spawn above planet
+		spawn_position += Vector2(0, -100)
+		
+		print("GameManager: Spawning player at starting planet position: ", spawn_position)
+	else:
+		# Default to screen center if no starting planet
+		var viewport_size = get_viewport().get_visible_rect().size
+		spawn_position = viewport_size / 2
+		print("GameManager: Spawning player at screen center")
+		
+		# Wait for starting planet to be ready
+		if planet_gen_manager and not planet_gen_manager.starting_planet_generated:
+			planet_gen_manager.starting_planet_ready.connect(
+			func(planet, pos): 
+				print("GameManager: Starting planet ready, moving player to: ", pos + Vector2(0, -100))
+				if player_ship and is_instance_valid(player_ship):
+					player_ship.global_position = pos + Vector2(0, -100)
+				,
+				CONNECT_ONE_SHOT
+			)
+	
 	# Spawn the player
-	var viewport_size = get_viewport().get_visible_rect().size
 	if _entities_ready:
-		player_ship = EntityManager.spawn_player(viewport_size / 2)
+		player_ship = EntityManager.spawn_player(spawn_position)
+		
+		# Set player z-index to appear above planets
+		if player_ship and is_instance_valid(player_ship):
+			player_ship.z_index = 20  # Higher than planets (6) and moons (10)
 	else:
 		push_error("GameManager: Cannot spawn player - EntityManager autoload not found")
 		return
