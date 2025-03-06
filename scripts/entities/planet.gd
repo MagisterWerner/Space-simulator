@@ -1,4 +1,4 @@
-# scripts/entities/planet.gd
+# planet.gd
 extends Node2D
 
 signal planet_loaded(planet)
@@ -25,12 +25,10 @@ var name_component
 
 func _ready():
 	name_component = get_node_or_null("NameComponent")
-	# Set appropriate z-index to render behind player
-	z_index = -10
 
-func _process(_delta):
+func _process(delta):
 	queue_redraw()
-	_update_moons(_delta)
+	_update_moons(delta)
 
 func _draw():
 	if atmosphere_texture:
@@ -39,7 +37,7 @@ func _draw():
 	if planet_texture:
 		draw_texture(planet_texture, -Vector2(pixel_size, pixel_size) / 2, Color.WHITE)
 
-func _update_moons(_delta):
+func _update_moons(delta):
 	var time = Time.get_ticks_msec() / 1000.0
 	
 	for moon in moons:
@@ -52,9 +50,7 @@ func _update_moons(_delta):
 				sin(moon_angle) * moon.distance * (1.0 + deviation_factor)
 			)
 			
-			# Set z-index based on position relative to planet
-			# Moons should appear behind the planet when "below" it
-			moon.z_index = -11 if sin(moon_angle) <= 0 else -9
+			moon.z_index = 10 if sin(moon_angle) <= 0 else 5
 
 func initialize(params: Dictionary):
 	seed_value = params.seed_value
@@ -69,13 +65,7 @@ func initialize(params: Dictionary):
 	if "moon_orbit_factor" in params: moon_orbit_factor = params.moon_orbit_factor
 	
 	var planet_gen_params = _generate_planet_data(seed_value)
-	
-	# Allow theme override if specified
-	if "theme_override" in params and params.theme_override >= 0:
-		theme_id = params.theme_override
-	else:
-		theme_id = planet_gen_params.theme
-		
+	theme_id = planet_gen_params.theme
 	pixel_size = planet_gen_params.pixel_size
 	planet_texture = planet_gen_params.texture
 	atmosphere_data = planet_gen_params.atmosphere
@@ -89,37 +79,36 @@ func initialize(params: Dictionary):
 		planet_name = "Planet-" + str(seed_value % 1000)
 	
 	call_deferred("_create_moons")
+	z_index = 6
 	
-	# Emit signal that the planet has been loaded
-	planet_loaded.emit(self)
+	emit_signal("planet_loaded", self)
 
-func _generate_planet_data(planet_seed: int) -> Dictionary:
+func _generate_planet_data(seed_value: int) -> Dictionary:
 	var planet_generator = PlanetGenerator.new()
-	var textures = planet_generator.create_planet_texture(planet_seed)
+	var textures = planet_generator.create_planet_texture(seed_value)
 	
 	var atmosphere_generator = AtmosphereGenerator.new()
-	var theme = planet_generator.get_planet_theme(planet_seed)
-	var atm_data = atmosphere_generator.generate_atmosphere_data(theme, planet_seed)
-	var atm_texture = atmosphere_generator.generate_atmosphere_texture(
+	var theme = planet_generator.get_planet_theme(seed_value)
+	var atmosphere_data = atmosphere_generator.generate_atmosphere_data(theme, seed_value)
+	var atmosphere_texture = atmosphere_generator.generate_atmosphere_texture(
 		theme, 
-		planet_seed,
-		atm_data.color,
-		atm_data.thickness
+		seed_value,
+		atmosphere_data.color,
+		atmosphere_data.thickness
 	)
 	
 	return {
 		"texture": textures[0],
 		"theme": theme,
 		"pixel_size": 256,
-		"atmosphere": atm_data,
-		"atmosphere_texture": atm_texture
+		"atmosphere": atmosphere_data,
+		"atmosphere_texture": atmosphere_texture
 	}
 
 func _create_moons():
-	# Use the correct path to moon scene
-	var moon_scene = load("res://scenes/world/moon.tscn")
+	var moon_scene = load("res://scenes/moon.tscn")
 	if not moon_scene:
-		push_error("Error: Moon scene couldn't be loaded from res://scenes/world/moon.tscn")
+		print("Error: Moon scene couldn't be loaded")
 		return
 	
 	var rng = RandomNumberGenerator.new()

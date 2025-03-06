@@ -1,4 +1,4 @@
-# scripts/entities/moon.gd
+# moon.gd
 extends Node2D
 
 var seed_value: int = 0
@@ -16,9 +16,6 @@ var name_component
 
 func _ready():
 	name_component = get_node_or_null("NameComponent")
-	# Set appropriate z-index to be behind player but may be in front or behind planet
-	# The actual z-index will be dynamically adjusted by parent planet based on orbit position
-	z_index = -9
 
 func _process(_delta):
 	queue_redraw()
@@ -47,10 +44,10 @@ func initialize(params: Dictionary):
 	else:
 		moon_name = "Moon-" + str(seed_value % 1000)
 
-func _generate_moon_data(moon_seed: int) -> Dictionary:
+func _generate_moon_data(seed_value: int) -> Dictionary:
 	var moon_generator = MoonGenerator.new()
-	var texture = moon_generator.create_moon_texture(moon_seed)
-	var size = moon_generator.get_moon_size(moon_seed)
+	var texture = moon_generator.create_moon_texture(seed_value)
+	var size = moon_generator.get_moon_size(seed_value)
 	
 	return {
 		"texture": texture,

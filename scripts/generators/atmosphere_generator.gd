@@ -1,4 +1,4 @@
-# scripts/generators/atmosphere_generator.gd
+# atmosphere_generator.gd
 extends RefCounted
 class_name AtmosphereGenerator
 
@@ -96,22 +96,22 @@ func generate_atmosphere_texture(theme: int, seed_value: int, color: Color, thic
 	
 	var center = Vector2(atm_size / 2.0, atm_size / 2.0)
 	
-	var _noise_scale = 0.0
+	var noise_scale = 0.0
 	var noise_amount = 0.0
 	var cloud_bands = false
 	var dust_streaks = false
 	
 	match theme:
 		PlanetTheme.LAVA:
-			_noise_scale = 8.0
+			noise_scale = 8.0
 			noise_amount = 0.3
 			cloud_bands = false
 		PlanetTheme.ARID, PlanetTheme.DESERT:
-			_noise_scale = 6.0
+			noise_scale = 6.0
 			noise_amount = 0.2
 			dust_streaks = true
 		PlanetTheme.OCEAN, PlanetTheme.LUSH:
-			_noise_scale = 4.0
+			noise_scale = 4.0
 			noise_amount = 0.15
 			cloud_bands = true
 	

@@ -1,4 +1,4 @@
-# scripts/generators/planet_generator.gd
+# planet_generator.gd
 extends RefCounted
 class_name PlanetGenerator
 
@@ -235,7 +235,7 @@ func create_planet_texture(seed_value: int) -> Array:
 	var variation_seed_2 = seed_value + 67890
 	
 	var color_size = colors.size() - 1
-	var _half_size = planet_size / 2.0
+	var half_size = planet_size / 2.0
 	var planet_size_minus_one = planet_size - 1
 	
 	for y in range(planet_size):

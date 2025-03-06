@@ -11,6 +11,7 @@ signal spawner_ready
 @export_category("Planet Configuration")
 @export var auto_spawn: bool = false
 @export var planet_scene: PackedScene = preload("res://scenes/world/planet.tscn")
+@export var moon_scene: PackedScene = preload("res://scenes/world/moon.tscn")
 @export var use_grid_position: bool = true
 @export var grid_x: int = 0
 @export var grid_y: int = 0
@@ -25,9 +26,6 @@ signal spawner_ready
 @export var moon_distance_factor_min: float = 1.8
 @export var moon_distance_factor_max: float = 2.5
 @export var max_orbit_deviation: float = 0.15
-
-@export_category("Rendering")
-@export var z_index_base: int = -10  # Base z-index for planets, adjust to render behind player
 
 @export_category("Debug")
 @export var debug_mode: bool = false
@@ -91,9 +89,6 @@ func spawn_planet() -> Node2D:
 	_planet_instance = planet_scene.instantiate()
 	add_child(_planet_instance)
 	
-	# Set z-index for rendering order
-	_planet_instance.z_index = z_index_base
-	
 	# Calculate position
 	var spawn_position = Vector2.ZERO
 	if use_grid_position and has_node("/root/GridManager"):
@@ -130,8 +125,7 @@ func spawn_planet() -> Node2D:
 	
 	# Connect to planet's loaded signal to handle moons if they spawn
 	if _planet_instance.has_signal("planet_loaded"):
-		if not _planet_instance.planet_loaded.is_connected(_on_planet_loaded):
-			_planet_instance.planet_loaded.connect(_on_planet_loaded)
+		_planet_instance.planet_loaded.connect(_on_planet_loaded)
 	
 	if debug_mode:
 		print("Planet spawned at position: ", _planet_instance.global_position)
@@ -173,7 +167,7 @@ func cleanup() -> void:
 	# Clear moon references
 	_moon_instances.clear()
 
-func _on_seed_changed(_new_seed: int) -> void:
+func _on_seed_changed(new_seed: int) -> void:
 	# Update seed and respawn if already spawned
 	_update_seed_value()
 	
@@ -201,8 +195,6 @@ func respawn(params: Dictionary = {}) -> Node2D:
 	if params.has("local_seed_offset"):
 		local_seed_offset = params.local_seed_offset
 		_update_seed_value()
-	if params.has("z_index_base"):
-		z_index_base = params.z_index_base
 	
 	# Spawn new planet with updated parameters
 	return spawn_planet()
