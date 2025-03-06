@@ -13,6 +13,7 @@ script = ExtResource("1_txjaf")
 [node name="SpaceBackground" parent="." instance=ExtResource("3_t8g3p")]
 
 [node name="PlayerShip" parent="." instance=ExtResource("2_cayce")]
+z_index = 20
 
 [node name="Camera2D" type="Camera2D" parent="."]
 zoom = Vector2(0.8, 0.8)
@@ -31,5 +32,8 @@ texture = ExtResource("4_cqtaa")
 grid_size = 1
 
 [node name="Planet" type="Node2D" parent="."]
-position = Vector2(336, 175)
+position = Vector2(429, 229)
 script = ExtResource("6_v31f5")
+auto_spawn = true
+use_grid_position = false
+moon_chance = 100
