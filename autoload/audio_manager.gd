@@ -1,7 +1,51 @@
 # autoload/audio_manager.gd
-# Audio Manager for handling background music and sound effects
-# Designed for high-performance bullet hell style games
-# Set this as an autoload singleton
+# =========================
+# Purpose:
+#   Comprehensive audio management system for background music and sound effects.
+#   Designed for high-performance in bullet-hell style games with optimized audio pooling.
+#   Handles volume control, audio buses, and persistence of audio settings.
+#
+# Interface:
+#   Signals:
+#     - music_changed(track_name)
+#     - volume_changed(bus_name, volume_db)
+#
+#   Music Methods:
+#     - preload_music(track_name, file_path)
+#     - preload_music_directory(directory_path, recursive)
+#     - play_music(track_name, crossfade)
+#     - stop_music()
+#     - pause_music()
+#     - resume_music()
+#
+#   SFX Methods:
+#     - preload_sfx(sfx_name, file_path, pool_size)
+#     - preload_sfx_directory(directory_path, recursive)
+#     - play_sfx(sfx_name, position, pitch_scale, volume_db)
+#     - stop_sfx(sfx_name)
+#     - stop_all_sfx()
+#     - resize_sfx_pool(sfx_name, new_size)
+#
+#   Volume Control:
+#     - set_master_volume(volume)
+#     - set_music_volume(volume)
+#     - set_sfx_volume(volume)
+#     - set_music_enabled(enabled)
+#     - set_sfx_enabled(enabled)
+#     - save_settings()
+#
+# Dependencies:
+#   - None
+#
+# Usage Example:
+#   # Initialize audio resources
+#   AudioManager.preload_music("main_theme", "res://audio/music/main_theme.ogg")
+#   AudioManager.preload_sfx("laser", "res://audio/sfx/laser.wav", 30)
+#   
+#   # Play audio
+#   AudioManager.play_music("main_theme")
+#   AudioManager.play_sfx("laser", player_position, randf_range(0.95, 1.05))
+
 extends Node
 
 # Signal declarations

@@ -1,5 +1,57 @@
 # autoload/game_manager.gd
-# Central system for managing overall game state, levels, and core gameplay systems
+# ========================
+# Purpose:
+#   Core game management system that controls game state, levels, and gameplay systems.
+#   Handles the game lifecycle including starting, pausing, ending, and restarting.
+#   Manages player upgrades and ship components through the Strategy pattern.
+#   Provides save game functionality and game state persistence.
+#
+# Interface:
+#   Signals:
+#     - game_started
+#     - game_paused
+#     - game_resumed
+#     - game_over
+#     - game_restarted
+#     - player_credits_changed(new_amount)
+#     - upgrade_purchased(upgrade, component)
+#     - save_game_created(save_id)
+#     - save_game_loaded(save_id)
+#
+#   Game Lifecycle Methods:
+#     - start_game()
+#     - pause_game()
+#     - resume_game()
+#     - end_game()
+#     - restart_game()
+#
+#   Upgrade Methods:
+#     - purchase_upgrade(upgrade_index, component_name)
+#     - remove_upgrade(upgrade_index)
+#     - get_available_upgrades_for_component(component_name)
+#
+#   Save Methods:
+#     - save_game(save_id)
+#     - load_game(save_id)
+#
+# Dependencies:
+#   - EntityManager
+#   - ResourceManager
+#   - EventManager
+#   - SeedManager
+#
+# Usage Example:
+#   # Start a new game
+#   GameManager.start_game()
+#   
+#   # Purchase an upgrade for the player's weapon
+#   var upgrade_index = 0
+#   GameManager.purchase_upgrade(upgrade_index, "WeaponComponent")
+#   
+#   # Save and load the game
+#   GameManager.save_game("mysave")
+#   GameManager.load_game("mysave")
+
 extends Node
 
 signal game_started

@@ -1,12 +1,57 @@
 # autoload/resource_manager.gd
-#
-# Resources Manager Singleton
-# ==================
+# ===========================
 # Purpose:
 #   Manages the player's resources, inventory, and trading system.
-#   Provides a centralized interface for all resource-related operations.
+#   Handles resource types, quantities, and resource-related operations.
+#   Provides trading mechanics for buying and selling resources at stations.
+#   Tracks cargo capacity and implements a market price system.
+#
+# Interface:
+#   Signals:
+#     - resource_added(resource_id, amount)
+#     - resource_removed(resource_id, amount)
+#     - resource_changed(resource_id, new_amount, old_amount)
+#     - cargo_capacity_changed(new_capacity, old_capacity)
+#
+#   Enums:
+#     - ResourceType: CREDITS, FUEL, METAL_ORE, etc.
+#
+#   Resource Methods:
+#     - add_resource(resource_id, amount)
+#     - remove_resource(resource_id, amount)
+#     - get_resource_amount(resource_id)
+#     - has_resource(resource_id, amount)
+#     - get_resource_name(resource_id)
+#
+#   Cargo Methods:
+#     - set_cargo_capacity(new_capacity)
+#     - get_available_cargo_space()
+#     - has_cargo_space_for(resource_id, amount)
+#     - get_total_cargo_value()
+#
+#   Trading Methods:
+#     - trade_with_station(station_id, buy_resources, sell_resources)
+#     - set_station_market_modifiers(station_id, modifiers)
+#     - get_resource_price(resource_id, station_id)
+#
+# Dependencies:
+#   - None
+#
+# Usage Example:
+#   # Add resources to player inventory
+#   ResourceManager.add_resource(ResourceManager.ResourceType.CREDITS, 1000)
+#   ResourceManager.add_resource(ResourceManager.ResourceType.FUEL, 50)
+#   
+#   # Check if player has enough resources
+#   if ResourceManager.has_resource(ResourceManager.ResourceType.CREDITS, 500):
+#       ResourceManager.remove_resource(ResourceManager.ResourceType.CREDITS, 500)
+#   
+#   # Trade with a station
+#   var buy = {ResourceManager.ResourceType.FUEL: 10}
+#   var sell = {ResourceManager.ResourceType.METAL_ORE: 5}
+#   ResourceManager.trade_with_station("station_1", buy, sell)
+
 extends Node
-class_name ResourceManagerSingleton
 
 signal resource_added(resource_id, amount)
 signal resource_removed(resource_id, amount)

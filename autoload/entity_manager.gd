@@ -1,10 +1,47 @@
 # autoload/entity_manager.gd
-#
-# Entities Manager Singleton
-# =================
+# ==========================
 # Purpose:
-#   Manages all game entities (players, ships, asteroids, stations).
-#   Provides centralized entity registration, spawning, and lookup.
+#   Centralized entity management system for tracking and manipulating all game entities.
+#   Handles entity registration, spawning, and despawning.
+#   Provides utilities for finding and filtering entities based on type and distance.
+#   Maintains separate dictionaries for different entity types for efficient lookup.
+#
+# Interface:
+#   Signals:
+#     - entity_spawned(entity, entity_type)
+#     - entity_despawned(entity, entity_type)
+#     - player_spawned(player)
+#
+#   Registration Methods:
+#     - register_entity(entity, entity_type)
+#     - deregister_entity(entity)
+#
+#   Spawning Methods:
+#     - spawn_player(spawn_position)
+#     - spawn_enemy_ship(type_index, spawn_position)
+#     - spawn_asteroid(type_index, spawn_position)
+#     - spawn_station(type_index, spawn_position)
+#     - despawn_all(entity_type)
+#
+#   Query Methods:
+#     - get_nearest_entity(from_position, entity_type, exclude_entity)
+#     - get_entities_in_radius(from_position, radius, entity_type, exclude_entity)
+#
+# Dependencies:
+#   - None
+#
+# Usage Example:
+#   # Spawn the player
+#   var player = EntityManager.spawn_player(Vector2(500, 300))
+#   
+#   # Spawn an enemy and register it
+#   var enemy = enemy_scene.instantiate()
+#   add_child(enemy)
+#   EntityManager.register_entity(enemy, "ship")
+#   
+#   # Find the nearest asteroid to the player
+#   var nearest_asteroid = EntityManager.get_nearest_entity(player.global_position, "asteroid")
+
 extends Node
 
 signal entity_spawned(entity, entity_type)

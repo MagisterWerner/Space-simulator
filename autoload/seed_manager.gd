@@ -1,5 +1,47 @@
 # autoload/seed_manager.gd
-# Manages procedural generation seeding and provides deterministic randomization methods
+# ========================
+# Purpose:
+#   Manages procedural generation seeding and provides deterministic randomization methods.
+#   Ensures consistent procedural generation based on game seeds.
+#   Provides cached noise generators and random values for performance.
+#   Offers utilities for deterministic random operations based on object IDs.
+#
+# Interface:
+#   Signals:
+#     - seed_changed(new_seed)
+#
+#   Seed Methods:
+#     - set_seed(new_seed)
+#     - set_random_seed()
+#     - get_seed()
+#     - get_seed_hash()
+#
+#   Randomization Methods:
+#     - get_random_value(object_id, min_val, max_val, object_subid)
+#     - get_random_int(object_id, min_val, max_val, object_subid)
+#     - get_random_point_in_circle(object_id, radius, object_subid)
+#     - get_2d_noise(x, y, scale, octaves, object_id)
+#     - get_weighted_element(object_id, elements, weights)
+#
+#   Configuration:
+#     - debug_mode: bool
+#     - enable_cache: bool
+#
+# Dependencies:
+#   - None
+#
+# Usage Example:
+#   # Set a specific seed for deterministic generation
+#   SeedManager.set_seed(12345)
+#   
+#   # Get deterministic random values for an entity
+#   var asteroid_id = 42
+#   var size = SeedManager.get_random_value(asteroid_id, 1.0, 3.0)
+#   var variant = SeedManager.get_random_int(asteroid_id, 1, 5)
+#   
+#   # Get a random point for spawning
+#   var spawn_pos = SeedManager.get_random_point_in_circle(asteroid_id, 100.0)
+
 extends Node
 
 signal seed_changed(new_seed)
