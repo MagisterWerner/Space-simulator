@@ -202,7 +202,6 @@ func physics_process_component(delta: float) -> void:
 			_set_thruster_emission(_left_thruster_front, false)
 			
 			if _right_position:
-				var force_pos = _right_position.global_position - _rigid_body.global_position
 				var torque_force = modified_rotation * 0.3 # Reduced for better control
 				_rigid_body.apply_torque(torque_force)
 			
@@ -211,7 +210,6 @@ func physics_process_component(delta: float) -> void:
 			_set_thruster_emission(_right_thruster_front, false)
 			
 			if _left_position:
-				var force_pos = _left_position.global_position - _rigid_body.global_position
 				var torque_force = -modified_rotation * 0.3 # Reduced for better control
 				_rigid_body.apply_torque(torque_force)
 			

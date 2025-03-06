@@ -18,6 +18,11 @@ class_name SpaceBackground
 @export var twinkle_speed: float = 0.5
 @export var twinkle_amount: float = 0.3
 
+## Background color options
+@export_group("Background Options")
+@export var background_color: Color = Color(0, 0, 0, 1)  # Pure black background
+@export var add_background_layer: bool = true
+
 ## Debug options
 @export_group("Debug")
 @export var debug_mode: bool = false
@@ -28,6 +33,7 @@ var viewport_size: Vector2
 var initialized: bool = false
 var star_layers: Array[ParallaxLayer] = []
 var _twinkle_time: float = 0.0
+var background_layer: ParallaxLayer = null
 
 # Signal emitted when the background is fully initialized
 signal background_initialized
@@ -59,6 +65,10 @@ func setup_background() -> void:
 		background_seed = int(Time.get_unix_time_from_system())
 		if debug_mode:
 			print("SpaceBackground: Using time-based seed: ", background_seed)
+	
+	# Add a solid black background layer first
+	if add_background_layer:
+		create_background_layer()
 	
 	# Create star layers with different parallax factors
 	create_star_layer("FarStars", 0.05 * parallax_scale, star_count_far, 
@@ -132,6 +142,25 @@ func find_camera_in_tree(node: Node) -> Camera2D:
 			return found
 	
 	return null
+
+# Create a background layer with solid color
+func create_background_layer() -> void:
+	background_layer = ParallaxLayer.new()
+	background_layer.name = "BackgroundLayer"
+	background_layer.motion_scale = Vector2.ZERO  # Fixed background
+	background_layer.motion_mirroring = viewport_size  # Make it repeat seamlessly
+	add_child(background_layer)
+	
+	# Create a ColorRect for the background
+	var background_rect = ColorRect.new()
+	background_rect.name = "BackgroundRect"
+	background_rect.color = background_color
+	background_rect.size = viewport_size * 1.5  # Make it larger to ensure full coverage
+	background_rect.position = -viewport_size * 0.25  # Center it
+	background_layer.add_child(background_rect)
+	
+	# Ensure it's at the bottom of the visual stack
+	move_child(background_layer, 0)
 
 # Create a single star layer with the given parameters
 func create_star_layer(layer_name: String, scroll_factor: float, count: int, 
@@ -240,12 +269,23 @@ func reset() -> void:
 		parallax_layer.queue_free()
 	star_layers.clear()
 	
+	if background_layer:
+		background_layer.queue_free()
+		background_layer = null
+	
 	# Setup again
 	call_deferred("setup_background")
 
 # Public method to update viewport size (call if window is resized)
 func update_viewport_size() -> void:
 	viewport_size = get_viewport().get_visible_rect().size
+	
+	# Update background color rect
+	if background_layer:
+		var background_rect = background_layer.get_node_or_null("BackgroundRect")
+		if background_rect:
+			background_rect.size = viewport_size * 1.5
+			background_rect.position = -viewport_size * 0.25
 	
 	# Update mirroring size for all layers
 	for parallax_layer in star_layers:
