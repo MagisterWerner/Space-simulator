@@ -27,7 +27,7 @@ script = ExtResource("6_v31f5")
 auto_spawn = true
 use_grid_position = false
 
-[node name="Planet3" type="Node2D" parent="."]
+[node name="Planet" type="Node2D" parent="."]
 position = Vector2(-136, -89)
 script = ExtResource("6_v31f5")
 auto_spawn = true
