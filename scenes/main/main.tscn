@@ -1,10 +1,11 @@
-[gd_scene load_steps=6 format=3 uid="uid://ddsnaxcqqd81s"]
+[gd_scene load_steps=7 format=3 uid="uid://ddsnaxcqqd81s"]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1_txjaf"]
 [ext_resource type="PackedScene" uid="uid://rhas31gnv33u" path="res://scenes/player/player_ship.tscn" id="2_cayce"]
 [ext_resource type="PackedScene" uid="uid://8iqbtdgouxfb" path="res://scenes/backgrounds/space_background.tscn" id="3_t8g3p"]
 [ext_resource type="Texture2D" uid="uid://c36xklehwh0ql" path="res://assets/sprites/enemy_ship_1.png" id="4_cqtaa"]
 [ext_resource type="PackedScene" uid="uid://baujd316t5ufb" path="res://scenes/world/world_grid.tscn" id="5_84hlr"]
+[ext_resource type="Script" path="res://scripts/entities/planet_spawner.gd" id="6_v31f5"]
 
 [node name="Main" type="Node2D"]
 script = ExtResource("1_txjaf")
@@ -27,3 +28,8 @@ position = Vector2(128, 84)
 texture = ExtResource("4_cqtaa")
 
 [node name="WorldGrid" parent="." instance=ExtResource("5_84hlr")]
+grid_size = 1
+
+[node name="Planet" type="Node2D" parent="."]
+position = Vector2(336, 175)
+script = ExtResource("6_v31f5")
