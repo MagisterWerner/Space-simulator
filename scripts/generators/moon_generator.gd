@@ -2,6 +2,13 @@
 extends RefCounted
 class_name MoonGenerator
 
+# Moon type enum (must match moon.gd and planet.gd)
+enum MoonType {
+	ROCKY,
+	ICE,
+	LAVA
+}
+
 const MOON_SIZES: Array = [24, 32, 40, 48, 56]
 const PIXEL_RESOLUTION: int = 8
 
@@ -36,23 +43,104 @@ func _init():
 		var t = float(i) / (CUBIC_RESOLUTION - 1)
 		cubic_lookup[i] = t * t * (3.0 - 2.0 * t)
 	
-	colors = PackedColorArray([
-		Color(0.69, 0.67, 0.64),
-		Color(0.55, 0.53, 0.50),
-		Color(0.42, 0.40, 0.38),
-		Color(0.35, 0.33, 0.31),
-		Color(0.25, 0.23, 0.21)
-	])
+	# Default to rocky moon colors
+	colors = get_moon_colors(MoonType.ROCKY)
 
-static func get_moon_texture(seed_value: int) -> Texture2D:
-	if moon_texture_cache.has(seed_value):
-		return moon_texture_cache[seed_value]
+# Get the appropriate color palette for a moon type
+func get_moon_colors(moon_type: int) -> PackedColorArray:
+	match moon_type:
+		MoonType.ROCKY:
+			return PackedColorArray([
+				Color(0.69, 0.67, 0.64),
+				Color(0.55, 0.53, 0.50),
+				Color(0.42, 0.40, 0.38),
+				Color(0.35, 0.33, 0.31),
+				Color(0.25, 0.23, 0.21)
+			])
+		MoonType.ICE:
+			return PackedColorArray([
+				Color(0.98, 0.99, 1.0),   # Almost white
+				Color(0.92, 0.97, 1.0),   # Very light blue
+				Color(0.85, 0.92, 0.98),  # Light blue
+				Color(0.75, 0.85, 0.95),  # Mild blue
+				Color(0.60, 0.75, 0.90),  # Medium blue
+				Color(0.45, 0.65, 0.85),  # Deeper blue
+				Color(0.30, 0.50, 0.75)   # Dark blue
+			])
+		MoonType.LAVA:
+			return PackedColorArray([
+				Color(1.0, 0.6, 0.0),     # Bright orange
+				Color(0.9, 0.4, 0.05),    # Orange
+				Color(0.8, 0.2, 0.05),    # Red-orange
+				Color(0.7, 0.1, 0.05),    # Red
+				Color(0.55, 0.08, 0.04),  # Dark red
+				Color(0.4, 0.06, 0.03),   # Deeper red
+				Color(0.25, 0.04, 0.02)   # Almost black-red
+			])
+		_:
+			# Default fallback to rocky
+			return PackedColorArray([
+				Color(0.69, 0.67, 0.64),
+				Color(0.55, 0.53, 0.50),
+				Color(0.42, 0.40, 0.38),
+				Color(0.35, 0.33, 0.31),
+				Color(0.25, 0.23, 0.21)
+			])
+
+# Get the parameters for a specific moon type
+func get_moon_params(moon_type: int) -> Dictionary:
+	match moon_type:
+		MoonType.ROCKY:
+			return {
+				"crater_count_min": 2, 
+				"crater_count_max": 5,
+				"crater_depth_min": 0.25,
+				"crater_depth_max": 0.45,
+				"ambient_light": 0.65,
+				"light_intensity": 0.35
+			}
+		MoonType.ICE:
+			return {
+				"crater_count_min": 1,
+				"crater_count_max": 3,
+				"crater_depth_min": 0.15,  # Shallower craters
+				"crater_depth_max": 0.35,
+				"ambient_light": 0.75,     # Brighter ambient light
+				"light_intensity": 0.25    # Less harsh shadows
+			}
+		MoonType.LAVA:
+			return {
+				"crater_count_min": 3,
+				"crater_count_max": 6,
+				"crater_depth_min": 0.35,  # Deeper craters
+				"crater_depth_max": 0.55,
+				"ambient_light": 0.55,     # Darker ambient light
+				"light_intensity": 0.45    # More dramatic lighting
+			}
+		_:
+			# Default to rocky parameters if type is invalid
+			return {
+				"crater_count_min": 2, 
+				"crater_count_max": 5,
+				"crater_depth_min": 0.25,
+				"crater_depth_max": 0.45,
+				"ambient_light": 0.65,
+				"light_intensity": 0.35
+			}
+
+static func get_moon_texture(seed_value: int, moon_type: int = MoonType.ROCKY) -> Texture2D:
+	# Create a unique key for the cache that includes both seed and type
+	var cache_key = seed_value * 10 + moon_type
+	
+	if moon_texture_cache.has(cache_key):
+		return moon_texture_cache[cache_key]
 	
 	var generator = new()
-	var texture = generator.create_moon_texture(seed_value)
+	var texture = generator.create_moon_texture(seed_value, moon_type)
 	
-	moon_texture_cache[seed_value] = texture
+	moon_texture_cache[cache_key] = texture
 	
+	# Clean cache if too large
 	if moon_texture_cache.size() > 100:
 		var oldest_key = moon_texture_cache.keys()[0]
 		moon_texture_cache.erase(oldest_key)
@@ -150,9 +238,27 @@ func is_crater_overlapping(new_crater: Dictionary) -> bool:
 	
 	return false
 
-func generate_craters(seed_value: int) -> void:
+func configure_for_moon_type(moon_type: int) -> void:
+	# Get parameters for this moon type
+	var params = get_moon_params(moon_type)
+	
+	# Apply moon type specific parameters
+	CRATER_COUNT_MIN = params.crater_count_min
+	CRATER_COUNT_MAX = params.crater_count_max
+	CRATER_DEPTH_MIN = params.crater_depth_min
+	CRATER_DEPTH_MAX = params.crater_depth_max
+	AMBIENT_LIGHT = params.ambient_light
+	LIGHT_INTENSITY = params.light_intensity
+	
+	# Set colors for this moon type
+	colors = get_moon_colors(moon_type)
+
+func generate_craters(seed_value: int, moon_type: int) -> void:
 	var main_rng = RandomNumberGenerator.new()
 	main_rng.seed = seed_value
+
+	# Configure parameters for this moon type
+	configure_for_moon_type(moon_type)
 
 	craters.clear()
 	var crater_count = main_rng.randi_range(CRATER_COUNT_MIN, CRATER_COUNT_MAX)
@@ -184,6 +290,17 @@ func generate_craters(seed_value: int) -> void:
 			"angle": main_rng.randf() * TAU,
 			"elongation": main_rng.randf_range(0.0, 0.2)
 		}
+		
+		# Apply moon type specific modifications to craters
+		match moon_type:
+			MoonType.ICE:
+				# Ice moons have smoother, more circular craters
+				new_crater.noise_amp *= 0.7
+				new_crater.elongation *= 0.6
+			MoonType.LAVA:
+				# Lava moons have more irregular, jagged craters
+				new_crater.noise_amp *= 1.3
+				new_crater.elongation *= 1.2
 		
 		if not is_crater_overlapping(new_crater):
 			craters.append(new_crater)
@@ -261,7 +378,8 @@ func apply_lighting(color: Color, normal: Vector3) -> Color:
 		color.a
 	)
 
-func create_moon_texture(seed_value: int) -> ImageTexture:
+# Create a moon texture with specified type
+func create_moon_texture(seed_value: int, moon_type: int = MoonType.ROCKY) -> ImageTexture:
 	var moon_size = get_moon_size(seed_value)
 	
 	var padding = 2
@@ -269,7 +387,12 @@ func create_moon_texture(seed_value: int) -> ImageTexture:
 	var image = Image.create(padded_size, padded_size, true, Image.FORMAT_RGBA8)
 	
 	noise_cache.clear()
-	generate_craters(seed_value)
+	
+	# Configure for the specified moon type
+	configure_for_moon_type(moon_type)
+	
+	# Generate craters with type-specific parameters
+	generate_craters(seed_value, moon_type)
 	
 	var sphere_data = []
 	sphere_data.resize(padded_size * padded_size)
@@ -340,12 +463,53 @@ func create_moon_texture(seed_value: int) -> ImageTexture:
 			var crater_depth = depth_map[idx]
 			var in_crater = crater_depth < -0.1
 			
+			# Apply moon type specific noise adjustments
+			match moon_type:
+				MoonType.ICE:
+					# Ice moons have smoother surfaces
+					base_noise = pow(base_noise, 0.7)  # Favor brighter values
+					# Add slight shimmer to ice
+					base_noise += noise(sphere_uv.x * 20, sphere_uv.y * 20, seed_value + 123) * 0.05
+					
+				MoonType.LAVA:
+					# Lava moons have more contrast and "hotspots"
+					base_noise = pow(base_noise, 1.3)  # Increase contrast
+					
+					# Create potential "hotspots" or lava flows
+					var lava_noise = noise(sphere_uv.x * 8, sphere_uv.y * 8, seed_value + 789)
+					if lava_noise > 0.7 and not in_crater:
+						# Make some areas brighter to simulate glowing spots
+						base_noise = min(1.0, base_noise + 0.3)
+			
+			# Adjust crater depth impact based on moon type
 			if in_crater:
-				base_noise = max(0.0, base_noise - abs(crater_depth) * 0.5)
+				match moon_type:
+					MoonType.ROCKY:
+						base_noise = max(0.0, base_noise - abs(crater_depth) * 0.5)
+					MoonType.ICE:
+						# Ice crater floors are brighter (exposed ice)
+						base_noise = max(0.2, base_noise - abs(crater_depth) * 0.3)
+					MoonType.LAVA:
+						# Lava crater floors are darker (cooling areas)
+						base_noise = max(0.0, base_noise - abs(crater_depth) * 0.7)
 			
 			var color_index = int(base_noise * color_size)
 			color_index = clamp(color_index, 0, color_size)
 			var base_color = colors[color_index]
+			
+			# Apply special effects based on moon type
+			match moon_type:
+				MoonType.ICE:
+					# Add subtle blue glow to edges
+					if d_circle > 0.8:
+						base_color.b = min(1.0, base_color.b + 0.1)
+				
+				MoonType.LAVA:
+					# Add orange/red glow to some areas
+					var heat_noise = noise(sphere_uv.x * 12, sphere_uv.y * 12, seed_value + 456)
+					if heat_noise > 0.7 and not in_crater:
+						base_color.r = min(1.0, base_color.r + 0.15)
+						base_color.g = min(1.0, base_color.g + 0.05)
 			
 			var normal = calculate_normal(depth_map, x, y, padded_size)
 			var lit_color = apply_lighting(base_color, normal)

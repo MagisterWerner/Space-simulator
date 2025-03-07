@@ -1,5 +1,5 @@
 # scripts/entities/planet.gd
-# Optimized planet script with improved moon orbiting system
+# Optimized planet script with improved moon orbiting system and moon types
 extends Node2D
 
 signal planet_loaded(planet)
@@ -21,6 +21,13 @@ var atmosphere_data: Dictionary
 var moons = []
 var grid_x: int = 0
 var grid_y: int = 0
+
+# Define moon types for consistent reference
+enum MoonType {
+	ROCKY,
+	ICE,
+	LAVA
+}
 
 var name_component
 var use_texture_cache: bool = true
@@ -64,7 +71,6 @@ func _update_moons(_delta: float) -> void:
 			
 			# Set z-index dynamically based on position relative to planet
 			# This creates the visual effect of moon passing behind the planet
-			# -11 means behind planet, -9 means in front of planet
 			moon.z_index = -11 if relative_y < 0 else -9
 
 func initialize(params: Dictionary) -> void:
@@ -176,11 +182,14 @@ func _create_moons() -> void:
 	var orbital_params = _generate_orbital_parameters(num_moons, rng)
 	
 	for m in range(num_moons):
-		var moon_seed = seed_value + m * 100
+		var moon_seed = seed_value + m * 100 + rng.randi() % 1000
 		
 		var moon_instance = moon_scene.instantiate()
 		if not moon_instance:
 			continue
+		
+		# Determine moon type randomly for now
+		var moon_type = _get_random_moon_type(rng)
 		
 		# Use the pre-calculated orbital parameters
 		var moon_params = {
@@ -192,7 +201,8 @@ func _create_moons() -> void:
 			"orbit_deviation": orbital_params[m].orbit_deviation,
 			"phase_offset": orbital_params[m].phase_offset,
 			"parent_name": planet_name,
-			"use_texture_cache": use_texture_cache
+			"use_texture_cache": use_texture_cache,
+			"moon_type": moon_type
 		}
 		
 		add_child(moon_instance)
@@ -201,6 +211,18 @@ func _create_moons() -> void:
 	
 	# Emit signal that the planet has been loaded (after moons are created)
 	_emit_planet_loaded()
+
+# Get a random moon type with proper weighting
+func _get_random_moon_type(rng: RandomNumberGenerator) -> int:
+	var roll = rng.randi() % 100
+	
+	# Currently random distribution - can be adjusted later to match planet theme
+	if roll < 60:
+		return MoonType.ROCKY
+	elif roll < 80:
+		return MoonType.ICE
+	else:
+		return MoonType.LAVA
 
 # Generate well-distributed orbital parameters to prevent moon collisions
 func _generate_orbital_parameters(moon_count: int, rng: RandomNumberGenerator) -> Array:
