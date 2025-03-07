@@ -229,16 +229,16 @@ func generate_planet_palette(theme: int, seed_value: int) -> PackedColorArray:
 						Color(0.25, 0.50, 0.75),  # Deep blue
 						Color(0.20, 0.40, 0.70)   # Navy blue
 					])
-				3:  # Exotic gas giant (unusual coloration)
+				3:  # Exotic gas giant - UPDATED TO BEIGE TONES
 					return PackedColorArray([
-						Color(0.95, 0.70, 0.85),  # Pink
-						Color(0.90, 0.60, 0.80),  # Rose
-						Color(0.80, 0.50, 0.75),  # Magenta
-						Color(0.70, 0.40, 0.70),  # Purple
-						Color(0.60, 0.35, 0.65),  # Violet
-						Color(0.50, 0.30, 0.60),  # Deep purple
-						Color(0.40, 0.25, 0.55),  # Dark violet
-						Color(0.30, 0.20, 0.50)   # Indigo
+						Color(0.95, 0.90, 0.75),  # Light beige
+						Color(0.90, 0.85, 0.70),  # Beige
+						Color(0.85, 0.78, 0.65),  # Medium beige
+						Color(0.80, 0.72, 0.60),  # Dark beige
+						Color(0.75, 0.65, 0.50),  # Brown-beige
+						Color(0.70, 0.60, 0.45),  # Brown
+						Color(0.65, 0.55, 0.40),  # Dark brown
+						Color(0.60, 0.50, 0.35)   # Deeper brown
 					])
 				_:  # Fallback
 					return PackedColorArray([

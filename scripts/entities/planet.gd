@@ -1,5 +1,5 @@
 # scripts/entities/planet.gd
-# Updated planet script with gas giant support
+# Updated planet script with improved gas giant moon distribution
 extends Node2D
 
 # Import the PlanetGenerator enum directly to avoid shadowing
@@ -102,13 +102,13 @@ func initialize(params: Dictionary) -> void:
 	# Check if this is a gas giant
 	is_gas_giant = theme_id == PlanetThemes.GAS_GIANT
 	
-	# Adjust max moons for gas giants - they can have more moons
+	# Adjust max moons for gas giants - they always have between 3-6 moons
 	if is_gas_giant:
 		var rng = RandomNumberGenerator.new()
 		rng.seed = seed_value + 12345
-		# Gas giants have more moons
-		max_moons = rng.randi_range(3, 7)
-		moon_chance = 80  # Higher chance of having moons
+		# Gas giants always have 3-6 moons (previously was 3-7)
+		max_moons = rng.randi_range(3, 6)
+		moon_chance = 100  # Gas giants ALWAYS have moons (changed from 80%)
 	
 	# Attempt to use cached textures if texture caching is enabled
 	if use_texture_cache and PlanetSpawner.texture_cache != null:
@@ -194,8 +194,22 @@ func _create_moons() -> void:
 	var rng = RandomNumberGenerator.new()
 	rng.seed = seed_value
 	
-	var has_moons = rng.randi() % 100 < moon_chance
-	var num_moons = rng.randi_range(1, max_moons) if has_moons else 0
+	# For gas giants, always spawn moons. For other planets, check chance.
+	var has_moons = is_gas_giant || (rng.randi() % 100 < moon_chance)
+	var num_moons = 0
+	
+	if has_moons:
+		if is_gas_giant:
+			# Gas giants always have 3-6 moons
+			num_moons = max_moons  # We already set this to rng.randi_range(3, 6) in initialize()
+		else:
+			# Regular planets can have 1-max_moons
+			num_moons = rng.randi_range(1, max_moons)
+	
+	# If no moons, exit early
+	if num_moons <= 0:
+		_emit_planet_loaded()
+		return
 	
 	# Generate orbital parameters for all moons to prevent collisions
 	var orbital_params = _generate_orbital_parameters(num_moons, rng)
@@ -207,23 +221,23 @@ func _create_moons() -> void:
 		if not moon_instance:
 			continue
 		
-		# For gas giants, prefer certain moon types based on position
-		var moon_type
+		# Determine moon type based on planet type and orbital position
+		var moon_type = MoonType.ROCKY  # Default
+		
 		if is_gas_giant:
-			# Inner moons tend to be rocky/lava, outer moons tend to be icy
-			var position_in_sequence = float(m) / max(1, num_moons - 1)
-			if position_in_sequence < 0.3:
-				# Inner moons - prefer rocky/lava
-				moon_type = MoonType.ROCKY if rng.randf() < 0.7 else MoonType.LAVA
-			elif position_in_sequence > 0.7:
-				# Outer moons - prefer ice
-				moon_type = MoonType.ICE if rng.randf() < 0.8 else MoonType.ROCKY
+			# Apply the specific distribution pattern for gas giants:
+			# - Innermost moon (m=0): LAVA (volcanic due to tidal forces)
+			# - Second moon (m=1): ROCKY
+			# - Outer moons (m>=2): ICE (colder as they're further away)
+			if m == 0:
+				moon_type = MoonType.LAVA
+			elif m == 1:
+				moon_type = MoonType.ROCKY
 			else:
-				# Middle moons - roughly equal chances
-				moon_type = rng.randi() % 3  # Random moon type
+				moon_type = MoonType.ICE
 		else:
-			# For normal planets, use fully random distribution
-			moon_type = _get_random_moon_type(rng)
+			# Non-gas giant planets can ONLY have rocky moons
+			moon_type = MoonType.ROCKY
 		
 		# Use the pre-calculated orbital parameters
 		var moon_params = {
@@ -236,7 +250,7 @@ func _create_moons() -> void:
 			"phase_offset": orbital_params[m].phase_offset,
 			"parent_name": planet_name,
 			"use_texture_cache": use_texture_cache,
-			"moon_type": moon_type
+			"moon_type": moon_type  # Apply the moon type we determined
 		}
 		
 		add_child(moon_instance)
@@ -246,11 +260,16 @@ func _create_moons() -> void:
 	# Emit signal that the planet has been loaded (after moons are created)
 	_emit_planet_loaded()
 
-# Get a random moon type with proper weighting
+# Get a random moon type with proper weighting - now only used by non-gas giants
+# (which will override to always return ROCKY)
 func _get_random_moon_type(rng: RandomNumberGenerator) -> int:
+	# For non-gas giants, always return ROCKY
+	if !is_gas_giant:
+		return MoonType.ROCKY
+	
+	# This can be kept for backward compatibility or custom distribution
 	var roll = rng.randi() % 100
 	
-	# Currently random distribution - can be adjusted later to match planet theme
 	if roll < 60:
 		return MoonType.ROCKY
 	elif roll < 80:
