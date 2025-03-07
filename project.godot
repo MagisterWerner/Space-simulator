@@ -30,6 +30,7 @@ EntityManager="*res://autoload/entity_manager.gd"
 EventManager="*res://autoload/event_manager.gd"
 ResourceManager="*res://autoload/resource_manager.gd"
 AudioManager="*res://autoload/audio_manager.gd"
+WorldGenerator="*res://autoload/world_generator.gd"
 
 [category]
 
@@ -162,3 +163,4 @@ textures/canvas_textures/default_texture_filter=0
 textures/canvas_textures/default_texture_repeat=1
 renderer/rendering_method="gl_compatibility"
 2d/shadow_atlas/size=1024
+textures/stretch/aspect="keep"
