@@ -9,14 +9,23 @@ enum PlanetTheme {
 	LUSH,
 	DESERT,
 	ALPINE,
-	OCEAN
+	OCEAN,
+	GAS_GIANT  # Added gas giant type
 }
 
 const PLANET_SIZE_LARGE: int = 256
+const PLANET_SIZE_GAS_GIANT: int = 512  # Gas giants are twice as large
 const PLANET_RADIUS: float = 128.0
+const GAS_GIANT_RADIUS: float = 256.0  # Larger radius for gas giants
 
 const TERRAIN_OCTAVES: int = 4
 const COLOR_VARIATION: float = 1.5
+
+# Gas giant specific constants
+const GAS_GIANT_BANDS: int = 12         # Number of primary bands
+const GAS_GIANT_BAND_NOISE: float = 0.7  # How noisy the bands are
+const GAS_GIANT_FLOW: float = 2.5       # How much the bands "flow" horizontally
+const GAS_GIANT_STORM_CHANCE: float = 0.4 # Chance to generate storm features
 
 static var planet_texture_cache: Dictionary = {}
 
@@ -45,8 +54,9 @@ static func get_planet_texture(seed_value: int) -> Array:
 	
 	return textures
 
-func get_planet_size(_seed_value: int) -> int:
-	return PLANET_SIZE_LARGE
+func get_planet_size(seed_value: int) -> int:
+	var theme = get_planet_theme(seed_value)
+	return PLANET_SIZE_GAS_GIANT if theme == PlanetTheme.GAS_GIANT else PLANET_SIZE_LARGE
 
 func get_planet_theme(seed_value: int) -> int:
 	var rng = RandomNumberGenerator.new()
@@ -120,11 +130,124 @@ func spherify(x: float, y: float) -> Vector2:
 		(sphere_y + 1.0) * 0.5
 	)
 
+# New function specifically for generating gas giant bands
+func generate_gas_giant_band(y_coord: float, seed_value: int) -> float:
+	# Create primary band structure
+	var primary_bands = sin(y_coord * GAS_GIANT_BANDS * PI)
+	
+	# Add noise to make bands irregular
+	var noise_seed1 = seed_value + 12345
+	var noise_seed2 = seed_value + 54321
+	
+	var noise_x = y_coord * 5.0
+	var noise_y = y_coord * 2.5
+	
+	var band_noise = fbm(noise_x, noise_y, 2, noise_seed1) * GAS_GIANT_BAND_NOISE
+	
+	# Create flow effect (horizontal distortion)
+	var flow_x = y_coord * 3.0
+	var flow_noise = fbm(flow_x, 0.5, 2, noise_seed2) * GAS_GIANT_FLOW
+	
+	return (primary_bands + band_noise + flow_noise) * 0.5 + 0.5
+
+# Create realistic gas giant storms
+func generate_gas_giant_storms(sphere_uv: Vector2, seed_value: int) -> float:
+	var rng = RandomNumberGenerator.new()
+	rng.seed = seed_value + 78912
+	
+	# Don't always generate storms
+	if rng.randf() > GAS_GIANT_STORM_CHANCE:
+		return 0.0
+	
+	var storm_count = rng.randi_range(1, 3)
+	var storm_value = 0.0
+	
+	for i in range(storm_count):
+		# Generate random storm location with preference for equatorial regions
+		var storm_y = rng.randf_range(0.3, 0.7)
+		var storm_x = rng.randf()
+		var storm_size = rng.randf_range(0.02, 0.1)  # Various sized storms
+		var storm_pos = Vector2(storm_x, storm_y)
+		
+		# Calculate distance to storm center - USING adjusted_dist instead
+		var adjusted_dist = Vector2(
+			(sphere_uv.x - storm_pos.x) * 1.7,  # Oval factor X 
+			(sphere_uv.y - storm_pos.y) * 1.0   # Oval factor Y
+		).length()
+		
+		# Add storm if within storm radius
+		if adjusted_dist < storm_size:
+			# Falloff at edges
+			var storm_strength = 1.0 - smoothstep(0, storm_size, adjusted_dist)
+			
+			# Make storm either lighter or darker than surroundings
+			var storm_polarity = rng.randf() > 0.5
+			storm_value += storm_strength * (1.0 if storm_polarity else -1.0) * 0.3
+	
+	return storm_value
+
 func generate_planet_palette(theme: int, seed_value: int) -> PackedColorArray:
 	var rng = RandomNumberGenerator.new()
 	rng.seed = seed_value
 	
 	match theme:
+		PlanetTheme.GAS_GIANT:
+			# Choose between different gas giant types
+			var gas_giant_type = rng.randi() % 4
+			
+			match gas_giant_type:
+				0:  # Jupiter-like (orange/brown tones)
+					return PackedColorArray([
+						Color(0.95, 0.80, 0.60),  # Light cream
+						Color(0.90, 0.70, 0.45),  # Sand
+						Color(0.85, 0.60, 0.35),  # Light tan
+						Color(0.75, 0.50, 0.25),  # Tan
+						Color(0.65, 0.40, 0.20),  # Brown
+						Color(0.55, 0.30, 0.15),  # Dark brown
+						Color(0.45, 0.25, 0.15),  # Red-brown
+						Color(0.35, 0.20, 0.12)   # Dark red-brown
+					])
+				1:  # Saturn-like (yellow/gold tones)
+					return PackedColorArray([
+						Color(0.98, 0.94, 0.80),  # Pale yellow
+						Color(0.95, 0.90, 0.70),  # Light gold
+						Color(0.90, 0.85, 0.60),  # Gold
+						Color(0.85, 0.78, 0.50),  # Dark gold
+						Color(0.80, 0.70, 0.45),  # Yellow-brown
+						Color(0.75, 0.65, 0.40),  # Amber
+						Color(0.70, 0.60, 0.35),  # Dark amber
+						Color(0.65, 0.55, 0.30)   # Yellow-tan
+					])
+				2:  # Neptune-like (blue tones)
+					return PackedColorArray([
+						Color(0.80, 0.90, 0.95),  # Pale blue
+						Color(0.70, 0.85, 0.95),  # Light blue
+						Color(0.60, 0.80, 0.90),  # Sky blue
+						Color(0.50, 0.75, 0.90),  # Azure
+						Color(0.40, 0.70, 0.85),  # Teal
+						Color(0.30, 0.60, 0.80),  # Blue
+						Color(0.25, 0.50, 0.75),  # Deep blue
+						Color(0.20, 0.40, 0.70)   # Navy blue
+					])
+				3:  # Exotic gas giant (unusual coloration)
+					return PackedColorArray([
+						Color(0.95, 0.70, 0.85),  # Pink
+						Color(0.90, 0.60, 0.80),  # Rose
+						Color(0.80, 0.50, 0.75),  # Magenta
+						Color(0.70, 0.40, 0.70),  # Purple
+						Color(0.60, 0.35, 0.65),  # Violet
+						Color(0.50, 0.30, 0.60),  # Deep purple
+						Color(0.40, 0.25, 0.55),  # Dark violet
+						Color(0.30, 0.20, 0.50)   # Indigo
+					])
+				_:  # Fallback
+					return PackedColorArray([
+						Color(0.95, 0.80, 0.60),
+						Color(0.85, 0.60, 0.35),
+						Color(0.65, 0.40, 0.20),
+						Color(0.45, 0.25, 0.15)
+					])
+		
 		PlanetTheme.ARID:
 			return PackedColorArray([
 				Color(0.90, 0.70, 0.40),
@@ -221,21 +344,24 @@ func create_empty_atmosphere() -> Image:
 	return empty_atmosphere
 
 func create_planet_texture(seed_value: int) -> Array:
-	var planet_size = PLANET_SIZE_LARGE
-	var image = Image.create(planet_size, planet_size, true, Image.FORMAT_RGBA8)
+	var theme = get_planet_theme(seed_value)
+	var is_gas_giant = theme == PlanetTheme.GAS_GIANT
 	
-	var current_theme = get_planet_theme(seed_value)
-	var colors = generate_planet_palette(current_theme, seed_value)
-	var planet_radius = PLANET_RADIUS
+	# Determine appropriate size based on planet type
+	var planet_size = PLANET_SIZE_GAS_GIANT if is_gas_giant else PLANET_SIZE_LARGE
+	var planet_radius = GAS_GIANT_RADIUS if is_gas_giant else PLANET_RADIUS
+	
+	var image = Image.create(planet_size, planet_size, true, Image.FORMAT_RGBA8)
+	var colors = generate_planet_palette(theme, seed_value)
 	
 	var aa_width = 1.5
 	var aa_width_normalized = aa_width / planet_radius
 	
 	var variation_seed_1 = seed_value + 12345
 	var variation_seed_2 = seed_value + 67890
+	var storm_seed = seed_value + 13579
 	
 	var color_size = colors.size() - 1
-	var _half_size = planet_size / 2.0
 	var planet_size_minus_one = planet_size - 1
 	
 	for y in range(planet_size):
@@ -260,24 +386,44 @@ func create_planet_texture(seed_value: int) -> Array:
 				alpha = clamp(alpha, 0.0, 1.0)
 			
 			var sphere_uv = spherify(nx, ny)
-			var base_noise = fbm(sphere_uv.x, sphere_uv.y, TERRAIN_OCTAVES, seed_value)
+			var color_index = 0
 			
-			var detail_variation_1 = fbm(sphere_uv.x * 3.0, sphere_uv.y * 3.0, 2, variation_seed_1) * 0.1
-			var detail_variation_2 = fbm(sphere_uv.x * 5.0, sphere_uv.y * 5.0, 1, variation_seed_2) * 0.05
-			
-			var combined_noise = base_noise + detail_variation_1 + detail_variation_2
-			combined_noise = clamp(combined_noise * COLOR_VARIATION, 0.0, 1.0)
-			
-			var color_index = int(combined_noise * color_size)
-			color_index = clamp(color_index, 0, color_size)
+			if is_gas_giant:
+				# Gas giant texture generation with banding
+				var band_value = generate_gas_giant_band(sphere_uv.y, seed_value)
+				
+				# Add horizontal turbulence
+				var turbulence = fbm(sphere_uv.x * 10.0, sphere_uv.y * 2.0, 3, variation_seed_1) * 0.2
+				band_value = (band_value + turbulence) * 0.8
+				
+				# Add storms and special features
+				var storm_value = generate_gas_giant_storms(sphere_uv, storm_seed)
+				band_value += storm_value
+				
+				# Get color index based on band value
+				color_index = int(band_value * color_size)
+				color_index = clamp(color_index, 0, color_size)
+			else:
+				# Regular planet texture generation logic
+				var base_noise = fbm(sphere_uv.x, sphere_uv.y, TERRAIN_OCTAVES, seed_value)
+				var detail_variation_1 = fbm(sphere_uv.x * 3.0, sphere_uv.y * 3.0, 2, variation_seed_1) * 0.1
+				var detail_variation_2 = fbm(sphere_uv.x * 5.0, sphere_uv.y * 5.0, 1, variation_seed_2) * 0.05
+				
+				var combined_noise = base_noise + detail_variation_1 + detail_variation_2
+				combined_noise = clamp(combined_noise * COLOR_VARIATION, 0.0, 1.0)
+				
+				color_index = int(combined_noise * color_size)
+				color_index = clamp(color_index, 0, color_size)
 			
 			var final_color = colors[color_index]
 			
-			var edge_shade = 1.0 - pow(normalized_dist, 2) * 0.3
+			# Create edge shading (darker at edges)
+			var edge_shade = 1.0 - pow(normalized_dist, 2) * (0.3 if is_gas_giant else 0.3)
 			final_color.r *= edge_shade
 			final_color.g *= edge_shade
 			final_color.b *= edge_shade
 			
+			# Apply alpha for anti-aliasing at the edges
 			final_color.a = alpha
 			
 			image.set_pixel(x, y, final_color)

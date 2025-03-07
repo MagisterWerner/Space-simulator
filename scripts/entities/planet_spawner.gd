@@ -1,7 +1,10 @@
 # scripts/entities/planet_spawner.gd
-# A fixed and optimized version of the planet spawner that handles texture generation efficiently
+# Updated planet spawner with gas giant support
 extends Node2D
 class_name PlanetSpawner
+
+# Instead of preloading with the same name as the global class,
+# we'll directly use the PlanetGenerator class since it's already globally available
 
 signal planet_spawned(planet_instance)
 signal spawner_ready
@@ -21,6 +24,7 @@ signal spawner_ready
 @export var moon_chance: int = 50 # Percentage chance to spawn moons
 @export var planet_scale: float = 1.0
 @export var custom_theme: int = -1  # -1 = random, otherwise use specific theme
+@export var force_gas_giant: bool = false  # Force spawning a gas giant
 @export var moon_distance_factor_min: float = 1.8
 @export var moon_distance_factor_max: float = 2.5
 @export var max_orbit_deviation: float = 0.15
@@ -42,6 +46,7 @@ var _planet_instance = null
 var _moon_instances = []
 var _initialized: bool = false
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
+var _is_gas_giant: bool = false
 
 # Texture cache shared between all planet spawners
 static var texture_cache = {
@@ -105,10 +110,39 @@ func _update_seed_value() -> void:
 	
 	# Initialize RNG with our seed
 	_rng.seed = _seed_value
+	
+	# Determine if this will be a gas giant
+	_check_if_gas_giant()
+
+func _check_if_gas_giant() -> void:
+	# If forced, we know it's a gas giant
+	if force_gas_giant:
+		_is_gas_giant = true
+		return
+	
+	# Otherwise check based on theme or chance
+	if custom_theme >= 0:
+		_is_gas_giant = custom_theme == PlanetGenerator.PlanetTheme.GAS_GIANT
+	else:
+		# Random determination
+		var generator = PlanetGenerator.new()
+		var theme = generator.get_planet_theme(_seed_value)
+		_is_gas_giant = theme == PlanetGenerator.PlanetTheme.GAS_GIANT
+	
+	# If debug mode, adjust planet scale appropriately for gas giants
+	if _is_gas_giant and debug_mode:
+		print("PlanetSpawner: Gas giant detected, adjusting scale")
 
 func _pregenerate_textures() -> void:
 	# Start with the primary seed
-	var theme = _get_random_theme(_seed_value)
+	var theme = custom_theme
+	if theme < 0:
+		var generator = PlanetGenerator.new()
+		theme = generator.get_planet_theme(_seed_value)
+	
+	# Adjust scale for gas giants
+	if theme == PlanetGenerator.PlanetTheme.GAS_GIANT:
+		_is_gas_giant = true
 	
 	# Make sure base textures for this seed are cached
 	if not texture_cache.planets.has(_seed_value):
@@ -120,15 +154,17 @@ func _pregenerate_textures() -> void:
 	# Generate a few moon textures in advance
 	for i in range(max_moons):
 		var moon_seed = _seed_value + i * 100
-		if not texture_cache.moons.has(moon_seed):
-			_generate_and_cache_moon_texture(moon_seed)
+		for moon_type in range(3):  # Generate for all moon types
+			var cache_key = moon_seed * 10 + moon_type
+			if not texture_cache.moons.has(cache_key):
+				_generate_and_cache_moon_texture(moon_seed, moon_type)
 	
 	# Clean cache if it's getting too large
 	_clean_cache_if_needed()
 
 func _generate_and_cache_planet_texture(seed_value: int) -> Texture2D:
-	var planet_generator = PlanetGenerator.new()
-	var texture = planet_generator.create_planet_texture(seed_value)[0]
+	var generator = PlanetGenerator.new()
+	var texture = generator.create_planet_texture(seed_value)[0]
 	texture_cache.planets[seed_value] = texture
 	return texture
 
@@ -140,10 +176,11 @@ func _generate_and_cache_atmosphere_texture(seed_value: int, theme: int) -> Text
 	texture_cache.atmospheres[seed_value] = texture
 	return texture
 
-func _generate_and_cache_moon_texture(seed_value: int) -> Texture2D:
+func _generate_and_cache_moon_texture(seed_value: int, moon_type: int = 0) -> Texture2D:
 	var moon_generator = MoonGenerator.new()
-	var texture = moon_generator.create_moon_texture(seed_value)
-	texture_cache.moons[seed_value] = texture
+	var cache_key = seed_value * 10 + moon_type  # Combine seed and type for unique key
+	var texture = moon_generator.create_moon_texture(seed_value, moon_type)
+	texture_cache.moons[cache_key] = texture
 	return texture
 
 func _get_random_theme(seed_value: int) -> int:
@@ -200,8 +237,14 @@ func spawn_planet() -> Node2D:
 	else:
 		_planet_instance.global_position = global_position
 	
-	# Scale the planet
-	_planet_instance.scale = Vector2(planet_scale, planet_scale)
+	# Apply appropriate scale based on whether it's a gas giant
+	var final_scale = planet_scale
+	if _is_gas_giant:
+		# For gas giants, we'll now use the full scale since the texture is already 2x
+		# We don't need to reduce the scale by 0.6 anymore
+		final_scale *= 1.0
+	
+	_planet_instance.scale = Vector2(final_scale, final_scale)
 	
 	# Set up the planet parameters
 	var planet_params = {
@@ -220,6 +263,8 @@ func spawn_planet() -> Node2D:
 	# If a specific theme is requested, add it to the parameters
 	if custom_theme >= 0:
 		planet_params["theme_override"] = custom_theme
+	elif force_gas_giant:
+		planet_params["theme_override"] = PlanetGenerator.PlanetTheme.GAS_GIANT
 	
 	# Initialize the planet with our parameters
 	_planet_instance.initialize(planet_params)
@@ -235,6 +280,8 @@ func spawn_planet() -> Node2D:
 	
 	if debug_mode:
 		print("Planet spawned at position: ", _planet_instance.global_position)
+		if _is_gas_giant:
+			print("Spawned a gas giant planet")
 	
 	# Emit spawned signal
 	planet_spawned.emit(_planet_instance)
@@ -283,6 +330,12 @@ func _on_seed_changed(_new_seed: int) -> void:
 	if debug_mode:
 		print("PlanetSpawner updated with new seed: ", _seed_value)
 
+# Force spawn a gas giant planet
+func spawn_gas_giant() -> Node2D:
+	force_gas_giant = true
+	_is_gas_giant = true
+	return spawn_planet()
+
 # Force respawn with new parameters
 func respawn(params: Dictionary = {}) -> Node2D:
 	# Update parameters if provided
@@ -294,6 +347,10 @@ func respawn(params: Dictionary = {}) -> Node2D:
 		planet_scale = params.planet_scale
 	if params.has("custom_theme"):
 		custom_theme = params.custom_theme
+		_check_if_gas_giant()
+	if params.has("force_gas_giant"):
+		force_gas_giant = params.force_gas_giant
+		_is_gas_giant = force_gas_giant
 	if params.has("grid_x"):
 		grid_x = params.grid_x
 	if params.has("grid_y"):
@@ -328,6 +385,10 @@ func get_planet_instance() -> Node2D:
 # Public getter for moon instances
 func get_moon_instances() -> Array:
 	return _moon_instances
+
+# Check if this spawner has a gas giant
+func is_gas_giant() -> bool:
+	return _is_gas_giant
 
 # Get a specific parameter for the planet from SeedManager
 func get_deterministic_param(param_name: String, min_val: float, max_val: float, sub_id: int = 0) -> float:

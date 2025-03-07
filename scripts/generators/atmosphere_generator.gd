@@ -1,42 +1,38 @@
 # scripts/generators/atmosphere_generator.gd
-# Fixed atmosphere generator with perfect planet edge alignment
 extends RefCounted
 class_name AtmosphereGenerator
 
-enum PlanetTheme {
-	ARID,
-	ICE,
-	LAVA,
-	LUSH,
-	DESERT,
-	ALPINE,
-	OCEAN
-}
+# Import the PlanetGenerator enums directly to avoid shadowing
+const PlanetThemes = preload("res://scripts/generators/planet_generator.gd").PlanetTheme
 
 # Constants for atmosphere generation
 const BASE_ATMOSPHERE_SIZE: int = 384
+const GAS_GIANT_ATMOSPHERE_SIZE: int = 768  # Larger atmosphere for gas giants
 const BASE_THICKNESS_FACTOR: float = 0.3
+const GAS_GIANT_THICKNESS_FACTOR: float = 0.15  # Thinner relative to size but still substantial
 
-# Theme-based atmosphere colors
+# Theme-based atmosphere colors - using PlanetThemes enum for reference
 const ATMOSPHERE_COLORS = {
-	PlanetTheme.ARID: Color(0.8, 0.6, 0.4, 0.3),
-	PlanetTheme.ICE: Color(0.8, 0.9, 1.0, 0.2),
-	PlanetTheme.LAVA: Color(0.9, 0.3, 0.1, 0.5),
-	PlanetTheme.LUSH: Color(0.5, 0.8, 1.0, 0.3),
-	PlanetTheme.DESERT: Color(0.9, 0.7, 0.4, 0.4),
-	PlanetTheme.ALPINE: Color(0.7, 0.9, 1.0, 0.25),
-	PlanetTheme.OCEAN: Color(0.4, 0.7, 0.9, 0.35)
+	PlanetThemes.ARID: Color(0.8, 0.6, 0.4, 0.3),
+	PlanetThemes.ICE: Color(0.8, 0.9, 1.0, 0.2),
+	PlanetThemes.LAVA: Color(0.9, 0.3, 0.1, 0.5),
+	PlanetThemes.LUSH: Color(0.5, 0.8, 1.0, 0.3),
+	PlanetThemes.DESERT: Color(0.9, 0.7, 0.4, 0.4),
+	PlanetThemes.ALPINE: Color(0.7, 0.9, 1.0, 0.25),
+	PlanetThemes.OCEAN: Color(0.4, 0.7, 0.9, 0.35),
+	PlanetThemes.GAS_GIANT: Color(0.6, 0.8, 0.9, 0.4)  # Default gas giant atmosphere
 }
 
 # Theme-based atmosphere thickness
 const ATMOSPHERE_THICKNESS = {
-	PlanetTheme.ARID: 1.1,
-	PlanetTheme.ICE: 0.8,
-	PlanetTheme.LAVA: 1.6,
-	PlanetTheme.LUSH: 1.2,
-	PlanetTheme.DESERT: 1.3,
-	PlanetTheme.ALPINE: 0.9,
-	PlanetTheme.OCEAN: 1.15
+	PlanetThemes.ARID: 1.1,
+	PlanetThemes.ICE: 0.8,
+	PlanetThemes.LAVA: 1.6,
+	PlanetThemes.LUSH: 1.2,
+	PlanetThemes.DESERT: 1.3,
+	PlanetThemes.ALPINE: 0.9,
+	PlanetThemes.OCEAN: 1.15,
+	PlanetThemes.GAS_GIANT: 1.4  # Gas giants have substantial atmospheres
 }
 
 # Texture cache for reuse
@@ -55,6 +51,24 @@ func generate_atmosphere_data(theme: int, seed_value: int) -> Dictionary:
 	var color_variation = 0.1
 	var thickness_variation = 0.2
 	
+	# Special handling for gas giants
+	if theme == PlanetThemes.GAS_GIANT:
+		# Different gas giant atmosphere types based on seed
+		var gas_giant_type = rng.randi() % 4
+		
+		match gas_giant_type:
+			0:  # Jupiter-like (amber atmosphere)
+				base_color = Color(0.9, 0.7, 0.4, 0.45)
+			1:  # Saturn-like (pale yellow atmosphere)
+				base_color = Color(0.95, 0.9, 0.6, 0.35)
+			2:  # Neptune-like (blue atmosphere)
+				base_color = Color(0.5, 0.7, 0.9, 0.4)
+			3:  # Exotic (unusual coloration)
+				base_color = Color(0.8, 0.6, 0.8, 0.4)
+		
+		# Gas giants can have more color variation
+		color_variation = 0.15
+	
 	# Vary the color components slightly
 	var r = clamp(base_color.r + (rng.randf() - 0.5) * color_variation, 0, 1)
 	var g = clamp(base_color.g + (rng.randf() - 0.5) * color_variation, 0, 1)
@@ -65,12 +79,17 @@ func generate_atmosphere_data(theme: int, seed_value: int) -> Dictionary:
 	var thickness = base_thickness * (1.0 + (rng.randf() - 0.5) * thickness_variation)
 	
 	# Special adjustments for certain planet types
-	if theme == PlanetTheme.LAVA:
+	if theme == PlanetThemes.LAVA:
 		thickness *= 1.2
 		color.a = min(color.a + 0.1, 0.8)
 	
-	if theme == PlanetTheme.OCEAN:
+	if theme == PlanetThemes.OCEAN:
 		color.g += 0.05
+	
+	# For gas giants, ensure appropriate atmospheric characteristics
+	if theme == PlanetThemes.GAS_GIANT:
+		thickness *= 1.1  # Slightly thicker
+		color.a = clamp(color.a + 0.05, 0.3, 0.5)  # More noticeable
 	
 	return {
 		"color": color,
@@ -100,18 +119,19 @@ static func get_atmosphere_texture(theme: int, seed_value: int, color: Color, th
 	return texture
 
 # Generate atmosphere texture with perfect planet edge alignment
-# Parameters _theme and _seed_value are kept for API compatibility but not used directly
-func generate_atmosphere_texture(_theme: int, _seed_value: int, color: Color, thickness_factor: float) -> ImageTexture:
-	var atm_size = BASE_ATMOSPHERE_SIZE
+# Parameters theme and seed_value are used to determine if this is a gas giant
+func generate_atmosphere_texture(theme: int, seed_value: int, color: Color, thickness_factor: float) -> ImageTexture:
+	var is_gas_giant = theme == PlanetThemes.GAS_GIANT
+	var atm_size = GAS_GIANT_ATMOSPHERE_SIZE if is_gas_giant else BASE_ATMOSPHERE_SIZE
 	var image = Image.create(atm_size, atm_size, true, Image.FORMAT_RGBA8)
 	
-	# CRITICAL: Planet radius must be exactly 127 to match 256px planet textures
-	var planet_radius = 127.0
+	# CRITICAL: Planet radius must match the planet texture size
+	var planet_radius = 255.0 if is_gas_giant else 127.0  # Match 512px or 256px planet textures
 	
 	# Calculate atmosphere dimensions
 	# Use exact planet radius as inner radius (no gap) with slight overlap
 	var inner_radius = planet_radius - 1.0  # 1px overlap for smoother blend
-	var thickness = planet_radius * BASE_THICKNESS_FACTOR * thickness_factor
+	var thickness = planet_radius * (GAS_GIANT_THICKNESS_FACTOR if is_gas_giant else BASE_THICKNESS_FACTOR) * thickness_factor
 	var outer_radius = planet_radius + thickness
 	
 	# Center of the texture
@@ -153,9 +173,20 @@ func generate_atmosphere_texture(_theme: int, _seed_value: int, color: Color, th
 			# Use cubic curve for smoother gradient
 			alpha_curve = alpha_curve * alpha_curve * (3.0 - 2.0 * alpha_curve)
 			
+			# Gas giants can have slight color variations in their atmosphere
+			var final_color = color
+			if is_gas_giant:
+				var angle = atan2(pos.y - center.y, pos.x - center.x)
+				var band_factor = sin(angle * 3.0 + seed_value) * 0.05
+				
+				# Apply subtle color variation
+				final_color.r = clamp(color.r + band_factor, 0, 1)
+				final_color.g = clamp(color.g + band_factor * 0.7, 0, 1)
+				final_color.b = clamp(color.b + band_factor * 0.5, 0, 1)
+			
 			# Create final pixel color
 			var final_alpha = color.a * alpha_curve
-			var final_color = Color(color.r, color.g, color.b, final_alpha)
+			final_color.a = final_alpha
 			
 			# Apply the pixel
 			image.set_pixel(x, y, final_color)

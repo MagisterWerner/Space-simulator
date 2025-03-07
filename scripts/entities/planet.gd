@@ -1,6 +1,9 @@
 # scripts/entities/planet.gd
-# Optimized planet script with improved moon orbiting system and moon types
+# Updated planet script with gas giant support
 extends Node2D
+
+# Import the PlanetGenerator enum directly to avoid shadowing
+const PlanetThemes = preload("res://scripts/generators/planet_generator.gd").PlanetTheme
 
 signal planet_loaded(planet)
 
@@ -21,6 +24,7 @@ var atmosphere_data: Dictionary
 var moons = []
 var grid_x: int = 0
 var grid_y: int = 0
+var is_gas_giant: bool = false
 
 # Define moon types for consistent reference
 enum MoonType {
@@ -95,18 +99,29 @@ func initialize(params: Dictionary) -> void:
 		var planet_generator = PlanetGenerator.new()
 		theme_id = planet_generator.get_planet_theme(seed_value)
 	
+	# Check if this is a gas giant
+	is_gas_giant = theme_id == PlanetThemes.GAS_GIANT
+	
+	# Adjust max moons for gas giants - they can have more moons
+	if is_gas_giant:
+		var rng = RandomNumberGenerator.new()
+		rng.seed = seed_value + 12345
+		# Gas giants have more moons
+		max_moons = rng.randi_range(3, 7)
+		moon_chance = 80  # Higher chance of having moons
+	
 	# Attempt to use cached textures if texture caching is enabled
 	if use_texture_cache and PlanetSpawner.texture_cache != null:
 		# Try to get planet texture from cache
 		if PlanetSpawner.texture_cache.planets.has(seed_value):
 			planet_texture = PlanetSpawner.texture_cache.planets[seed_value]
-			pixel_size = 256
+			pixel_size = 512 if is_gas_giant else 256
 		else:
 			# Generate and cache the texture
 			var planet_generator = PlanetGenerator.new()
 			var textures = planet_generator.create_planet_texture(seed_value)
 			planet_texture = textures[0]
-			pixel_size = 256
+			pixel_size = 512 if is_gas_giant else 256
 			PlanetSpawner.texture_cache.planets[seed_value] = planet_texture
 		
 		# Try to get atmosphere texture from cache
@@ -128,14 +143,16 @@ func initialize(params: Dictionary) -> void:
 		planet_texture = planet_gen_params.texture
 		atmosphere_data = planet_gen_params.atmosphere
 		atmosphere_texture = planet_gen_params.atmosphere_texture
+		is_gas_giant = theme_id == PlanetThemes.GAS_GIANT
 	
 	# Set up name component
 	name_component = get_node_or_null("NameComponent")
 	if name_component:
-		name_component.initialize(seed_value, grid_x, grid_y)
+		var type_prefix = "Gas Giant" if is_gas_giant else ""
+		name_component.initialize(seed_value, grid_x, grid_y, "", type_prefix)
 		planet_name = name_component.get_entity_name()
 	else:
-		planet_name = "Planet-" + str(seed_value % 1000)
+		planet_name = ("Gas Giant " if is_gas_giant else "Planet-") + str(seed_value % 1000)
 	
 	# Defer moon creation to avoid stuttering
 	call_deferred("_create_moons")
@@ -145,10 +162,12 @@ func _emit_planet_loaded() -> void:
 
 func _generate_planet_data(planet_seed: int) -> Dictionary:
 	var planet_generator = PlanetGenerator.new()
+	var theme = planet_generator.get_planet_theme(planet_seed)
+	var is_gas_giant_type = theme == PlanetThemes.GAS_GIANT
+	
 	var textures = planet_generator.create_planet_texture(planet_seed)
 	
 	var atmosphere_generator = AtmosphereGenerator.new()
-	var theme = planet_generator.get_planet_theme(planet_seed)
 	var atm_data = atmosphere_generator.generate_atmosphere_data(theme, planet_seed)
 	var atm_texture = atmosphere_generator.generate_atmosphere_texture(
 		theme, 
@@ -160,7 +179,7 @@ func _generate_planet_data(planet_seed: int) -> Dictionary:
 	return {
 		"texture": textures[0],
 		"theme": theme,
-		"pixel_size": 256,
+		"pixel_size": 512 if is_gas_giant_type else 256,
 		"atmosphere": atm_data,
 		"atmosphere_texture": atm_texture
 	}
@@ -188,8 +207,23 @@ func _create_moons() -> void:
 		if not moon_instance:
 			continue
 		
-		# Determine moon type randomly for now
-		var moon_type = _get_random_moon_type(rng)
+		# For gas giants, prefer certain moon types based on position
+		var moon_type
+		if is_gas_giant:
+			# Inner moons tend to be rocky/lava, outer moons tend to be icy
+			var position_in_sequence = float(m) / max(1, num_moons - 1)
+			if position_in_sequence < 0.3:
+				# Inner moons - prefer rocky/lava
+				moon_type = MoonType.ROCKY if rng.randf() < 0.7 else MoonType.LAVA
+			elif position_in_sequence > 0.7:
+				# Outer moons - prefer ice
+				moon_type = MoonType.ICE if rng.randf() < 0.8 else MoonType.ROCKY
+			else:
+				# Middle moons - roughly equal chances
+				moon_type = rng.randi() % 3  # Random moon type
+		else:
+			# For normal planets, use fully random distribution
+			moon_type = _get_random_moon_type(rng)
 		
 		# Use the pre-calculated orbital parameters
 		var moon_params = {
@@ -238,6 +272,10 @@ func _generate_orbital_parameters(moon_count: int, rng: RandomNumberGenerator) -
 	var min_distance = planet_radius * min_moon_distance_factor
 	var max_distance = planet_radius * max_moon_distance_factor
 	
+	# For gas giants, expand the orbital range for moons
+	if is_gas_giant:
+		max_distance = planet_radius * (max_moon_distance_factor + 0.5)
+	
 	# For multiple moons, use intelligent parameter distribution
 	if moon_count > 1:
 		# Step 1: Calculate distances with spacing to avoid crowding
@@ -252,7 +290,10 @@ func _generate_orbital_parameters(moon_count: int, rng: RandomNumberGenerator) -
 			# Step 2: Calculate orbital speed based on distance (Kepler's law)
 			# Closer moons orbit faster (sqrt relationship)
 			var speed_factor = 1.0 / sqrt(distance / min_distance)
-			var orbit_speed = rng.randf_range(0.2, 0.4) * moon_orbit_factor * speed_factor
+			
+			# Gas giants have slower orbiting moons due to greater mass
+			var orbit_modifier = 0.8 if is_gas_giant else 1.0
+			var orbit_speed = rng.randf_range(0.2, 0.4) * moon_orbit_factor * speed_factor * orbit_modifier
 			
 			# Step 3: Distribute phase offsets evenly around orbit
 			# This ensures moons start at different positions
@@ -274,7 +315,7 @@ func _generate_orbital_parameters(moon_count: int, rng: RandomNumberGenerator) -
 		params.append({
 			"distance": rng.randf_range(min_distance, max_distance),
 			"base_angle": 0.0,
-			"orbit_speed": rng.randf_range(0.2, 0.5) * moon_orbit_factor,
+			"orbit_speed": rng.randf_range(0.2, 0.5) * moon_orbit_factor * (0.8 if is_gas_giant else 1.0),
 			"orbit_deviation": rng.randf_range(0.05, max_orbit_deviation),
 			"phase_offset": rng.randf_range(0, TAU) # Random starting position
 		})
