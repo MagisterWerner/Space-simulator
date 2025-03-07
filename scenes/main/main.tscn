@@ -20,4 +20,4 @@ position_smoothing_speed = 3.0
 
 [node name="WorldGrid" parent="." instance=ExtResource("5_84hlr")]
 grid_size = 5
-grid_opacity = 0.75
+grid_opacity = 0.1
