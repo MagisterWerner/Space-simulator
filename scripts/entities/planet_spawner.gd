@@ -1,5 +1,45 @@
 # scripts/entities/planet_spawner.gd
-# Planet spawner with clear TERRAN/GASEOUS separation and more robust generation
+# ==========================
+# PURPOSE:
+#   An optimized planet spawner that enables procedurally generating planets
+#   with precise control over their type, appearance, and characteristics.
+#
+# USAGE:
+#   1. Basic planet spawning:
+#      var planet = $PlanetSpawner.spawn_planet()  # Random planet
+#
+#   2. Spawn specific planet type by category and theme:
+#      var lush_planet = $PlanetSpawner.spawn_specific_planet("terran", "lush")
+#      var gas_giant = $PlanetSpawner.spawn_specific_planet("gaseous")
+#
+#   3. Convenient helper methods:
+#      var ice_planet = $PlanetSpawner.spawn_terran_planet("ice")
+#      var gas_giant = $PlanetSpawner.spawn_gaseous_planet()
+#
+#   4. Spawn planet at specific grid position:
+#      $PlanetSpawner.set_grid_position(3, 5)
+#      var planet = $PlanetSpawner.spawn_terran_planet("ocean")
+#
+#   5. Advanced customization:
+#      var params = {
+#         "category": "terran",
+#         "theme": "alpine",
+#         "grid_x": 7,
+#         "grid_y": 2,
+#         "planet_scale": 1.2,
+#         "moon_chance": 75
+#      }
+#      var custom_planet = $PlanetSpawner.spawn_with_params(params)
+#
+# AVAILABLE PLANET TYPES:
+#   - Terran (rocky planets): "arid", "ice", "lava", "lush", "desert", "alpine", "ocean"
+#   - Gaseous (gas giants): currently only one type, specify simply as "gaseous"
+#
+# NOTES:
+#   - Planets are procedurally generated based on a seed value
+#   - The same seed will always produce the same planet
+#   - All planets can have moons based on type/parameters
+
 extends Node2D
 class_name PlanetSpawner
 
@@ -64,6 +104,23 @@ static var texture_cache = {
 const MAX_CACHE_SIZE = 30
 var _cache_last_cleaned = 0
 
+# String-to-enum mappings for planet types
+const CATEGORY_MAP = {
+	"terran": PlanetCategories.TERRAN,
+	"gaseous": PlanetCategories.GASEOUS
+}
+
+const THEME_MAP = {
+	"arid": PlanetThemes.ARID,
+	"ice": PlanetThemes.ICE,
+	"lava": PlanetThemes.LAVA,
+	"lush": PlanetThemes.LUSH,
+	"desert": PlanetThemes.DESERT,
+	"alpine": PlanetThemes.ALPINE,
+	"ocean": PlanetThemes.OCEAN,
+	"gas_giant": PlanetThemes.GAS_GIANT
+}
+
 func _ready() -> void:
 	# Load planet scene if not set
 	if planet_scene == null:
@@ -97,6 +154,82 @@ func _initialize() -> void:
 	if debug_mode:
 		print("PlanetSpawner initialized with seed: ", _seed_value)
 		print("Planet category: ", "Gaseous" if planet_category == PlanetCategories.GASEOUS else "Terran")
+
+# Spawn a planet with specific category and theme (as strings)
+func spawn_specific_planet(category_name: String = "random", theme_name: String = "random") -> Node2D:
+	# Determine category enum value
+	var category_enum: int
+	if category_name == "random":
+		category_enum = planet_category  # Use exported value
+	else:
+		category_name = category_name.to_lower()
+		category_enum = CATEGORY_MAP.get(category_name, planet_category)
+	
+	# Determine theme enum value
+	var theme_enum: int = -1  # -1 means random
+	if theme_name != "random":
+		theme_name = theme_name.to_lower()
+		theme_enum = THEME_MAP.get(theme_name, -1)
+	
+	# Special case for gaseous planets (only gas_giant theme available)
+	if category_enum == PlanetCategories.GASEOUS:
+		theme_enum = PlanetThemes.GAS_GIANT
+	
+	# Update internal state
+	planet_category = category_enum
+	if category_enum == PlanetCategories.TERRAN and theme_enum >= 0:
+		# +1 because 0 is "Random" in the export enum
+		terran_theme = theme_enum + 1
+	
+	# Spawn the planet with updated parameters
+	return spawn_planet()
+
+# Convenient method to spawn a terran planet with specific theme
+func spawn_terran_planet(theme_name: String = "random") -> Node2D:
+	return spawn_specific_planet("terran", theme_name)
+
+# Convenient method to spawn a gaseous planet
+func spawn_gaseous_planet() -> Node2D:
+	return spawn_specific_planet("gaseous")
+
+# Spawn a planet with a complete parameter dictionary
+func spawn_with_params(params: Dictionary) -> Node2D:
+	# Extract and apply parameters
+	if params.has("category"):
+		var category_name = params.category.to_lower()
+		if CATEGORY_MAP.has(category_name):
+			planet_category = CATEGORY_MAP[category_name]
+	
+	if params.has("theme") and planet_category == PlanetCategories.TERRAN:
+		var theme_name = params.theme.to_lower()
+		if THEME_MAP.has(theme_name):
+			terran_theme = THEME_MAP[theme_name] + 1  # +1 for export enum offset
+	
+	# Apply additional parameters
+	if params.has("moon_chance"):
+		moon_chance = params.moon_chance
+	
+	if params.has("planet_scale"):
+		planet_scale = params.planet_scale
+	
+	if params.has("grid_x"):
+		grid_x = params.grid_x
+	
+	if params.has("grid_y"):
+		grid_y = params.grid_y
+	
+	if params.has("local_seed_offset"):
+		local_seed_offset = params.local_seed_offset
+	
+	if params.has("z_index_base"):
+		z_index_base = params.z_index_base
+	
+	if params.has("moon_orbit_speed_factor"):
+		moon_orbit_speed_factor = params.moon_orbit_speed_factor
+	
+	# Update seed and spawn
+	_update_seed_value()
+	return spawn_planet()
 
 func _update_seed_value() -> void:
 	if force_random_seed:
@@ -363,6 +496,7 @@ func _on_planet_loaded(planet) -> void:
 				if debug_mode:
 					print("Moon registered: ", moon.moon_name)
 
+# Clean up existing planet and moons
 func cleanup() -> void:
 	# Clean up existing planet and moons
 	if _planet_instance and is_instance_valid(_planet_instance):
@@ -381,7 +515,7 @@ func cleanup() -> void:
 	# Clear moon references
 	_moon_instances.clear()
 
-func _on_seed_changed(_new_seed: int) -> void:
+func _on_seed_changed(new_seed: int) -> void:
 	# Update seed and respawn if already spawned
 	_update_seed_value()
 	
@@ -391,34 +525,6 @@ func _on_seed_changed(_new_seed: int) -> void:
 	if debug_mode:
 		print("PlanetSpawner updated with new seed: ", _seed_value)
 		print("Planet category: ", "Gaseous" if planet_category == PlanetCategories.GASEOUS else "Terran")
-
-# Force respawn with new parameters
-func respawn(params: Dictionary = {}) -> Node2D:
-	# Update parameters if provided
-	if params.has("planet_category"):
-		planet_category = params.planet_category
-	if params.has("terran_theme"):
-		terran_theme = params.terran_theme
-	if params.has("moon_chance"):
-		moon_chance = params.moon_chance
-	if params.has("planet_scale"):
-		planet_scale = params.planet_scale
-	if params.has("grid_x"):
-		grid_x = params.grid_x
-	if params.has("grid_y"):
-		grid_y = params.grid_y
-	if params.has("local_seed_offset"):
-		local_seed_offset = params.local_seed_offset
-	if params.has("z_index_base"):
-		z_index_base = params.z_index_base
-	if params.has("moon_orbit_speed_factor"):
-		moon_orbit_speed_factor = params.moon_orbit_speed_factor
-	
-	# Update seed value based on new parameters
-	_update_seed_value()
-	
-	# Spawn new planet with updated parameters
-	return spawn_planet()
 
 # Set grid position and update
 func set_grid_position(x: int, y: int) -> void:
@@ -433,6 +539,18 @@ func set_grid_position(x: int, y: int) -> void:
 	
 	if debug_mode:
 		print("PlanetSpawner grid position updated to: ", Vector2i(grid_x, grid_y))
+
+# Force a specific planet type
+func force_planet_type(is_gaseous: bool, theme_index: int = -1) -> void:
+	planet_category = PlanetCategories.GASEOUS if is_gaseous else PlanetCategories.TERRAN
+	
+	if not is_gaseous and theme_index >= 0 and theme_index < PlanetThemes.GAS_GIANT:
+		terran_theme = theme_index + 1  # +1 because 0 is Random in the export enum
+		
+	# Update and respawn if already initialized
+	if _initialized:
+		_update_seed_value()
+		spawn_planet()
 
 # Public getter for the spawned planet instance
 func get_planet_instance() -> Node2D:
@@ -450,17 +568,9 @@ func is_gaseous_planet() -> bool:
 func is_terran_planet() -> bool:
 	return planet_category == PlanetCategories.TERRAN
 
-# Force a specific planet type by category and theme
-func force_planet_type(is_gaseous: bool, theme_index: int = -1) -> void:
-	planet_category = PlanetCategories.GASEOUS if is_gaseous else PlanetCategories.TERRAN
-	
-	if not is_gaseous and theme_index >= 0 and theme_index < PlanetThemes.GAS_GIANT:
-		terran_theme = theme_index + 1  # +1 because 0 is Random in the export enum
-		
-	# Update and respawn if already initialized
-	if _initialized:
-		_update_seed_value()
-		spawn_planet()
+# Get the category name for the current planet
+func get_category_name() -> String:
+	return "Gaseous" if is_gaseous_planet() else "Terran"
 
 # Get a specific parameter for the planet from SeedManager
 func get_deterministic_param(param_name: String, min_val: float, max_val: float, sub_id: int = 0) -> float:
