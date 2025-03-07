@@ -50,13 +50,8 @@ const COLOR_VARIATION: float = 1.5
 
 # Gas giant specific constants
 const GAS_GIANT_BANDS: int = 12         # Number of primary bands
-const GAS_GIANT_BAND_NOISE: float = 0.7  # How noisy the bands are
-const GAS_GIANT_FLOW: float = 2.5       # How much the bands "flow" horizontally
-const GAS_GIANT_STORM_CHANCE: float = 1.0 # Always generate storms (100% chance)
-const GAS_GIANT_STORM_MIN_COUNT: int = 2 # Minimum number of storms
-const GAS_GIANT_STORM_MAX_COUNT: int = 4 # Maximum number of storms
-const GAS_GIANT_STORM_MIN_SIZE: float = 0.03 # Minimum storm size
-const GAS_GIANT_STORM_MAX_SIZE: float = 0.12 # Maximum storm size
+const GAS_GIANT_BAND_NOISE: float = 0.5  # How noisy the bands are (reduced from 0.7)
+const GAS_GIANT_FLOW: float = 2.0       # How much the bands "flow" horizontally (reduced from 2.5)
 
 # Static texture cache to avoid regenerating the same planets
 static var planet_texture_cache: Dictionary = {}
@@ -214,77 +209,6 @@ func generate_gas_giant_band(y_coord: float, seed_value: int) -> float:
 	
 	return (primary_bands + band_noise + flow_noise) * 0.5 + 0.5
 
-# Create realistic gas giant storms - UPDATED to ensure storm generation
-func generate_gas_giant_storms(sphere_uv: Vector2, seed_value: int) -> float:
-	var rng = RandomNumberGenerator.new()
-	rng.seed = seed_value + 78912
-	
-	# Always generate storms - number determined by parameters
-	var storm_count = rng.randi_range(GAS_GIANT_STORM_MIN_COUNT, GAS_GIANT_STORM_MAX_COUNT)
-	var storm_value = 0.0
-	
-	# Track storm positions to prevent overlapping
-	var storm_positions = []
-	
-	# Color band for the great red spot - ensure at least one storm is in this band
-	var red_spot_band_y = rng.randf_range(0.45, 0.65)
-	var red_spot_created = false
-	
-	for i in range(storm_count):
-		# For the first storm, place it in the red spot band
-		var storm_y = red_spot_band_y
-		var storm_x = rng.randf_range(0.3, 0.7) # Visible part of the planet
-		var storm_size = rng.randf_range(GAS_GIANT_STORM_MAX_SIZE * 0.7, GAS_GIANT_STORM_MAX_SIZE) # Larger size for the main spot
-		
-		# For subsequent storms, use normal distribution
-		if i > 0 or red_spot_created:
-			storm_y = rng.randf_range(0.3, 0.7)
-			storm_x = rng.randf()
-			storm_size = rng.randf_range(GAS_GIANT_STORM_MIN_SIZE, GAS_GIANT_STORM_MAX_SIZE)
-		else:
-			red_spot_created = true
-		
-		var storm_pos = Vector2(storm_x, storm_y)
-		
-		# Check for existing storms to avoid overlap
-		var too_close = false
-		for pos in storm_positions:
-			if storm_pos.distance_to(pos.position) < (storm_size + pos.size) * 1.5:
-				too_close = true
-				break
-		
-		# Try again if too close to another storm
-		if too_close:
-			if i > 0: # Don't skip the main red spot
-				continue
-		
-		# Add to tracking array
-		storm_positions.append({
-			"position": storm_pos,
-			"size": storm_size
-		})
-		
-		# Calculate distance to storm center - using adjusted_dist for oval storms
-		var adjusted_dist = Vector2(
-			(sphere_uv.x - storm_pos.x) * 1.7,  # Oval factor X 
-			(sphere_uv.y - storm_pos.y) * 1.0   # Oval factor Y
-		).length()
-		
-		# Add storm if within storm radius
-		if adjusted_dist < storm_size:
-			# Falloff at edges
-			var storm_strength = 1.0 - smoothstep(0, storm_size, adjusted_dist)
-			
-			# For the first storm (Great Red Spot), always make it darker
-			if i == 0 and red_spot_created and adjusted_dist < storm_size * 0.8:
-				storm_value -= storm_strength * 0.4
-			else:
-				# Randomly make storm lighter or darker - with preference for darker
-				var storm_polarity = rng.randf() > 0.7
-				storm_value += storm_strength * (1.0 if storm_polarity else -1.0) * 0.3
-	
-	return storm_value
-
 # Generate appropriate color palette for each planet theme
 func generate_planet_palette(theme: int, seed_value: int) -> PackedColorArray:
 	var rng = RandomNumberGenerator.new()
@@ -292,61 +216,60 @@ func generate_planet_palette(theme: int, seed_value: int) -> PackedColorArray:
 	
 	match theme:
 		PlanetTheme.GAS_GIANT:
-			# Choose between different gas giant types
-			var gas_giant_type = rng.randi() % 4
+			# Force deterministic gas giant type selection based on seed
+			var gas_giant_type = seed_value % 4
 			
 			match gas_giant_type:
-				0:  # Jupiter-like (orange/brown tones) - REVISED for more balanced palette
+				0:  # Jupiter-like (balanced beige/tan/brown tones)
 					return PackedColorArray([
-						Color(0.88, 0.75, 0.55),  # Muted cream (was too bright)
-						Color(0.85, 0.68, 0.42),  # Darker sand
-						Color(0.82, 0.58, 0.35),  # Light tan
-						Color(0.75, 0.50, 0.25),  # Tan
-						Color(0.65, 0.40, 0.20),  # Brown
-						Color(0.55, 0.30, 0.15),  # Dark brown
-						Color(0.75, 0.35, 0.20),  # Reddish-brown (Great Red Spot)
-						Color(0.45, 0.25, 0.15)   # Dark red-brown
+						Color(0.83, 0.78, 0.65),  # Light beige
+						Color(0.80, 0.73, 0.60),  # Beige
+						Color(0.77, 0.68, 0.55),  # Darker beige
+						Color(0.74, 0.63, 0.50),  # Light tan
+						Color(0.71, 0.58, 0.45),  # Tan
+						Color(0.68, 0.53, 0.40),  # Dark tan
+						Color(0.65, 0.48, 0.35),  # Light brown
+						Color(0.62, 0.43, 0.30)   # Brown
 					])
-				1:  # Saturn-like (yellow/gold tones) - REVISED with less bright colors
+				1:  # Saturn-like (soft golden/yellow tones)
 					return PackedColorArray([
-						Color(0.90, 0.85, 0.68),  # Muted yellow (less bright)
-						Color(0.88, 0.83, 0.65),  # Light gold
-						Color(0.85, 0.78, 0.58),  # Gold
-						Color(0.82, 0.75, 0.50),  # Darker gold
-						Color(0.78, 0.68, 0.45),  # Yellow-brown
-						Color(0.74, 0.63, 0.40),  # Amber
-						Color(0.70, 0.58, 0.35),  # Dark amber
-						Color(0.75, 0.45, 0.25)   # Reddish-brown for storms
+						Color(0.85, 0.82, 0.70),  # Pale gold
+						Color(0.83, 0.80, 0.66),  # Light gold
+						Color(0.81, 0.78, 0.62),  # Gold
+						Color(0.79, 0.76, 0.58),  # Muted gold
+						Color(0.77, 0.74, 0.54),  # Darker gold
+						Color(0.75, 0.72, 0.50),  # Dusky gold
+						Color(0.73, 0.70, 0.46),  # Golden tan
+						Color(0.71, 0.68, 0.42)   # Dark golden tan
 					])
-				2:  # Neptune-like (blue tones) - REVISED with less contrast
+				2:  # Neptune-like (balanced blue tones)
 					return PackedColorArray([
-						Color(0.70, 0.82, 0.90),  # Less bright blue
-						Color(0.65, 0.78, 0.88),  # Light blue
-						Color(0.58, 0.75, 0.85),  # Sky blue
-						Color(0.50, 0.70, 0.82),  # Azure
-						Color(0.42, 0.65, 0.78),  # Teal
-						Color(0.35, 0.58, 0.75),  # Blue
-						Color(0.60, 0.40, 0.25),  # Reddish-brown for storms
-						Color(0.25, 0.42, 0.65)   # Navy blue
+						Color(0.60, 0.75, 0.85),  # Light blue
+						Color(0.55, 0.72, 0.83),  # Sky blue
+						Color(0.50, 0.69, 0.81),  # Azure
+						Color(0.45, 0.66, 0.79),  # Medium blue
+						Color(0.40, 0.63, 0.77),  # Blue
+						Color(0.35, 0.60, 0.75),  # Deep blue
+						Color(0.30, 0.57, 0.73),  # Dark blue
+						Color(0.25, 0.54, 0.71)   # Navy blue
 					])
-				3:  # Exotic gas giant - REVISED with more balanced palette
+				3:  # Exotic gas giant (subtle purple/lavender tones)
 					return PackedColorArray([
-						Color(0.90, 0.85, 0.70),  # Toned down pale yellow
-						Color(0.87, 0.80, 0.65),  # Light gold
-						Color(0.84, 0.75, 0.58),  # Golden
-						Color(0.80, 0.70, 0.48),  # Amber
-						Color(0.75, 0.62, 0.38),  # Dark amber
-						Color(0.70, 0.50, 0.25),  # Brown
-						Color(0.68, 0.40, 0.22),  # Reddish-brown (for storms)
-						Color(0.78, 0.70, 0.55)   # Beige (less bright)
+						Color(0.75, 0.70, 0.85),  # Very light lavender
+						Color(0.70, 0.65, 0.83),  # Light lavender
+						Color(0.65, 0.60, 0.81),  # Lavender
+						Color(0.60, 0.55, 0.79),  # Medium lavender
+						Color(0.55, 0.50, 0.77),  # Dusky lavender
+						Color(0.50, 0.45, 0.75),  # Light purple
+						Color(0.45, 0.40, 0.73),  # Purple
+						Color(0.40, 0.35, 0.71)   # Deep purple
 					])
 				_:  # Fallback
 					return PackedColorArray([
-						Color(0.88, 0.75, 0.55),
-						Color(0.82, 0.58, 0.32),
-						Color(0.70, 0.42, 0.20),
-						Color(0.75, 0.35, 0.18),
-						Color(0.45, 0.25, 0.15)
+						Color(0.83, 0.78, 0.65),
+						Color(0.77, 0.68, 0.55),
+						Color(0.71, 0.58, 0.45),
+						Color(0.65, 0.48, 0.35),
 					])
 		
 		PlanetTheme.ARID:
@@ -446,8 +369,8 @@ func create_empty_atmosphere() -> Image:
 	return empty_atmosphere
 
 # Main function to create a complete planet texture
-func create_planet_texture(seed_value: int) -> Array:
-	var theme = get_planet_theme(seed_value)
+func create_planet_texture(seed_value: int, explicit_theme: int = -1) -> Array:
+	var theme = explicit_theme if explicit_theme >= 0 else get_planet_theme(seed_value)
 	var category = get_planet_category(theme)
 	
 	# Determine appropriate size based on planet category
@@ -462,7 +385,6 @@ func create_planet_texture(seed_value: int) -> Array:
 	
 	var variation_seed_1 = seed_value + 12345
 	var variation_seed_2 = seed_value + 67890
-	var storm_seed = seed_value + 13579
 	
 	var color_size = colors.size() - 1
 	var planet_size_minus_one = planet_size - 1
@@ -500,28 +422,10 @@ func create_planet_texture(seed_value: int) -> Array:
 				var band_value = generate_gas_giant_band(sphere_uv.y, seed_value)
 				
 				# Add horizontal turbulence
-				var turbulence = fbm(sphere_uv.x * 10.0, sphere_uv.y * 2.0, 3, variation_seed_1) * 0.2
-				band_value = (band_value + turbulence) * 0.8
+				var turbulence = fbm(sphere_uv.x * 10.0, sphere_uv.y * 2.0, 3, variation_seed_1) * 0.1 # Reduced from 0.2
+				band_value = (band_value + turbulence) * 0.9 # Increased from 0.8 for better normalization
 				
-				# Get storm influence for this point
-				var storm_value = generate_gas_giant_storms(sphere_uv, storm_seed)
-				
-				# Determine color index for reddish-brown bands
-				var band_idx = int(band_value * color_size)
-				
-				# Find the reddish-brown color index (usually 6, but could vary by palette)
-				var red_spot_color_idx = 6  # This is the index with the reddish-brown color
-				var is_reddish_band = band_idx == red_spot_color_idx
-				
-				# Make storm areas use the reddish-brown color
-				if storm_value < 0:  # Negative storm values indicate storm areas
-					# Force the color to be the reddish-brown for all storms
-					band_value = float(red_spot_color_idx) / float(color_size)
-				else:
-					# Normal band value plus any positive storm effects
-					band_value += storm_value
-				
-				# Get color index based on band value
+				# Determine color index - no storms
 				color_index = int(band_value * color_size)
 				color_index = clamp(color_index, 0, color_size)
 				

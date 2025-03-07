@@ -28,6 +28,7 @@ func _ready():
 	name_component = get_node_or_null("NameComponent")
 	# Set appropriate z-index to be behind player but may be in front or behind planet
 	# The actual z-index will be dynamically adjusted by parent planet based on orbit position
+	# Default to -9, will be set to -12 when behind planet (and atmosphere)
 	z_index = -9
 
 func _process(_delta):

@@ -57,21 +57,21 @@ func generate_atmosphere_data(theme: int, seed_value: int) -> Dictionary:
 	
 	# Special handling for gaseous planets (currently only gas giants)
 	if planet_category == PlanetCategories.GASEOUS:
-		# Different gas giant atmosphere types based on seed
-		var gas_giant_type = rng.randi() % 4
+		# Match gas giant type to proper atmosphere color (using same seed modulo)
+		var gas_giant_type = seed_value % 4
 		
 		match gas_giant_type:
-			0:  # Jupiter-like (amber atmosphere) - UPDATED to better match reddish-brown spots
-				base_color = Color(0.85, 0.65, 0.35, 0.45)
-			1:  # Saturn-like (pale yellow atmosphere) - UPDATED to beige
-				base_color = Color(0.90, 0.82, 0.60, 0.35)
-			2:  # Neptune-like (blue atmosphere) - UPDATED for more visual interest
-				base_color = Color(0.50, 0.65, 0.85, 0.4)
-			3:  # Exotic (unusual coloration) - UPDATED to match beige palette
-				base_color = Color(0.85, 0.75, 0.55, 0.4)
+			0:  # Jupiter-like (beige/tan tones)
+				base_color = Color(0.75, 0.70, 0.55, 0.4)
+			1:  # Saturn-like (golden tones)
+				base_color = Color(0.80, 0.78, 0.60, 0.35)
+			2:  # Neptune-like (blue tones)
+				base_color = Color(0.50, 0.65, 0.75, 0.4)
+			3:  # Exotic (lavender tones)
+				base_color = Color(0.65, 0.60, 0.75, 0.35)
 		
 		# Gaseous planets can have more color variation
-		color_variation = 0.15
+		color_variation = 0.1  # Reduced from 0.15 for more subtle variation
 	
 	# Vary the color components slightly
 	var r = clamp(base_color.r + (rng.randf() - 0.5) * color_variation, 0, 1)
@@ -138,8 +138,8 @@ func generate_atmosphere_texture(theme: int, seed_value: int, color: Color, thic
 	var planet_radius = PlanetGenerator.PLANET_RADIUS_GASEOUS if is_gaseous else PlanetGenerator.PLANET_RADIUS_TERRAN
 	
 	# Calculate atmosphere dimensions
-	# Use exact planet radius as inner radius (no gap) with slight overlap
-	var inner_radius = planet_radius - 1.0  # 1px overlap for smoother blend
+	# Use exact planet radius as inner radius (no gap) with more overlap
+	var inner_radius = planet_radius - 4.0  # Increased overlap to fix black border issue
 	var thickness = planet_radius * (BASE_THICKNESS_FACTOR_GASEOUS if is_gaseous else BASE_THICKNESS_FACTOR_TERRAN) * thickness_factor
 	var outer_radius = planet_radius + thickness
 	
@@ -157,17 +157,17 @@ func generate_atmosphere_texture(theme: int, seed_value: int, color: Color, thic
 				image.set_pixel(x, y, Color(0, 0, 0, 0))
 				continue
 			
-			# Inside the planet (but leave the slight overlap)
-			if dist < inner_radius - 1.0:
+			# Inside the planet (but leave the larger overlap)
+			if dist < inner_radius - 2.0:
 				image.set_pixel(x, y, Color(0, 0, 0, 0))
 				continue
 			
 			# Special handling for the overlap area
 			if dist < planet_radius:
-				# 1px feathered edge within planet boundary
-				var fade_in = (dist - (inner_radius - 1.0)) / 2.0
+				# Create a smoother transition within planet boundary
+				var fade_in = (dist - (inner_radius - 2.0)) / 4.0
 				fade_in = clamp(fade_in, 0.0, 1.0)
-				var overlap_alpha = color.a * 0.4 * fade_in  # Subtle effect
+				var overlap_alpha = color.a * 0.6 * fade_in  # Increased effect for smoother transition
 				image.set_pixel(x, y, Color(color.r, color.g, color.b, overlap_alpha))
 				continue
 			
@@ -187,18 +187,18 @@ func generate_atmosphere_texture(theme: int, seed_value: int, color: Color, thic
 			
 			if is_gaseous:
 				# Gaseous planets can have bands in their atmosphere
-				var angle = atan2(pos.y - center.y, pos.x - center.x)
+				var _angle = atan2(pos.y - center.y, pos.x - center.x)
 				
 				# Create subtle color variations based on bands
 				var y_normalized = (pos.y - (center.y - planet_radius)) / (2 * planet_radius)
 				y_normalized = clamp(y_normalized, 0.0, 1.0)
 				
 				# Bands follow the planet's banding pattern
-				var band_factor = sin(y_normalized * 12.0 * PI + seed_value) * 0.05
+				var band_factor = sin(y_normalized * 12.0 * PI + seed_value) * 0.03  # Reduced from 0.05
 				
 				# Apply subtle color variation
 				if theme == PlanetThemes.GAS_GIANT:
-					# Match the planet's band coloration
+					# Match the planet's band coloration with more subtle effect
 					final_color.r = clamp(color.r + band_factor, 0, 1)
 					final_color.g = clamp(color.g + band_factor * 0.7, 0, 1)
 					final_color.b = clamp(color.b + band_factor * 0.5, 0, 1)

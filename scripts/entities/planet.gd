@@ -40,7 +40,7 @@ var use_texture_cache: bool = true
 
 func _ready() -> void:
 	name_component = get_node_or_null("NameComponent")
-	# Set appropriate z-index to render behind player
+	# Set appropriate z-index to render behind player but in front of atmosphere
 	z_index = -10
 
 func _process(delta: float) -> void:
@@ -49,6 +49,7 @@ func _process(delta: float) -> void:
 
 func _draw() -> void:
 	if atmosphere_texture:
+		# Draw atmosphere first so it's behind the planet
 		draw_texture(atmosphere_texture, -Vector2(atmosphere_texture.get_width(), atmosphere_texture.get_height()) / 2, Color.WHITE)
 	
 	if planet_texture:
@@ -76,8 +77,8 @@ func _update_moons(_delta: float) -> void:
 			var relative_y = sin(moon_angle)
 			
 			# Set z-index dynamically based on position relative to planet
-			# This creates the visual effect of moon passing behind the planet
-			moon.z_index = -11 if relative_y < 0 else -9
+			# This creates the visual effect of moon passing behind the planet and atmosphere
+			moon.z_index = -12 if relative_y < 0 else -9
 
 func initialize(params: Dictionary) -> void:
 	seed_value = params.seed_value
@@ -92,6 +93,8 @@ func initialize(params: Dictionary) -> void:
 	if "max_orbit_deviation" in params: max_orbit_deviation = params.max_orbit_deviation
 	if "moon_orbit_factor" in params: moon_orbit_factor = params.moon_orbit_factor
 	if "use_texture_cache" in params: use_texture_cache = params.use_texture_cache
+	if "moon_orbit_speed_factor" in params and params.moon_orbit_speed_factor != 1.0:
+		moon_orbit_factor *= params.moon_orbit_speed_factor
 	
 	# Allow theme override if specified
 	if "theme_override" in params and params.theme_override >= 0:
