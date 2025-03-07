@@ -1,4 +1,5 @@
 # scripts/entities/moon.gd
+# Optimized moon script with texture caching support
 extends Node2D
 
 var seed_value: int = 0
@@ -13,6 +14,7 @@ var phase_offset: float = 0
 var moon_name: String
 
 var name_component
+var use_texture_cache: bool = true
 
 func _ready():
 	name_component = get_node_or_null("NameComponent")
@@ -36,10 +38,28 @@ func initialize(params: Dictionary):
 	orbit_deviation = params.orbit_deviation
 	phase_offset = params.phase_offset
 	
-	var moon_data = _generate_moon_data(seed_value)
-	moon_texture = moon_data.texture
-	pixel_size = moon_data.pixel_size
+	if "use_texture_cache" in params:
+		use_texture_cache = params.use_texture_cache
 	
+	# Get texture - either from cache or generate new
+	if use_texture_cache and PlanetSpawner.texture_cache != null:
+		if PlanetSpawner.texture_cache.moons.has(seed_value):
+			# Use cached texture
+			moon_texture = PlanetSpawner.texture_cache.moons[seed_value]
+			pixel_size = MoonGenerator.new().get_moon_size(seed_value)
+		else:
+			# Generate and cache texture
+			var moon_generator = MoonGenerator.new()
+			moon_texture = moon_generator.create_moon_texture(seed_value)
+			pixel_size = moon_generator.get_moon_size(seed_value)
+			PlanetSpawner.texture_cache.moons[seed_value] = moon_texture
+	else:
+		# Generate without caching
+		var moon_data = _generate_moon_data(seed_value)
+		moon_texture = moon_data.texture
+		pixel_size = moon_data.pixel_size
+	
+	# Set up name component
 	name_component = get_node_or_null("NameComponent")
 	if name_component:
 		name_component.initialize(seed_value, 0, 0, params.parent_name)

@@ -1,4 +1,5 @@
 # scripts/entities/planet.gd
+# Optimized planet script with texture caching support
 extends Node2D
 
 signal planet_loaded(planet)
@@ -22,6 +23,7 @@ var grid_x: int = 0
 var grid_y: int = 0
 
 var name_component
+var use_texture_cache: bool = true
 
 func _ready():
 	name_component = get_node_or_null("NameComponent")
@@ -61,26 +63,58 @@ func initialize(params: Dictionary):
 	grid_x = params.grid_x
 	grid_y = params.grid_y
 	
+	# Apply customizations if provided
 	if "max_moons" in params: max_moons = params.max_moons
 	if "moon_chance" in params: moon_chance = params.moon_chance
 	if "min_moon_distance_factor" in params: min_moon_distance_factor = params.min_moon_distance_factor
 	if "max_moon_distance_factor" in params: max_moon_distance_factor = params.max_moon_distance_factor
 	if "max_orbit_deviation" in params: max_orbit_deviation = params.max_orbit_deviation
 	if "moon_orbit_factor" in params: moon_orbit_factor = params.moon_orbit_factor
-	
-	var planet_gen_params = _generate_planet_data(seed_value)
+	if "use_texture_cache" in params: use_texture_cache = params.use_texture_cache
 	
 	# Allow theme override if specified
 	if "theme_override" in params and params.theme_override >= 0:
 		theme_id = params.theme_override
 	else:
-		theme_id = planet_gen_params.theme
-		
-	pixel_size = planet_gen_params.pixel_size
-	planet_texture = planet_gen_params.texture
-	atmosphere_data = planet_gen_params.atmosphere
-	atmosphere_texture = planet_gen_params.atmosphere_texture
+		# Determine theme from seed
+		var planet_generator = PlanetGenerator.new()
+		theme_id = planet_generator.get_planet_theme(seed_value)
 	
+	# Attempt to use cached textures if texture caching is enabled
+	if use_texture_cache and PlanetSpawner.texture_cache != null:
+		# Try to get planet texture from cache
+		if PlanetSpawner.texture_cache.planets.has(seed_value):
+			planet_texture = PlanetSpawner.texture_cache.planets[seed_value]
+			pixel_size = 256
+		else:
+			# Generate and cache the texture
+			var planet_generator = PlanetGenerator.new()
+			var textures = planet_generator.create_planet_texture(seed_value)
+			planet_texture = textures[0]
+			pixel_size = 256
+			PlanetSpawner.texture_cache.planets[seed_value] = planet_texture
+		
+		# Try to get atmosphere texture from cache
+		if PlanetSpawner.texture_cache.atmospheres.has(seed_value):
+			atmosphere_texture = PlanetSpawner.texture_cache.atmospheres[seed_value]
+		else:
+			# Generate and cache the texture
+			var atmosphere_generator = AtmosphereGenerator.new()
+			atmosphere_data = atmosphere_generator.generate_atmosphere_data(theme_id, seed_value)
+			atmosphere_texture = atmosphere_generator.generate_atmosphere_texture(
+				theme_id, seed_value, atmosphere_data.color, atmosphere_data.thickness)
+			PlanetSpawner.texture_cache.atmospheres[seed_value] = atmosphere_texture
+	else:
+		# Generate textures without caching
+		var planet_gen_params = _generate_planet_data(seed_value)
+		
+		theme_id = planet_gen_params.theme if not "theme_override" in params else params.theme_override
+		pixel_size = planet_gen_params.pixel_size
+		planet_texture = planet_gen_params.texture
+		atmosphere_data = planet_gen_params.atmosphere
+		atmosphere_texture = planet_gen_params.atmosphere_texture
+	
+	# Set up name component
 	name_component = get_node_or_null("NameComponent")
 	if name_component:
 		name_component.initialize(seed_value, grid_x, grid_y)
@@ -88,9 +122,10 @@ func initialize(params: Dictionary):
 	else:
 		planet_name = "Planet-" + str(seed_value % 1000)
 	
+	# Defer moon creation to avoid stuttering
 	call_deferred("_create_moons")
-	
-	# Emit signal that the planet has been loaded
+
+func _emit_planet_loaded():
 	planet_loaded.emit(self)
 
 func _generate_planet_data(planet_seed: int) -> Dictionary:
@@ -146,9 +181,13 @@ func _create_moons():
 			"orbit_speed": rng.randf_range(0.2, 0.5) * moon_orbit_factor,
 			"orbit_deviation": rng.randf_range(-max_orbit_deviation, max_orbit_deviation),
 			"phase_offset": rng.randf_range(0, TAU),
-			"parent_name": planet_name
+			"parent_name": planet_name,
+			"use_texture_cache": use_texture_cache
 		}
 		
 		add_child(moon_instance)
 		moon_instance.initialize(moon_params)
 		moons.append(moon_instance)
+	
+	# Emit signal that the planet has been loaded (after moons are created)
+	_emit_planet_loaded()
