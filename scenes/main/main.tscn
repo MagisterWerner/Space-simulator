@@ -35,3 +35,17 @@ script = ExtResource("6_v31f5")
 auto_spawn = true
 use_grid_position = false
 moon_chance = 100
+
+[node name="Planet4" type="Node2D" parent="."]
+position = Vector2(143, 341)
+script = ExtResource("6_v31f5")
+auto_spawn = true
+use_grid_position = false
+moon_chance = 100
+
+[node name="Planet5" type="Node2D" parent="."]
+position = Vector2(448, 1)
+script = ExtResource("6_v31f5")
+auto_spawn = true
+use_grid_position = false
+moon_chance = 100
