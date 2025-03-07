@@ -452,6 +452,7 @@ func create_moon_texture(seed_value: int, moon_type: int = MoonType.ROCKY) -> Im
 			var data = sphere_data[idx]
 			
 			if data == null:
+				# PIXEL-PERFECT EDGE: Set fully transparent outside the circle
 				image.set_pixel(x, y, Color(0, 0, 0, 0))
 				continue
 			
@@ -516,18 +517,13 @@ func create_moon_texture(seed_value: int, moon_type: int = MoonType.ROCKY) -> Im
 			
 			var edge_factor = 1.0 - pow(d_circle, 2) * 0.2
 			
-			var edge_alpha = 1.0
-			var aa_width = 0.03
-			if d_circle > (1.0 - aa_width):
-				edge_alpha = 1.0 - (d_circle - (1.0 - aa_width)) / aa_width
-				edge_alpha = clamp(edge_alpha, 0.0, 1.0)
-				edge_alpha = edge_alpha * edge_alpha * (3.0 - 2.0 * edge_alpha)
-			
+			# PIXEL-PERFECT EDGE: Set alpha to 1.0 for all visible pixels
+			# No edge anti-aliasing, full opacity for all pixels inside the circle
 			var final_color = Color(
 				lit_color.r * edge_factor,
 				lit_color.g * edge_factor,
 				lit_color.b * edge_factor,
-				edge_alpha
+				1.0  # Always fully opaque
 			)
 			
 			image.set_pixel(x, y, final_color)

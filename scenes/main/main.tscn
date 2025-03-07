@@ -25,6 +25,7 @@ grid_size = 1
 [node name="Planet2" type="Node2D" parent="."]
 position = Vector2(630, 339)
 script = ExtResource("6_v31f5")
+planet_category = 1
 auto_spawn = true
 use_grid_position = false
 
@@ -43,5 +44,6 @@ use_grid_position = false
 [node name="Planet5" type="Node2D" parent="."]
 position = Vector2(587, -71)
 script = ExtResource("6_v31f5")
+planet_category = 1
 auto_spawn = true
 use_grid_position = false

@@ -8,20 +8,31 @@ const PlanetCategories = preload("res://scripts/generators/planet_generator.gd")
 
 # Constants for atmosphere generation
 const BASE_ATMOSPHERE_SIZE_TERRAN: int = 384
-const BASE_ATMOSPHERE_SIZE_GASEOUS: int = 768  # Larger atmosphere for gaseous planets
-const BASE_THICKNESS_FACTOR_TERRAN: float = 0.3
-const BASE_THICKNESS_FACTOR_GASEOUS: float = 0.15  # Thinner relative to size but still substantial
+const BASE_ATMOSPHERE_SIZE_GASEOUS: int = 768
+
+# Atmosphere thickness as a percentage beyond planet radius
+const ATMOSPHERE_EXTEND_FACTOR_TERRAN: float = 0.30
+const ATMOSPHERE_EXTEND_FACTOR_GASEOUS: float = 0.25
+
+# Pixelation settings - different steps for different planet types
+const ALPHA_STEPS_TERRAN: int = 16   # 16 steps for normal planets
+const ALPHA_STEPS_GASEOUS: int = 32  # 32 steps for gas giants which are twice as large
+const MIN_ALPHA_STRENGTH: float = 0.85
+const GRADIENT_POWER: float = 1.2
+
+# Edge alignment fix - extend atmosphere slightly under the planet edge
+const EDGE_OVERLAP_PIXELS: int = 2  # How many pixels to extend under the planet edge
 
 # Theme-based atmosphere colors - using PlanetThemes enum for reference
 const ATMOSPHERE_COLORS = {
-	PlanetThemes.ARID: Color(0.8, 0.6, 0.4, 0.3),
-	PlanetThemes.ICE: Color(0.8, 0.9, 1.0, 0.2),
+	PlanetThemes.ARID: Color(0.8, 0.6, 0.4, 0.35),
+	PlanetThemes.ICE: Color(0.8, 0.9, 1.0, 0.3),
 	PlanetThemes.LAVA: Color(0.9, 0.3, 0.1, 0.5),
-	PlanetThemes.LUSH: Color(0.5, 0.8, 1.0, 0.3),
-	PlanetThemes.DESERT: Color(0.9, 0.7, 0.4, 0.4),
-	PlanetThemes.ALPINE: Color(0.7, 0.9, 1.0, 0.25),
-	PlanetThemes.OCEAN: Color(0.4, 0.7, 0.9, 0.35),
-	PlanetThemes.GAS_GIANT: Color(0.75, 0.65, 0.45, 0.4)  # Updated gas giant atmosphere
+	PlanetThemes.LUSH: Color(0.5, 0.8, 1.0, 0.4),
+	PlanetThemes.DESERT: Color(0.9, 0.7, 0.4, 0.45),
+	PlanetThemes.ALPINE: Color(0.7, 0.9, 1.0, 0.35),
+	PlanetThemes.OCEAN: Color(0.4, 0.7, 0.9, 0.4),
+	PlanetThemes.GAS_GIANT: Color(0.75, 0.65, 0.45, 0.45)
 }
 
 # Theme-based atmosphere thickness
@@ -33,7 +44,7 @@ const ATMOSPHERE_THICKNESS = {
 	PlanetThemes.DESERT: 1.3,
 	PlanetThemes.ALPINE: 0.9,
 	PlanetThemes.OCEAN: 1.15,
-	PlanetThemes.GAS_GIANT: 1.4  # Gas giants have substantial atmospheres
+	PlanetThemes.GAS_GIANT: 1.4
 }
 
 # Texture cache for reuse
@@ -45,7 +56,7 @@ func generate_atmosphere_data(theme: int, seed_value: int) -> Dictionary:
 	rng.seed = seed_value + 54321
 	
 	# Get base values for this theme
-	var base_color = ATMOSPHERE_COLORS.get(theme, Color(0.5, 0.7, 0.9, 0.3))
+	var base_color = ATMOSPHERE_COLORS.get(theme, Color(0.5, 0.7, 0.9, 0.4))
 	var base_thickness = ATMOSPHERE_THICKNESS.get(theme, 1.0)
 	
 	# Add some variation
@@ -62,22 +73,19 @@ func generate_atmosphere_data(theme: int, seed_value: int) -> Dictionary:
 		
 		match gas_giant_type:
 			0:  # Jupiter-like (beige/tan tones)
-				base_color = Color(0.75, 0.70, 0.55, 0.4)
+				base_color = Color(0.75, 0.70, 0.55, 0.45)
 			1:  # Saturn-like (golden tones)
-				base_color = Color(0.80, 0.78, 0.60, 0.35)
+				base_color = Color(0.80, 0.78, 0.60, 0.4)
 			2:  # Neptune-like (blue tones)
-				base_color = Color(0.50, 0.65, 0.75, 0.4)
+				base_color = Color(0.50, 0.65, 0.75, 0.45)
 			3:  # Exotic (lavender tones)
-				base_color = Color(0.65, 0.60, 0.75, 0.35)
-		
-		# Gaseous planets can have more color variation
-		color_variation = 0.1  # Reduced from 0.15 for more subtle variation
+				base_color = Color(0.65, 0.60, 0.75, 0.4)
 	
 	# Vary the color components slightly
 	var r = clamp(base_color.r + (rng.randf() - 0.5) * color_variation, 0, 1)
 	var g = clamp(base_color.g + (rng.randf() - 0.5) * color_variation, 0, 1)
 	var b = clamp(base_color.b + (rng.randf() - 0.5) * color_variation, 0, 1)
-	var a = clamp(base_color.a + (rng.randf() - 0.5) * color_variation * 0.5, 0.05, 0.8)
+	var a = clamp(base_color.a + (rng.randf() - 0.5) * color_variation * 0.5, 0.15, 0.85)
 	
 	var color = Color(r, g, b, a)
 	var thickness = base_thickness * (1.0 + (rng.randf() - 0.5) * thickness_variation)
@@ -87,20 +95,20 @@ func generate_atmosphere_data(theme: int, seed_value: int) -> Dictionary:
 		match theme:
 			PlanetThemes.LAVA:
 				thickness *= 1.2
-				color.a = min(color.a + 0.1, 0.8)
+				color.a = min(color.a + 0.1, 0.85)
 			
 			PlanetThemes.OCEAN:
 				color.g += 0.05
 	
 	# For gaseous planets, ensure appropriate atmospheric characteristics
 	if planet_category == PlanetCategories.GASEOUS:
-		thickness *= 1.1  # Slightly thicker
-		color.a = clamp(color.a + 0.05, 0.3, 0.5)  # More noticeable
+		thickness *= 1.1
+		color.a = clamp(color.a + 0.05, 0.35, 0.6)
 	
 	return {
 		"color": color,
 		"thickness": thickness,
-		"category": planet_category  # Include the planet category for reference
+		"category": planet_category
 	}
 
 # Static function to get an atmosphere texture with caching
@@ -125,89 +133,94 @@ static func get_atmosphere_texture(theme: int, seed_value: int, color: Color, th
 	
 	return texture
 
-# Generate atmosphere texture with perfect planet edge alignment
-# Parameters theme and seed_value are used to determine category and other properties
+# Generate pixelated atmosphere texture with adaptive step count based on planet type
 func generate_atmosphere_texture(theme: int, seed_value: int, color: Color, thickness_factor: float) -> ImageTexture:
 	var planet_category = PlanetGenerator.get_planet_category(theme)
 	var is_gaseous = planet_category == PlanetCategories.GASEOUS
 	
-	var atm_size = BASE_ATMOSPHERE_SIZE_GASEOUS if is_gaseous else BASE_ATMOSPHERE_SIZE_TERRAN
-	var image = Image.create(atm_size, atm_size, true, Image.FORMAT_RGBA8)
+	# Size will match the actual planet size, not the atmosphere size
+	var planet_size = PlanetGenerator.PLANET_SIZE_GASEOUS if is_gaseous else PlanetGenerator.PLANET_SIZE_TERRAN
+	var planet_radius = planet_size / 2.0
 	
-	# CRITICAL: Planet radius must match the planet texture size
-	var planet_radius = PlanetGenerator.PLANET_RADIUS_GASEOUS if is_gaseous else PlanetGenerator.PLANET_RADIUS_TERRAN
+	# Calculate the atmosphere size based on the planet size and thickness factor
+	var extend_factor = (ATMOSPHERE_EXTEND_FACTOR_GASEOUS if is_gaseous else ATMOSPHERE_EXTEND_FACTOR_TERRAN) * thickness_factor
+	var atmosphere_radius = planet_radius * (1.0 + extend_factor)
+	var atmosphere_size = int(atmosphere_radius * 2.0)
 	
-	# Calculate atmosphere dimensions
-	# Use exact planet radius as inner radius (no gap) with more overlap
-	var inner_radius = planet_radius - 4.0  # Increased overlap to fix black border issue
-	var thickness = planet_radius * (BASE_THICKNESS_FACTOR_GASEOUS if is_gaseous else BASE_THICKNESS_FACTOR_TERRAN) * thickness_factor
-	var outer_radius = planet_radius + thickness
+	# Ensure atmosphere size is even for perfect centering
+	if atmosphere_size % 2 != 0:
+		atmosphere_size += 1
 	
-	# Center of the texture
-	var center = Vector2(atm_size / 2.0, atm_size / 2.0)
+	# Create the atmosphere image
+	var image = Image.create(atmosphere_size, atmosphere_size, true, Image.FORMAT_RGBA8)
 	
-	# Generate the atmosphere
-	for y in range(atm_size):
-		for x in range(atm_size):
+	# Calculate center of the image
+	var center = Vector2(atmosphere_size / 2.0, atmosphere_size / 2.0)
+	
+	# Calculate modified planet edge distance that extends slightly underneath the planet
+	# This fixes the edge gap by ensuring atmosphere color extends under the planet edge
+	var planet_edge_radius = planet_radius - EDGE_OVERLAP_PIXELS
+	var planet_edge_dist = planet_edge_radius / atmosphere_radius
+	
+	# Determine number of steps based on planet category
+	var num_steps = ALPHA_STEPS_GASEOUS if is_gaseous else ALPHA_STEPS_TERRAN
+	
+	# Precalculate alpha values for each step from edge
+	var alpha_steps = []
+	for i in range(num_steps):
+		var t = float(i) / (num_steps - 1)
+		var step_alpha = (1.0 - pow(t, GRADIENT_POWER)) * color.a * MIN_ALPHA_STRENGTH
+		alpha_steps.append(step_alpha)
+	
+	# Draw the atmosphere
+	for y in range(atmosphere_size):
+		for x in range(atmosphere_size):
 			var pos = Vector2(x, y)
-			var dist = pos.distance_to(center)
+			var dist_to_center = pos.distance_to(center)
 			
-			# Skip pixels way outside the outer radius
-			if dist > outer_radius:
+			# Skip pixels outside the atmosphere radius
+			if dist_to_center > atmosphere_radius:
 				image.set_pixel(x, y, Color(0, 0, 0, 0))
 				continue
 			
-			# Inside the planet (but leave the larger overlap)
-			if dist < inner_radius - 2.0:
-				image.set_pixel(x, y, Color(0, 0, 0, 0))
-				continue
+			# Calculate normalized distance (0 at center, 1 at edge)
+			var normalized_dist = dist_to_center / atmosphere_radius
 			
-			# Special handling for the overlap area
-			if dist < planet_radius:
-				# Create a smoother transition within planet boundary
-				var fade_in = (dist - (inner_radius - 2.0)) / 4.0
-				fade_in = clamp(fade_in, 0.0, 1.0)
-				var overlap_alpha = color.a * 0.6 * fade_in  # Increased effect for smoother transition
-				image.set_pixel(x, y, Color(color.r, color.g, color.b, overlap_alpha))
-				continue
+			# Calculate alpha based on distance from modified planet edge to atmosphere edge
+			var alpha = 0.0
 			
-			# For the actual atmosphere glow
-			var atmosphere_t = (dist - planet_radius) / thickness
-			if atmosphere_t > 1.0:
-				atmosphere_t = 1.0
+			if normalized_dist > planet_edge_dist:
+				# Calculate how far we are from planet edge to atmosphere edge (0 to 1)
+				var edge_t = (normalized_dist - planet_edge_dist) / (1.0 - planet_edge_dist)
 				
-			# Alpha fades from full at planet edge to zero at outer edge
-			var alpha_curve = 1.0 - atmosphere_t
-			
-			# Use cubic curve for smoother gradient
-			alpha_curve = alpha_curve * alpha_curve * (3.0 - 2.0 * alpha_curve)
-			
-			# Special atmosphere effects based on planet category
-			var final_color = color
-			
-			if is_gaseous:
-				# Gaseous planets can have bands in their atmosphere
-				var _angle = atan2(pos.y - center.y, pos.x - center.x)
+				# Ensure edge_t is within 0-1 range to prevent array out of bounds
+				edge_t = clamp(edge_t, 0.0, 0.9999)
 				
-				# Create subtle color variations based on bands
-				var y_normalized = (pos.y - (center.y - planet_radius)) / (2 * planet_radius)
-				y_normalized = clamp(y_normalized, 0.0, 1.0)
+				# Determine which step this pixel belongs to
+				var step_index = int(floor(edge_t * num_steps))
 				
-				# Bands follow the planet's banding pattern
-				var band_factor = sin(y_normalized * 12.0 * PI + seed_value) * 0.03  # Reduced from 0.05
+				# Safety check for index bounds
+				if step_index >= num_steps:
+					step_index = num_steps - 1
 				
-				# Apply subtle color variation
-				if theme == PlanetThemes.GAS_GIANT:
-					# Match the planet's band coloration with more subtle effect
-					final_color.r = clamp(color.r + band_factor, 0, 1)
-					final_color.g = clamp(color.g + band_factor * 0.7, 0, 1)
-					final_color.b = clamp(color.b + band_factor * 0.5, 0, 1)
+				alpha = alpha_steps[step_index]
+			else:
+				# Inside the modified planet edge - these pixels will be under the planet
+				# Set a constant alpha for the edge extension to ensure smooth transition
+				alpha = alpha_steps[0]  # Use highest alpha value
 			
-			# Create final pixel color
-			var final_alpha = color.a * alpha_curve
-			final_color.a = final_alpha
+			# Create the final color with calculated alpha
+			var final_color = Color(color.r, color.g, color.b, alpha)
 			
-			# Apply the pixel
+			# Apply special effects for gas giants (subtle bands)
+			if is_gaseous and theme == PlanetThemes.GAS_GIANT and alpha > 0.0:
+				var y_normalized = float(y) / atmosphere_size
+				var band_factor = sin(y_normalized * 8.0 * PI + seed_value) * 0.02
+				
+				final_color.r = clamp(color.r + band_factor, 0, 1)
+				final_color.g = clamp(color.g + band_factor * 0.7, 0, 1)
+				final_color.b = clamp(color.b + band_factor * 0.5, 0, 1)
+			
 			image.set_pixel(x, y, final_color)
 	
 	# Create texture from image
@@ -215,7 +228,7 @@ func generate_atmosphere_texture(theme: int, seed_value: int, color: Color, thic
 
 # Get atmosphere color for a theme (utility function)
 func get_atmosphere_color_for_theme(theme: int) -> Color:
-	return ATMOSPHERE_COLORS.get(theme, Color(0.5, 0.7, 0.9, 0.3))
+	return ATMOSPHERE_COLORS.get(theme, Color(0.5, 0.7, 0.9, 0.4))
 
 # Get atmosphere thickness for a theme (utility function)
 func get_atmosphere_thickness_for_theme(theme: int) -> float:

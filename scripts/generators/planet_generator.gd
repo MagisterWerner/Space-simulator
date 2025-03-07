@@ -4,6 +4,7 @@
 #   Procedural planet texture generator with support for various planet types
 #   Handles generation of both terran and gaseous planets with distinctive themes
 #   Creates detailed planet textures with complex noise patterns and features
+#   Generates pixel-perfect edges (no anti-aliasing)
 #
 # Interface:
 #   - get_planet_texture(seed_value): Gets cached or generates new planet texture
@@ -50,8 +51,8 @@ const COLOR_VARIATION: float = 1.5
 
 # Gas giant specific constants
 const GAS_GIANT_BANDS: int = 12         # Number of primary bands
-const GAS_GIANT_BAND_NOISE: float = 0.5  # How noisy the bands are (reduced from 0.7)
-const GAS_GIANT_FLOW: float = 2.0       # How much the bands "flow" horizontally (reduced from 2.5)
+const GAS_GIANT_BAND_NOISE: float = 0.5  # How noisy the bands are
+const GAS_GIANT_FLOW: float = 2.0       # How much the bands "flow" horizontally
 
 # Static texture cache to avoid regenerating the same planets
 static var planet_texture_cache: Dictionary = {}
@@ -375,13 +376,10 @@ func create_planet_texture(seed_value: int, explicit_theme: int = -1) -> Array:
 	
 	# Determine appropriate size based on planet category
 	var planet_size = PLANET_SIZE_GASEOUS if category == PlanetCategory.GASEOUS else PLANET_SIZE_TERRAN
-	var planet_radius = PLANET_RADIUS_GASEOUS if category == PlanetCategory.GASEOUS else PLANET_RADIUS_TERRAN
+	var _planet_radius = PLANET_RADIUS_GASEOUS if category == PlanetCategory.GASEOUS else PLANET_RADIUS_TERRAN
 	
 	var image = Image.create(planet_size, planet_size, true, Image.FORMAT_RGBA8)
 	var colors = generate_planet_palette(theme, seed_value)
-	
-	var aa_width = 1.5
-	var aa_width_normalized = aa_width / planet_radius
 	
 	var variation_seed_1 = seed_value + 12345
 	var variation_seed_2 = seed_value + 67890
@@ -402,14 +400,13 @@ func create_planet_texture(seed_value: int, explicit_theme: int = -1) -> Array:
 			var dist = sqrt(dist_squared)
 			var normalized_dist = dist * 2.0
 			
-			if normalized_dist > 1.0:
+			# PIXEL-PERFECT EDGE: Use a hard cutoff instead of anti-aliasing
+			if normalized_dist >= 1.0:
 				image.set_pixel(x, y, Color(0, 0, 0, 0))
 				continue
-				
+			
+			# Inside the planet - full alpha
 			var alpha = 1.0
-			if normalized_dist > (1.0 - aa_width_normalized):
-				alpha = 1.0 - (normalized_dist - (1.0 - aa_width_normalized)) / aa_width_normalized
-				alpha = clamp(alpha, 0.0, 1.0)
 			
 			var sphere_uv = spherify(nx, ny)
 			var color_index = 0
@@ -422,8 +419,8 @@ func create_planet_texture(seed_value: int, explicit_theme: int = -1) -> Array:
 				var band_value = generate_gas_giant_band(sphere_uv.y, seed_value)
 				
 				# Add horizontal turbulence
-				var turbulence = fbm(sphere_uv.x * 10.0, sphere_uv.y * 2.0, 3, variation_seed_1) * 0.1 # Reduced from 0.2
-				band_value = (band_value + turbulence) * 0.9 # Increased from 0.8 for better normalization
+				var turbulence = fbm(sphere_uv.x * 10.0, sphere_uv.y * 2.0, 3, variation_seed_1) * 0.1
+				band_value = (band_value + turbulence) * 0.9
 				
 				# Determine color index - no storms
 				color_index = int(band_value * color_size)
@@ -450,7 +447,7 @@ func create_planet_texture(seed_value: int, explicit_theme: int = -1) -> Array:
 			final_color.g *= edge_shade
 			final_color.b *= edge_shade
 			
-			# Apply alpha for anti-aliasing at the edges
+			# Apply alpha for pixel-perfect edge
 			final_color.a = alpha
 			
 			image.set_pixel(x, y, final_color)
