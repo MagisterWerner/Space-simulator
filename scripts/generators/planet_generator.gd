@@ -2,7 +2,15 @@
 extends RefCounted
 class_name PlanetGenerator
 
+# Main planet category enum
+enum PlanetCategory {
+	TERRAN,   # Rocky/solid surface planets (Earth-like, desert, ice, etc.)
+	GASEOUS   # Gas planets without solid surface (gas giants, etc.)
+}
+
+# Specific planet themes within categories
 enum PlanetTheme {
+	# Terran planets
 	ARID,
 	ICE,
 	LAVA,
@@ -10,13 +18,15 @@ enum PlanetTheme {
 	DESERT,
 	ALPINE,
 	OCEAN,
-	GAS_GIANT  # Added gas giant type
+	
+	# Gaseous planets
+	GAS_GIANT  # Currently the only gaseous type
 }
 
-const PLANET_SIZE_LARGE: int = 256
-const PLANET_SIZE_GAS_GIANT: int = 512  # Gas giants are twice as large
-const PLANET_RADIUS: float = 128.0
-const GAS_GIANT_RADIUS: float = 256.0  # Larger radius for gas giants
+const PLANET_SIZE_TERRAN: int = 256
+const PLANET_SIZE_GASEOUS: int = 512  # Gas giants are twice as large
+const PLANET_RADIUS_TERRAN: float = 128.0
+const PLANET_RADIUS_GASEOUS: float = 256.0  # Larger radius for gaseous planets
 
 const TERRAIN_OCTAVES: int = 4
 const COLOR_VARIATION: float = 1.5
@@ -39,6 +49,13 @@ func _init():
 		var t = float(i) / (CUBIC_RESOLUTION - 1)
 		cubic_lookup[i] = t * t * (3.0 - 2.0 * t)
 
+# Get the category for a planet theme
+static func get_planet_category(theme: int) -> int:
+	# Currently only GAS_GIANT is GASEOUS, everything else is TERRAN
+	if theme == PlanetTheme.GAS_GIANT:
+		return PlanetCategory.GASEOUS
+	return PlanetCategory.TERRAN
+
 static func get_planet_texture(seed_value: int) -> Array:
 	if planet_texture_cache.has(seed_value):
 		return planet_texture_cache[seed_value]
@@ -56,12 +73,26 @@ static func get_planet_texture(seed_value: int) -> Array:
 
 func get_planet_size(seed_value: int) -> int:
 	var theme = get_planet_theme(seed_value)
-	return PLANET_SIZE_GAS_GIANT if theme == PlanetTheme.GAS_GIANT else PLANET_SIZE_LARGE
+	var category = get_planet_category(theme)
+	return PLANET_SIZE_GASEOUS if category == PlanetCategory.GASEOUS else PLANET_SIZE_TERRAN
 
 func get_planet_theme(seed_value: int) -> int:
 	var rng = RandomNumberGenerator.new()
 	rng.seed = seed_value
 	return rng.randi() % PlanetTheme.size()
+
+# Generate a planet theme for a specific category
+func get_themed_planet_for_category(seed_value: int, category: int) -> int:
+	var rng = RandomNumberGenerator.new()
+	rng.seed = seed_value
+	
+	if category == PlanetCategory.GASEOUS:
+		# Currently only GAS_GIANT is gaseous
+		return PlanetTheme.GAS_GIANT
+	else:
+		# For TERRAN, pick any theme except GAS_GIANT
+		var theme = rng.randi() % (PlanetTheme.GAS_GIANT)
+		return theme
 
 func get_random_seed(x: float, y: float, seed_value: int) -> float:
 	var key = str(x) + "_" + str(y) + "_" + str(seed_value)
@@ -231,14 +262,14 @@ func generate_planet_palette(theme: int, seed_value: int) -> PackedColorArray:
 					])
 				3:  # Exotic gas giant - UPDATED TO BEIGE TONES
 					return PackedColorArray([
-						Color(0.95, 0.90, 0.75),  # Light beige
-						Color(0.90, 0.85, 0.70),  # Beige
-						Color(0.85, 0.78, 0.65),  # Medium beige
-						Color(0.80, 0.72, 0.60),  # Dark beige
-						Color(0.75, 0.65, 0.50),  # Brown-beige
-						Color(0.70, 0.60, 0.45),  # Brown
-						Color(0.65, 0.55, 0.40),  # Dark brown
-						Color(0.60, 0.50, 0.35)   # Deeper brown
+						Color(0.98, 0.94, 0.80),  # Pale yellow (upper cloud tops, ammonia ice)
+						Color(0.95, 0.88, 0.72),  # Light gold (high-altitude haze)
+						Color(0.92, 0.82, 0.60),  # Golden (ammonia crystal clouds)
+						Color(0.88, 0.75, 0.48),  # Amber (mid-level clouds, tholins)
+						Color(0.80, 0.65, 0.35),  # Dark amber (deeper cloud layers)
+						Color(0.70, 0.50, 0.25),  # Brown (organic compounds/sulfur)
+						Color(0.65, 0.35, 0.20),  # Reddish-brown (Great Red Spot)
+						Color(0.95, 0.95, 0.95)   # White (icy ammonia clouds)
 					])
 				_:  # Fallback
 					return PackedColorArray([
@@ -345,11 +376,11 @@ func create_empty_atmosphere() -> Image:
 
 func create_planet_texture(seed_value: int) -> Array:
 	var theme = get_planet_theme(seed_value)
-	var is_gas_giant = theme == PlanetTheme.GAS_GIANT
+	var category = get_planet_category(theme)
 	
-	# Determine appropriate size based on planet type
-	var planet_size = PLANET_SIZE_GAS_GIANT if is_gas_giant else PLANET_SIZE_LARGE
-	var planet_radius = GAS_GIANT_RADIUS if is_gas_giant else PLANET_RADIUS
+	# Determine appropriate size based on planet category
+	var planet_size = PLANET_SIZE_GASEOUS if category == PlanetCategory.GASEOUS else PLANET_SIZE_TERRAN
+	var planet_radius = PLANET_RADIUS_GASEOUS if category == PlanetCategory.GASEOUS else PLANET_RADIUS_TERRAN
 	
 	var image = Image.create(planet_size, planet_size, true, Image.FORMAT_RGBA8)
 	var colors = generate_planet_palette(theme, seed_value)
@@ -388,8 +419,8 @@ func create_planet_texture(seed_value: int) -> Array:
 			var sphere_uv = spherify(nx, ny)
 			var color_index = 0
 			
-			if is_gas_giant:
-				# Gas giant texture generation with banding
+			if category == PlanetCategory.GASEOUS:
+				# Gaseous planet texture generation with banding
 				var band_value = generate_gas_giant_band(sphere_uv.y, seed_value)
 				
 				# Add horizontal turbulence
@@ -404,7 +435,7 @@ func create_planet_texture(seed_value: int) -> Array:
 				color_index = int(band_value * color_size)
 				color_index = clamp(color_index, 0, color_size)
 			else:
-				# Regular planet texture generation logic
+				# Terran planet texture generation logic
 				var base_noise = fbm(sphere_uv.x, sphere_uv.y, TERRAIN_OCTAVES, seed_value)
 				var detail_variation_1 = fbm(sphere_uv.x * 3.0, sphere_uv.y * 3.0, 2, variation_seed_1) * 0.1
 				var detail_variation_2 = fbm(sphere_uv.x * 5.0, sphere_uv.y * 5.0, 1, variation_seed_2) * 0.05
@@ -418,7 +449,7 @@ func create_planet_texture(seed_value: int) -> Array:
 			var final_color = colors[color_index]
 			
 			# Create edge shading (darker at edges)
-			var edge_shade = 1.0 - pow(normalized_dist, 2) * (0.3 if is_gas_giant else 0.3)
+			var edge_shade = 1.0 - pow(normalized_dist, 2) * (0.3 if category == PlanetCategory.GASEOUS else 0.3)
 			final_color.r *= edge_shade
 			final_color.g *= edge_shade
 			final_color.b *= edge_shade

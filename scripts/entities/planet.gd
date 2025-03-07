@@ -1,9 +1,9 @@
 # scripts/entities/planet.gd
-# Updated planet script with improved gas giant moon distribution
 extends Node2D
 
-# Import the PlanetGenerator enum directly to avoid shadowing
+# Import classification constants
 const PlanetThemes = preload("res://scripts/generators/planet_generator.gd").PlanetTheme
+const PlanetCategories = preload("res://scripts/generators/planet_generator.gd").PlanetCategory
 
 signal planet_loaded(planet)
 
@@ -24,7 +24,9 @@ var atmosphere_data: Dictionary
 var moons = []
 var grid_x: int = 0
 var grid_y: int = 0
-var is_gas_giant: bool = false
+
+# Planet classification properties
+var planet_category: int = PlanetCategories.TERRAN  # Default to terran
 
 # Define moon types for consistent reference
 enum MoonType {
@@ -99,29 +101,43 @@ func initialize(params: Dictionary) -> void:
 		var planet_generator = PlanetGenerator.new()
 		theme_id = planet_generator.get_planet_theme(seed_value)
 	
-	# Check if this is a gas giant
-	is_gas_giant = theme_id == PlanetThemes.GAS_GIANT
+	# Determine planet category based on theme
+	planet_category = PlanetGenerator.get_planet_category(theme_id)
 	
-	# Adjust max moons for gas giants - they always have between 3-6 moons
-	if is_gas_giant:
+	# Check if specific category was requested
+	if "category_override" in params:
+		planet_category = params.category_override
+		# Need to adjust theme if category changed
+		if planet_category == PlanetCategories.GASEOUS:
+			theme_id = PlanetThemes.GAS_GIANT  # Currently the only gaseous type
+		elif planet_category == PlanetCategories.TERRAN and theme_id == PlanetThemes.GAS_GIANT:
+			# If we need a terran planet but had gas giant theme, pick a random terran theme
+			var planet_generator = PlanetGenerator.new()
+			theme_id = planet_generator.get_themed_planet_for_category(seed_value, PlanetCategories.TERRAN)
+	
+	# For convenience, detect if this is a gaseous planet
+	var is_gaseous = planet_category == PlanetCategories.GASEOUS
+	
+	# Adjust moon parameters based on planet category
+	if is_gaseous:
 		var rng = RandomNumberGenerator.new()
 		rng.seed = seed_value + 12345
-		# Gas giants always have 3-6 moons (previously was 3-7)
+		# Gaseous planets always have 3-6 moons
 		max_moons = rng.randi_range(3, 6)
-		moon_chance = 100  # Gas giants ALWAYS have moons (changed from 80%)
+		moon_chance = 100  # Gaseous planets ALWAYS have moons
 	
 	# Attempt to use cached textures if texture caching is enabled
 	if use_texture_cache and PlanetSpawner.texture_cache != null:
 		# Try to get planet texture from cache
 		if PlanetSpawner.texture_cache.planets.has(seed_value):
 			planet_texture = PlanetSpawner.texture_cache.planets[seed_value]
-			pixel_size = 512 if is_gas_giant else 256
+			pixel_size = 512 if is_gaseous else 256
 		else:
 			# Generate and cache the texture
 			var planet_generator = PlanetGenerator.new()
 			var textures = planet_generator.create_planet_texture(seed_value)
 			planet_texture = textures[0]
-			pixel_size = 512 if is_gas_giant else 256
+			pixel_size = 512 if is_gaseous else 256
 			PlanetSpawner.texture_cache.planets[seed_value] = planet_texture
 		
 		# Try to get atmosphere texture from cache
@@ -143,16 +159,22 @@ func initialize(params: Dictionary) -> void:
 		planet_texture = planet_gen_params.texture
 		atmosphere_data = planet_gen_params.atmosphere
 		atmosphere_texture = planet_gen_params.atmosphere_texture
-		is_gas_giant = theme_id == PlanetThemes.GAS_GIANT
+		planet_category = PlanetGenerator.get_planet_category(theme_id)
 	
 	# Set up name component
 	name_component = get_node_or_null("NameComponent")
 	if name_component:
-		var type_prefix = "Gas Giant" if is_gas_giant else ""
+		var type_prefix = ""
+		if is_gaseous:
+			type_prefix = "Gas Giant"
 		name_component.initialize(seed_value, grid_x, grid_y, "", type_prefix)
 		planet_name = name_component.get_entity_name()
 	else:
-		planet_name = ("Gas Giant " if is_gas_giant else "Planet-") + str(seed_value % 1000)
+		# Fallback naming if no name component
+		if is_gaseous:
+			planet_name = "Gas Giant-" + str(seed_value % 1000)
+		else:
+			planet_name = "Planet-" + str(seed_value % 1000)
 	
 	# Defer moon creation to avoid stuttering
 	call_deferred("_create_moons")
@@ -163,7 +185,7 @@ func _emit_planet_loaded() -> void:
 func _generate_planet_data(planet_seed: int) -> Dictionary:
 	var planet_generator = PlanetGenerator.new()
 	var theme = planet_generator.get_planet_theme(planet_seed)
-	var is_gas_giant_type = theme == PlanetThemes.GAS_GIANT
+	var category = PlanetGenerator.get_planet_category(theme)
 	
 	var textures = planet_generator.create_planet_texture(planet_seed)
 	
@@ -179,7 +201,7 @@ func _generate_planet_data(planet_seed: int) -> Dictionary:
 	return {
 		"texture": textures[0],
 		"theme": theme,
-		"pixel_size": 512 if is_gas_giant_type else 256,
+		"pixel_size": (512 if category == PlanetCategories.GASEOUS else 256),
 		"atmosphere": atm_data,
 		"atmosphere_texture": atm_texture
 	}
@@ -194,16 +216,17 @@ func _create_moons() -> void:
 	var rng = RandomNumberGenerator.new()
 	rng.seed = seed_value
 	
-	# For gas giants, always spawn moons. For other planets, check chance.
-	var has_moons = is_gas_giant || (rng.randi() % 100 < moon_chance)
+	# For gaseous planets, always spawn moons. For other planets, check chance.
+	var is_gaseous = planet_category == PlanetCategories.GASEOUS
+	var has_moons = is_gaseous || (rng.randi() % 100 < moon_chance)
 	var num_moons = 0
 	
 	if has_moons:
-		if is_gas_giant:
-			# Gas giants always have 3-6 moons
+		if is_gaseous:
+			# Gaseous planets always have 3-6 moons
 			num_moons = max_moons  # We already set this to rng.randi_range(3, 6) in initialize()
 		else:
-			# Regular planets can have 1-max_moons
+			# Terran planets can have 1-max_moons
 			num_moons = rng.randi_range(1, max_moons)
 	
 	# If no moons, exit early
@@ -221,11 +244,11 @@ func _create_moons() -> void:
 		if not moon_instance:
 			continue
 		
-		# Determine moon type based on planet type and orbital position
-		var moon_type = MoonType.ROCKY  # Default
+		# Determine moon type based on planet category and orbital position
+		var moon_type = MoonType.ROCKY  # Default for all moons
 		
-		if is_gas_giant:
-			# Apply the specific distribution pattern for gas giants:
+		if is_gaseous:
+			# Apply the specific distribution pattern for gaseous planets:
 			# - Innermost moon (m=0): LAVA (volcanic due to tidal forces)
 			# - Second moon (m=1): ROCKY
 			# - Outer moons (m>=2): ICE (colder as they're further away)
@@ -236,7 +259,7 @@ func _create_moons() -> void:
 			else:
 				moon_type = MoonType.ICE
 		else:
-			# Non-gas giant planets can ONLY have rocky moons
+			# Terran planets can only have rocky moons (for now)
 			moon_type = MoonType.ROCKY
 		
 		# Use the pre-calculated orbital parameters
@@ -260,11 +283,10 @@ func _create_moons() -> void:
 	# Emit signal that the planet has been loaded (after moons are created)
 	_emit_planet_loaded()
 
-# Get a random moon type with proper weighting - now only used by non-gas giants
-# (which will override to always return ROCKY)
+# Get a random moon type with proper weighting
 func _get_random_moon_type(rng: RandomNumberGenerator) -> int:
-	# For non-gas giants, always return ROCKY
-	if !is_gas_giant:
+	# For terran planets, always return ROCKY
+	if planet_category == PlanetCategories.TERRAN:
 		return MoonType.ROCKY
 	
 	# This can be kept for backward compatibility or custom distribution
@@ -291,8 +313,8 @@ func _generate_orbital_parameters(moon_count: int, rng: RandomNumberGenerator) -
 	var min_distance = planet_radius * min_moon_distance_factor
 	var max_distance = planet_radius * max_moon_distance_factor
 	
-	# For gas giants, expand the orbital range for moons
-	if is_gas_giant:
+	# For gaseous planets, expand the orbital range for moons
+	if planet_category == PlanetCategories.GASEOUS:
 		max_distance = planet_radius * (max_moon_distance_factor + 0.5)
 	
 	# For multiple moons, use intelligent parameter distribution
@@ -310,8 +332,8 @@ func _generate_orbital_parameters(moon_count: int, rng: RandomNumberGenerator) -
 			# Closer moons orbit faster (sqrt relationship)
 			var speed_factor = 1.0 / sqrt(distance / min_distance)
 			
-			# Gas giants have slower orbiting moons due to greater mass
-			var orbit_modifier = 0.8 if is_gas_giant else 1.0
+			# Gaseous planets have slower orbiting moons due to greater mass
+			var orbit_modifier = 0.8 if planet_category == PlanetCategories.GASEOUS else 1.0
 			var orbit_speed = rng.randf_range(0.2, 0.4) * moon_orbit_factor * speed_factor * orbit_modifier
 			
 			# Step 3: Distribute phase offsets evenly around orbit
@@ -334,9 +356,29 @@ func _generate_orbital_parameters(moon_count: int, rng: RandomNumberGenerator) -
 		params.append({
 			"distance": rng.randf_range(min_distance, max_distance),
 			"base_angle": 0.0,
-			"orbit_speed": rng.randf_range(0.2, 0.5) * moon_orbit_factor * (0.8 if is_gas_giant else 1.0),
+			"orbit_speed": rng.randf_range(0.2, 0.5) * moon_orbit_factor * (0.8 if planet_category == PlanetCategories.GASEOUS else 1.0),
 			"orbit_deviation": rng.randf_range(0.05, max_orbit_deviation),
 			"phase_offset": rng.randf_range(0, TAU) # Random starting position
 		})
 	
 	return params
+
+# Get planet category name as string (for debugging/UI)
+func get_category_name() -> String:
+	match planet_category:
+		PlanetCategories.TERRAN: return "Terran"
+		PlanetCategories.GASEOUS: return "Gaseous"
+		_: return "Unknown"
+
+# Get theme name as string (for debugging/UI)
+func get_theme_name() -> String:
+	match theme_id:
+		PlanetThemes.ARID: return "Arid"
+		PlanetThemes.ICE: return "Ice"
+		PlanetThemes.LAVA: return "Lava"
+		PlanetThemes.LUSH: return "Lush"
+		PlanetThemes.DESERT: return "Desert"
+		PlanetThemes.ALPINE: return "Alpine"
+		PlanetThemes.OCEAN: return "Ocean"
+		PlanetThemes.GAS_GIANT: return "Gas Giant"
+		_: return "Unknown"

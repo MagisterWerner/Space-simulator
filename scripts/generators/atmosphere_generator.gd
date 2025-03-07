@@ -2,14 +2,15 @@
 extends RefCounted
 class_name AtmosphereGenerator
 
-# Import the PlanetGenerator enums directly to avoid shadowing
+# Import the PlanetGenerator enums directly
 const PlanetThemes = preload("res://scripts/generators/planet_generator.gd").PlanetTheme
+const PlanetCategories = preload("res://scripts/generators/planet_generator.gd").PlanetCategory
 
 # Constants for atmosphere generation
-const BASE_ATMOSPHERE_SIZE: int = 384
-const GAS_GIANT_ATMOSPHERE_SIZE: int = 768  # Larger atmosphere for gas giants
-const BASE_THICKNESS_FACTOR: float = 0.3
-const GAS_GIANT_THICKNESS_FACTOR: float = 0.15  # Thinner relative to size but still substantial
+const BASE_ATMOSPHERE_SIZE_TERRAN: int = 384
+const BASE_ATMOSPHERE_SIZE_GASEOUS: int = 768  # Larger atmosphere for gaseous planets
+const BASE_THICKNESS_FACTOR_TERRAN: float = 0.3
+const BASE_THICKNESS_FACTOR_GASEOUS: float = 0.15  # Thinner relative to size but still substantial
 
 # Theme-based atmosphere colors - using PlanetThemes enum for reference
 const ATMOSPHERE_COLORS = {
@@ -51,8 +52,11 @@ func generate_atmosphere_data(theme: int, seed_value: int) -> Dictionary:
 	var color_variation = 0.1
 	var thickness_variation = 0.2
 	
-	# Special handling for gas giants
-	if theme == PlanetThemes.GAS_GIANT:
+	# Check planet category for specialized processing
+	var planet_category = PlanetGenerator.get_planet_category(theme)
+	
+	# Special handling for gaseous planets (currently only gas giants)
+	if planet_category == PlanetCategories.GASEOUS:
 		# Different gas giant atmosphere types based on seed
 		var gas_giant_type = rng.randi() % 4
 		
@@ -66,7 +70,7 @@ func generate_atmosphere_data(theme: int, seed_value: int) -> Dictionary:
 			3:  # Exotic (unusual coloration)
 				base_color = Color(0.8, 0.6, 0.8, 0.4)
 		
-		# Gas giants can have more color variation
+		# Gaseous planets can have more color variation
 		color_variation = 0.15
 	
 	# Vary the color components slightly
@@ -78,22 +82,25 @@ func generate_atmosphere_data(theme: int, seed_value: int) -> Dictionary:
 	var color = Color(r, g, b, a)
 	var thickness = base_thickness * (1.0 + (rng.randf() - 0.5) * thickness_variation)
 	
-	# Special adjustments for certain planet types
-	if theme == PlanetThemes.LAVA:
-		thickness *= 1.2
-		color.a = min(color.a + 0.1, 0.8)
+	# Special adjustments for specific terran planet types
+	if planet_category == PlanetCategories.TERRAN:
+		match theme:
+			PlanetThemes.LAVA:
+				thickness *= 1.2
+				color.a = min(color.a + 0.1, 0.8)
+			
+			PlanetThemes.OCEAN:
+				color.g += 0.05
 	
-	if theme == PlanetThemes.OCEAN:
-		color.g += 0.05
-	
-	# For gas giants, ensure appropriate atmospheric characteristics
-	if theme == PlanetThemes.GAS_GIANT:
+	# For gaseous planets, ensure appropriate atmospheric characteristics
+	if planet_category == PlanetCategories.GASEOUS:
 		thickness *= 1.1  # Slightly thicker
 		color.a = clamp(color.a + 0.05, 0.3, 0.5)  # More noticeable
 	
 	return {
 		"color": color,
-		"thickness": thickness
+		"thickness": thickness,
+		"category": planet_category  # Include the planet category for reference
 	}
 
 # Static function to get an atmosphere texture with caching
@@ -119,19 +126,21 @@ static func get_atmosphere_texture(theme: int, seed_value: int, color: Color, th
 	return texture
 
 # Generate atmosphere texture with perfect planet edge alignment
-# Parameters theme and seed_value are used to determine if this is a gas giant
+# Parameters theme and seed_value are used to determine category and other properties
 func generate_atmosphere_texture(theme: int, seed_value: int, color: Color, thickness_factor: float) -> ImageTexture:
-	var is_gas_giant = theme == PlanetThemes.GAS_GIANT
-	var atm_size = GAS_GIANT_ATMOSPHERE_SIZE if is_gas_giant else BASE_ATMOSPHERE_SIZE
+	var planet_category = PlanetGenerator.get_planet_category(theme)
+	var is_gaseous = planet_category == PlanetCategories.GASEOUS
+	
+	var atm_size = BASE_ATMOSPHERE_SIZE_GASEOUS if is_gaseous else BASE_ATMOSPHERE_SIZE_TERRAN
 	var image = Image.create(atm_size, atm_size, true, Image.FORMAT_RGBA8)
 	
 	# CRITICAL: Planet radius must match the planet texture size
-	var planet_radius = 255.0 if is_gas_giant else 127.0  # Match 512px or 256px planet textures
+	var planet_radius = PlanetGenerator.PLANET_RADIUS_GASEOUS if is_gaseous else PlanetGenerator.PLANET_RADIUS_TERRAN
 	
 	# Calculate atmosphere dimensions
 	# Use exact planet radius as inner radius (no gap) with slight overlap
 	var inner_radius = planet_radius - 1.0  # 1px overlap for smoother blend
-	var thickness = planet_radius * (GAS_GIANT_THICKNESS_FACTOR if is_gas_giant else BASE_THICKNESS_FACTOR) * thickness_factor
+	var thickness = planet_radius * (BASE_THICKNESS_FACTOR_GASEOUS if is_gaseous else BASE_THICKNESS_FACTOR_TERRAN) * thickness_factor
 	var outer_radius = planet_radius + thickness
 	
 	# Center of the texture
@@ -173,9 +182,11 @@ func generate_atmosphere_texture(theme: int, seed_value: int, color: Color, thic
 			# Use cubic curve for smoother gradient
 			alpha_curve = alpha_curve * alpha_curve * (3.0 - 2.0 * alpha_curve)
 			
-			# Gas giants can have slight color variations in their atmosphere
+			# Special atmosphere effects based on planet category
 			var final_color = color
-			if is_gas_giant:
+			
+			if is_gaseous:
+				# Gaseous planets can have slight color variations in their atmosphere
 				var angle = atan2(pos.y - center.y, pos.x - center.x)
 				var band_factor = sin(angle * 3.0 + seed_value) * 0.05
 				
@@ -201,3 +212,7 @@ func get_atmosphere_color_for_theme(theme: int) -> Color:
 # Get atmosphere thickness for a theme (utility function)
 func get_atmosphere_thickness_for_theme(theme: int) -> float:
 	return ATMOSPHERE_THICKNESS.get(theme, 1.0)
+
+# Get base atmosphere size based on planet category
+func get_atmosphere_size_for_category(category: int) -> int:
+	return BASE_ATMOSPHERE_SIZE_GASEOUS if category == PlanetCategories.GASEOUS else BASE_ATMOSPHERE_SIZE_TERRAN
