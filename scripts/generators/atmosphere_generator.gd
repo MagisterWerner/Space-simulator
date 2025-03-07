@@ -21,7 +21,7 @@ const ATMOSPHERE_COLORS = {
 	PlanetThemes.DESERT: Color(0.9, 0.7, 0.4, 0.4),
 	PlanetThemes.ALPINE: Color(0.7, 0.9, 1.0, 0.25),
 	PlanetThemes.OCEAN: Color(0.4, 0.7, 0.9, 0.35),
-	PlanetThemes.GAS_GIANT: Color(0.6, 0.8, 0.9, 0.4)  # Default gas giant atmosphere
+	PlanetThemes.GAS_GIANT: Color(0.75, 0.65, 0.45, 0.4)  # Updated gas giant atmosphere
 }
 
 # Theme-based atmosphere thickness
@@ -61,14 +61,14 @@ func generate_atmosphere_data(theme: int, seed_value: int) -> Dictionary:
 		var gas_giant_type = rng.randi() % 4
 		
 		match gas_giant_type:
-			0:  # Jupiter-like (amber atmosphere)
-				base_color = Color(0.9, 0.7, 0.4, 0.45)
-			1:  # Saturn-like (pale yellow atmosphere)
-				base_color = Color(0.95, 0.9, 0.6, 0.35)
-			2:  # Neptune-like (blue atmosphere)
-				base_color = Color(0.5, 0.7, 0.9, 0.4)
-			3:  # Exotic (unusual coloration)
-				base_color = Color(0.8, 0.6, 0.8, 0.4)
+			0:  # Jupiter-like (amber atmosphere) - UPDATED to better match reddish-brown spots
+				base_color = Color(0.85, 0.65, 0.35, 0.45)
+			1:  # Saturn-like (pale yellow atmosphere) - UPDATED to beige
+				base_color = Color(0.90, 0.82, 0.60, 0.35)
+			2:  # Neptune-like (blue atmosphere) - UPDATED for more visual interest
+				base_color = Color(0.50, 0.65, 0.85, 0.4)
+			3:  # Exotic (unusual coloration) - UPDATED to match beige palette
+				base_color = Color(0.85, 0.75, 0.55, 0.4)
 		
 		# Gaseous planets can have more color variation
 		color_variation = 0.15
@@ -186,14 +186,22 @@ func generate_atmosphere_texture(theme: int, seed_value: int, color: Color, thic
 			var final_color = color
 			
 			if is_gaseous:
-				# Gaseous planets can have slight color variations in their atmosphere
+				# Gaseous planets can have bands in their atmosphere
 				var angle = atan2(pos.y - center.y, pos.x - center.x)
-				var band_factor = sin(angle * 3.0 + seed_value) * 0.05
+				
+				# Create subtle color variations based on bands
+				var y_normalized = (pos.y - (center.y - planet_radius)) / (2 * planet_radius)
+				y_normalized = clamp(y_normalized, 0.0, 1.0)
+				
+				# Bands follow the planet's banding pattern
+				var band_factor = sin(y_normalized * 12.0 * PI + seed_value) * 0.05
 				
 				# Apply subtle color variation
-				final_color.r = clamp(color.r + band_factor, 0, 1)
-				final_color.g = clamp(color.g + band_factor * 0.7, 0, 1)
-				final_color.b = clamp(color.b + band_factor * 0.5, 0, 1)
+				if theme == PlanetThemes.GAS_GIANT:
+					# Match the planet's band coloration
+					final_color.r = clamp(color.r + band_factor, 0, 1)
+					final_color.g = clamp(color.g + band_factor * 0.7, 0, 1)
+					final_color.b = clamp(color.b + band_factor * 0.5, 0, 1)
 			
 			# Create final pixel color
 			var final_alpha = color.a * alpha_curve
