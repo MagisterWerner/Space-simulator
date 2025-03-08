@@ -1,12 +1,27 @@
-[gd_scene load_steps=5 format=3 uid="uid://ddsnaxcqqd81s"]
+[gd_scene load_steps=6 format=3 uid="uid://ddsnaxcqqd81s"]
 
 [ext_resource type="Script" uid="uid://2lae3uvcc1c4" path="res://scripts/main.gd" id="1_txjaf"]
 [ext_resource type="PackedScene" uid="uid://rhas31gnv33u" path="res://scenes/player/player_ship.tscn" id="2_cayce"]
 [ext_resource type="PackedScene" uid="uid://8iqbtdgouxfb" path="res://scenes/backgrounds/space_background.tscn" id="3_t8g3p"]
 [ext_resource type="PackedScene" uid="uid://baujd316t5ufb" path="res://scenes/world/world_grid.tscn" id="5_84hlr"]
+[ext_resource type="Script" uid="uid://d0faq8wvi3ac0" path="res://scripts/game_settings.gd" id="6_m34dp"]
 
 [node name="Main" type="Node2D"]
 script = ExtResource("1_txjaf")
+
+[node name="GameSettings" type="Node" parent="."]
+script = ExtResource("6_m34dp")
+game_seed = 12345
+use_random_seed = false
+grid_cell_size = 256
+grid_size = 3
+player_starting_cell = Vector2i(1, 1)
+asteroid_field_chance_per_cell = 0
+station_chance_per_cell = 0
+max_planets = 3
+max_asteroid_fields = 0
+max_stations = 0
+debug_mode = true
 
 [node name="SpaceBackground" parent="." instance=ExtResource("3_t8g3p")]
 
@@ -19,5 +34,3 @@ position_smoothing_enabled = true
 position_smoothing_speed = 3.0
 
 [node name="WorldGrid" parent="." instance=ExtResource("5_84hlr")]
-grid_size = 5
-grid_opacity = 0.1

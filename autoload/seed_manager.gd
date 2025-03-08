@@ -3,8 +3,7 @@
 # Purpose:
 #   Manages procedural generation seeding and provides deterministic randomization methods.
 #   Ensures consistent procedural generation based on game seeds.
-#   Provides cached noise generators and random values for performance.
-#   Offers utilities for deterministic random operations based on object IDs.
+#   Now works with GameSettings for centralized seed management.
 #
 # Interface:
 #   Signals:
@@ -22,25 +21,6 @@
 #     - get_random_point_in_circle(object_id, radius, object_subid)
 #     - get_2d_noise(x, y, scale, octaves, object_id)
 #     - get_weighted_element(object_id, elements, weights)
-#
-#   Configuration:
-#     - debug_mode: bool
-#     - enable_cache: bool
-#
-# Dependencies:
-#   - None
-#
-# Usage Example:
-#   # Set a specific seed for deterministic generation
-#   SeedManager.set_seed(12345)
-#   
-#   # Get deterministic random values for an entity
-#   var asteroid_id = 42
-#   var size = SeedManager.get_random_value(asteroid_id, 1.0, 3.0)
-#   var variant = SeedManager.get_random_int(asteroid_id, 1, 5)
-#   
-#   # Get a random point for spawning
-#   var spawn_pos = SeedManager.get_random_point_in_circle(asteroid_id, 100.0)
 
 extends Node
 
@@ -50,6 +30,7 @@ signal seed_changed(new_seed)
 var current_seed: int = 0
 var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var seed_hash: String = ""
+var game_settings: GameSettings = null
 
 # Cache for deterministic values
 var _noise_generators = {}
@@ -61,20 +42,50 @@ var debug_mode: bool = false
 var enable_cache: bool = true  # Can be toggled for memory optimization
 
 func _ready() -> void:
+	# Find GameSettings after a frame delay
+	call_deferred("_find_game_settings")
+	
 	# Initialize with a random seed if none is set
 	if current_seed == 0:
 		set_random_seed()
+
+func _find_game_settings() -> void:
+	# Wait a frame to ensure the scene is loaded
+	await get_tree().process_frame
 	
-	# Connect to game start signal
-	if has_node("/root/EventManager") and EventManager.has_signal("game_started"):
-		EventManager.game_started.connect(_on_game_started)
+	# Find GameSettings in the main scene
+	var main_scene = get_tree().current_scene
+	game_settings = main_scene.get_node_or_null("GameSettings")
+	
+	if game_settings:
+		# Connect to GameSettings seed_changed signal
+		if game_settings.is_connected("seed_changed", _on_game_settings_seed_changed):
+			game_settings.disconnect("seed_changed", _on_game_settings_seed_changed)
+		game_settings.connect("seed_changed", _on_game_settings_seed_changed)
+		
+		# Get seed from GameSettings
+		var settings_seed = game_settings.get_seed()
+		if settings_seed != 0 and settings_seed != current_seed:
+			set_seed(settings_seed)
+			
+		# Use debug mode from settings
+		debug_mode = game_settings.debug_mode
+		
+		if debug_mode:
+			print("SeedManager: Connected to GameSettings")
+	else:
+		if debug_mode:
+			print("SeedManager: GameSettings not found, using standalone mode")
+
+func _on_game_settings_seed_changed(new_seed: int) -> void:
+	# Update our seed when GameSettings seed changes
+	set_seed(new_seed)
 
 func _on_game_started() -> void:
-	# Optional: Generate a new seed when starting a new game
-	# Uncomment if you want a new seed for each game session
-	# set_random_seed()
-	pass
-
+	# Use GameSettings seed if available
+	if game_settings:
+		set_seed(game_settings.get_seed())
+	
 func set_seed(new_seed: int) -> void:
 	# Store the old seed for history
 	if current_seed != 0 and current_seed != new_seed:
@@ -92,7 +103,13 @@ func set_seed(new_seed: int) -> void:
 	
 	# Notify all systems that depend on the seed
 	seed_changed.emit(current_seed)
-	print("Seed set to: %s (hash: %s)" % [current_seed, seed_hash])
+	
+	# Update GameSettings if it exists and the seed came from elsewhere
+	if game_settings and game_settings.get_seed() != current_seed:
+		game_settings.set_seed(current_seed)
+	
+	if debug_mode:
+		print("Seed set to: %s (hash: %s)" % [current_seed, seed_hash])
 
 func set_random_seed() -> void:
 	# Generate a new random seed
@@ -101,6 +118,11 @@ func set_random_seed() -> void:
 	set_seed(new_seed)
 
 func get_seed() -> int:
+	# If GameSettings is available, prefer its seed
+	if game_settings:
+		var settings_seed = game_settings.get_seed()
+		if settings_seed != current_seed:
+			set_seed(settings_seed)
 	return current_seed
 
 func get_seed_hash() -> String:
@@ -109,6 +131,10 @@ func get_seed_hash() -> String:
 # Get a consistent random value between min and max for a given object ID
 # Use object_subid for different values from same object
 func get_random_value(object_id: int, min_val: float, max_val: float, object_subid: int = 0) -> float:
+	# First use GameSettings if available
+	if game_settings and game_settings.has_method("get_random_value"):
+		return game_settings.get_random_value(object_id, min_val, max_val, object_subid)
+	
 	# Try to get from cache first
 	var cache_key = "value_%d_%d_%f_%f" % [object_id, object_subid, min_val, max_val]
 	if enable_cache and _value_cache.has(cache_key):
@@ -130,6 +156,10 @@ func get_random_value(object_id: int, min_val: float, max_val: float, object_sub
 
 # Get a random integer in a given range for an object
 func get_random_int(object_id: int, min_val: int, max_val: int, object_subid: int = 0) -> int:
+	# First use GameSettings if available
+	if game_settings and game_settings.has_method("get_random_int"):
+		return game_settings.get_random_int(object_id, min_val, max_val, object_subid)
+	
 	# Try to get from cache first
 	var cache_key = "int_%d_%d_%d_%d" % [object_id, object_subid, min_val, max_val]
 	if enable_cache and _value_cache.has(cache_key):
@@ -150,6 +180,10 @@ func get_random_int(object_id: int, min_val: int, max_val: int, object_subid: in
 
 # Get a random point in a circle with given radius
 func get_random_point_in_circle(object_id: int, radius: float, object_subid: int = 0) -> Vector2:
+	# First use GameSettings if available
+	if game_settings and game_settings.has_method("get_random_point_in_circle"):
+		return game_settings.get_random_point_in_circle(object_id, radius, object_subid)
+	
 	# Try to get from cache first
 	var cache_key = "circle_%d_%d_%f" % [object_id, object_subid, radius]
 	if enable_cache and _value_cache.has(cache_key):

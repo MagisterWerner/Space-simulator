@@ -1,13 +1,16 @@
 # scripts/managers/grid_manager.gd
-# Utility singleton for grid-based functionality
+# Utility singleton for grid-based functionality, now using GameSettings
 extends Node
 
 signal player_cell_changed(old_cell, new_cell)
 
+var game_settings: GameSettings = null
+var world_grid: Node2D = null
+
+# Fallback values if settings not available
 var cell_size: int = 1024
 var grid_size: int = 10
 
-var _world_grid: Node2D = null
 var _player_current_cell: Vector2i = Vector2i(-1, -1)
 var _player_last_check_position: Vector2 = Vector2.ZERO
 var _grid_initialized: bool = false
@@ -17,37 +20,58 @@ func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	
 	# Find the world grid after a frame delay to ensure it's initialized
-	call_deferred("_find_world_grid")
+	call_deferred("_find_game_systems")
+
+func _find_game_systems() -> void:
+	# Wait one frame to ensure grid is initialized
+	await get_tree().process_frame
+	
+	# Find GameSettings in the main scene
+	var main_scene = get_tree().current_scene
+	game_settings = main_scene.get_node_or_null("GameSettings")
+	
+	if game_settings:
+		# Update our local variables from settings
+		cell_size = game_settings.grid_cell_size
+		grid_size = game_settings.grid_size
+		
+		if game_settings.debug_mode:
+			print("GridManager: Found GameSettings, using configured values")
+	
+	# Find the world grid
+	_find_world_grid()
+	
+	_grid_initialized = true
 
 func _process(_delta: float) -> void:
 	# Check player position and update cell information
 	_update_player_cell()
 
 func _find_world_grid() -> void:
-	# Wait one frame to ensure grid is initialized
-	await get_tree().process_frame
-	
 	# Try to find the grid in various ways
 	var grids = get_tree().get_nodes_in_group("world_grid")
 	if not grids.is_empty():
-		_world_grid = grids[0]
-		cell_size = _world_grid.cell_size
-		grid_size = _world_grid.grid_size
-		_grid_initialized = true
+		world_grid = grids[0]
+		if world_grid:
+			# Update our cache from the grid's values if not using GameSettings
+			if not game_settings:
+				cell_size = world_grid.cell_size
+				grid_size = world_grid.grid_size
 		return
 	
 	# Try to find directly in the Main scene
 	var main = get_node_or_null("/root/Main")
 	if main:
-		_world_grid = main.get_node_or_null("WorldGrid")
-		if _world_grid:
-			cell_size = _world_grid.cell_size
-			grid_size = _world_grid.grid_size
-			_grid_initialized = true
+		world_grid = main.get_node_or_null("WorldGrid")
+		if world_grid:
+			# Update our cache from the grid's values if not using GameSettings
+			if not game_settings:
+				cell_size = world_grid.cell_size
+				grid_size = world_grid.grid_size
 			return
 	
-	# If grid not found, use default values
-	print("GridManager: WorldGrid not found, using default values")
+	# If grid not found, log message
+	print("GridManager: WorldGrid not found, using cached values")
 
 func _update_player_cell() -> void:
 	var player_ships = get_tree().get_nodes_in_group("player")
@@ -66,9 +90,12 @@ func _update_player_cell() -> void:
 	# Calculate cell coordinates
 	var cell_coords: Vector2i
 	
-	if _world_grid and _world_grid.has_method("get_cell_coords"):
-		# Use grid's method if available
-		cell_coords = _world_grid.get_cell_coords(player_position)
+	# First use GameSettings if available
+	if game_settings:
+		cell_coords = game_settings.get_cell_coords(player_position)
+	# Then try world grid if available
+	elif world_grid and world_grid.has_method("get_cell_coords"):
+		cell_coords = world_grid.get_cell_coords(player_position)
 	else:
 		# Calculate manually if grid not available
 		var grid_offset = Vector2(-cell_size * grid_size / 2.0, -cell_size * grid_size / 2.0)
@@ -86,14 +113,15 @@ func _update_player_cell() -> void:
 		# Emit signal
 		player_cell_changed.emit(old_cell, _player_current_cell)
 		
-		# Print debug info
-		if old_cell.x >= 0 and old_cell.y >= 0:
-			print("Player moved from cell (%d,%d) to (%d,%d)" % [
-				old_cell.x, old_cell.y, 
-				cell_coords.x, cell_coords.y
-			])
-		else:
-			print("Player entered cell (%d,%d)" % [cell_coords.x, cell_coords.y])
+		# Debug info
+		if (game_settings and game_settings.debug_mode) or (not game_settings and _grid_initialized):
+			if old_cell.x >= 0 and old_cell.y >= 0:
+				print("Player moved from cell (%d,%d) to (%d,%d)" % [
+					old_cell.x, old_cell.y, 
+					cell_coords.x, cell_coords.y
+				])
+			else:
+				print("Player entered cell (%d,%d)" % [cell_coords.x, cell_coords.y])
 
 # Get player's current cell coordinates
 func get_player_cell() -> Vector2i:
@@ -102,8 +130,12 @@ func get_player_cell() -> Vector2i:
 
 # Convert world position to cell coordinates
 func world_to_cell(world_position: Vector2) -> Vector2i:
-	if _world_grid and _world_grid.has_method("get_cell_coords"):
-		return _world_grid.get_cell_coords(world_position)
+	# First use GameSettings if available
+	if game_settings:
+		return game_settings.get_cell_coords(world_position)
+	# Then try world grid if available
+	elif world_grid and world_grid.has_method("get_cell_coords"):
+		return world_grid.get_cell_coords(world_position)
 	
 	# Calculate manually if grid not available
 	var grid_offset = Vector2(-cell_size * grid_size / 2.0, -cell_size * grid_size / 2.0)
@@ -115,8 +147,12 @@ func world_to_cell(world_position: Vector2) -> Vector2i:
 
 # Convert cell coordinates to world position (center of cell)
 func cell_to_world(cell_coords: Vector2i) -> Vector2:
-	if _world_grid and _world_grid.has_method("get_cell_center"):
-		return _world_grid.get_cell_center(cell_coords)
+	# First use GameSettings if available
+	if game_settings:
+		return game_settings.get_cell_world_position(cell_coords)
+	# Then try world grid if available
+	elif world_grid and world_grid.has_method("get_cell_center"):
+		return world_grid.get_cell_center(cell_coords)
 	
 	# Calculate manually if grid not available
 	var grid_offset = Vector2(-cell_size * grid_size / 2.0, -cell_size * grid_size / 2.0)
@@ -127,6 +163,9 @@ func cell_to_world(cell_coords: Vector2i) -> Vector2:
 
 # Check if cell coordinates are valid (within grid bounds)
 func is_valid_cell(cell_coords: Vector2i) -> bool:
+	if game_settings:
+		return game_settings.is_valid_cell(cell_coords)
+	
 	return (
 		cell_coords.x >= 0 and cell_coords.x < grid_size and
 		cell_coords.y >= 0 and cell_coords.y < grid_size

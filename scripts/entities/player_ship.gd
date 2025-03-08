@@ -1,5 +1,6 @@
 # scripts/entities/player_ship.gd
 # Player ship controller that ties together all ship components and handles input
+# Updated to integrate with GameSettings
 extends RigidBody2D
 class_name PlayerShip
 
@@ -18,6 +19,9 @@ signal player_respawned
 @export var debug_mode: bool = false
 @export var input_enabled: bool = true
 
+# Reference to GameSettings
+var game_settings: GameSettings = null
+
 # Input state tracking
 var _input_thrust_forward: bool = false
 var _input_thrust_backward: bool = false
@@ -27,6 +31,14 @@ var _input_boost: bool = false
 var _input_fire: bool = false
 
 func _ready() -> void:
+	# Find GameSettings in the main scene
+	var main_scene = get_tree().current_scene
+	game_settings = main_scene.get_node_or_null("GameSettings")
+	
+	# Set debug mode from settings if available
+	if game_settings:
+		debug_mode = game_settings.debug_mode
+	
 	# Debug - print all components to check for duplicates
 	if debug_mode:
 		debug_print("Components in player ship:")
@@ -59,6 +71,13 @@ func _ready() -> void:
 	if health_component:
 		health_component.damaged.connect(_on_health_damaged)
 		health_component.died.connect(_on_health_died)
+	
+	# Position the ship if requested by game settings
+	if game_settings:
+		global_position = game_settings.get_player_starting_position()
+		
+		if debug_mode:
+			debug_print("Starting at configured position: " + str(global_position))
 	
 	# Ensure we're in the player group
 	if not is_in_group("player"):
@@ -175,7 +194,7 @@ func respawn(spawn_position: Vector2 = Vector2.ZERO) -> void:
 	# Emit player respawned signal
 	player_respawned.emit()
 	
-	debug_print("Player respawned")
+	debug_print("Player respawned at " + str(global_position))
 
 func play_death_effect() -> void:
 	# Optional: Implement death effect here
@@ -208,6 +227,7 @@ func play_death_effect() -> void:
 	explosion_particles.add_child(timer)
 	timer.start()
 
+# Strategy application
 func add_upgrade_strategy(strategy, component_name: String) -> bool:
 	var component = get_node_or_null(component_name)
 	

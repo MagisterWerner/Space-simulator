@@ -3,8 +3,7 @@
 # Purpose:
 #   Manages the player's resources, inventory, and trading system.
 #   Handles resource types, quantities, and resource-related operations.
-#   Provides trading mechanics for buying and selling resources at stations.
-#   Tracks cargo capacity and implements a market price system.
+#   Updated to work with GameSettings for initial resource values.
 #
 # Interface:
 #   Signals:
@@ -22,34 +21,6 @@
 #     - get_resource_amount(resource_id)
 #     - has_resource(resource_id, amount)
 #     - get_resource_name(resource_id)
-#
-#   Cargo Methods:
-#     - set_cargo_capacity(new_capacity)
-#     - get_available_cargo_space()
-#     - has_cargo_space_for(resource_id, amount)
-#     - get_total_cargo_value()
-#
-#   Trading Methods:
-#     - trade_with_station(station_id, buy_resources, sell_resources)
-#     - set_station_market_modifiers(station_id, modifiers)
-#     - get_resource_price(resource_id, station_id)
-#
-# Dependencies:
-#   - None
-#
-# Usage Example:
-#   # Add resources to player inventory
-#   ResourceManager.add_resource(ResourceManager.ResourceType.CREDITS, 1000)
-#   ResourceManager.add_resource(ResourceManager.ResourceType.FUEL, 50)
-#   
-#   # Check if player has enough resources
-#   if ResourceManager.has_resource(ResourceManager.ResourceType.CREDITS, 500):
-#       ResourceManager.remove_resource(ResourceManager.ResourceType.CREDITS, 500)
-#   
-#   # Trade with a station
-#   var buy = {ResourceManager.ResourceType.FUEL: 10}
-#   var sell = {ResourceManager.ResourceType.METAL_ORE: 5}
-#   ResourceManager.trade_with_station("station_1", buy, sell)
 
 extends Node
 
@@ -57,6 +28,9 @@ signal resource_added(resource_id, amount)
 signal resource_removed(resource_id, amount)
 signal resource_changed(resource_id, new_amount, old_amount)
 signal cargo_capacity_changed(new_capacity, old_capacity)
+
+# Reference to game settings
+var game_settings: GameSettings = null
 
 # Resource types
 enum ResourceType {
@@ -168,6 +142,20 @@ func _ready() -> void:
 	# Initialize inventory with zero amounts
 	for resource_id in resource_data:
 		inventory[resource_id] = 0.0
+	
+	# Look for GameSettings in the main scene
+	call_deferred("_find_game_settings")
+
+func _find_game_settings() -> void:
+	# Wait a frame to ensure the scene is loaded
+	await get_tree().process_frame
+	
+	# Find GameSettings in the main scene
+	var main_scene = get_tree().current_scene
+	game_settings = main_scene.get_node_or_null("GameSettings")
+	
+	if game_settings and game_settings.debug_mode:
+		print("ResourceManager: Connected to GameSettings")
 
 # Add resources to inventory
 func add_resource(resource_id: int, amount: float) -> bool:
@@ -325,6 +313,10 @@ func trade_with_station(station_id: String, buy_resources: Dictionary, sell_reso
 	for resource_id in buy_resources:
 		add_resource(resource_id, buy_resources[resource_id])
 	
+	# Notify any event system
+	if has_node("/root/EventManager"):
+		EventManager.safe_emit("trade_completed", [station_id, buy_resources, sell_resources, credits_change])
+	
 	return true
 
 # Set market price modifiers for a station
@@ -344,3 +336,31 @@ func get_resource_price(resource_id: int, station_id: String = "") -> float:
 		return base_price
 	
 	return base_price * station_modifiers[resource_id]
+
+# Reset all resources to zero
+func reset_resources() -> void:
+	for resource_id in inventory:
+		var old_amount = inventory[resource_id]
+		inventory[resource_id] = 0.0
+		resource_changed.emit(resource_id, 0.0, old_amount)
+	
+	used_capacity = 0.0
+
+# Initialize with starting resources from GameSettings
+func initialize_starting_resources() -> void:
+	# Reset first
+	reset_resources()
+	
+	if game_settings:
+		# Set up starting resources based on settings
+		add_resource(ResourceType.CREDITS, game_settings.player_starting_credits)
+		add_resource(ResourceType.FUEL, game_settings.player_starting_fuel)
+		
+		if game_settings.debug_mode:
+			print("ResourceManager: Initialized with starting credits: ", 
+				  game_settings.player_starting_credits, 
+				  ", fuel: ", game_settings.player_starting_fuel)
+	else:
+		# Fallback to default starting values
+		add_resource(ResourceType.CREDITS, 1000)
+		add_resource(ResourceType.FUEL, 100)

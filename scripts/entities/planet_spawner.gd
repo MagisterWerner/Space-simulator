@@ -1,45 +1,5 @@
 # scripts/entities/planet_spawner.gd
-# ==========================
-# PURPOSE:
-#   An optimized planet spawner that enables procedurally generating planets
-#   with precise control over their type, appearance, and characteristics.
-#
-# USAGE:
-#   1. Basic planet spawning:
-#      var planet = $PlanetSpawner.spawn_planet()  # Random planet
-#
-#   2. Spawn specific planet type by category and theme:
-#      var lush_planet = $PlanetSpawner.spawn_specific_planet("terran", "lush")
-#      var gas_giant = $PlanetSpawner.spawn_specific_planet("gaseous")
-#
-#   3. Convenient helper methods:
-#      var ice_planet = $PlanetSpawner.spawn_terran_planet("ice")
-#      var gas_giant = $PlanetSpawner.spawn_gaseous_planet()
-#
-#   4. Spawn planet at specific grid position:
-#      $PlanetSpawner.set_grid_position(3, 5)
-#      var planet = $PlanetSpawner.spawn_terran_planet("ocean")
-#
-#   5. Advanced customization:
-#      var params = {
-#         "category": "terran",
-#         "theme": "alpine",
-#         "grid_x": 7,
-#         "grid_y": 2,
-#         "planet_scale": 1.2,
-#         "moon_chance": 75
-#      }
-#      var custom_planet = $PlanetSpawner.spawn_with_params(params)
-#
-# AVAILABLE PLANET TYPES:
-#   - Terran (rocky planets): "arid", "ice", "lava", "lush", "desert", "alpine", "ocean"
-#   - Gaseous (gas giants): currently only one type, specify simply as "gaseous"
-#
-# NOTES:
-#   - Planets are procedurally generated based on a seed value
-#   - The same seed will always produce the same planet
-#   - All planets can have moons based on type/parameters
-
+# Enhanced planet spawner that uses GameSettings for consistent generation
 extends Node2D
 class_name PlanetSpawner
 
@@ -51,15 +11,11 @@ signal planet_spawned(planet_instance)
 signal spawner_ready
 
 # Planet Type Selection - SIMPLIFIED to prevent mixing
-@export_category("Planet Type")
 @export_enum("Terran", "Gaseous") var planet_category: int = 0  # 0=Terran, 1=Gaseous
 
 # Terran Planet Theme (only used when planet_category is Terran)
 @export_enum("Random", "Arid", "Ice", "Lava", "Lush", "Desert", "Alpine", "Ocean") 
 var terran_theme: int = 0  # 0=Random, 1-7=Specific Terran theme
-
-# Random Seed Option 
-@export var force_random_seed: bool = false  # When true, ignores grid positioning
 
 # Planet Configuration
 @export_category("Planet Configuration")
@@ -83,15 +39,13 @@ var terran_theme: int = 0  # 0=Random, 1-7=Specific Terran theme
 @export_category("Rendering")
 @export var z_index_base: int = -10  # Base z-index for planets
 
-@export_category("Debug")
-@export var debug_mode: bool = false
-
 # Internal variables
 var _seed_value: int = 0
 var _planet_instance = null
 var _moon_instances = []
 var _initialized: bool = false
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
+var game_settings: GameSettings = null
 
 # Texture cache shared between all planet spawners
 static var texture_cache = {
@@ -126,12 +80,18 @@ func _ready() -> void:
 	if planet_scene == null:
 		planet_scene = load("res://scenes/world/planet.tscn")
 	
-	# Connect to SeedManager signal if available
-	if has_node("/root/SeedManager") and SeedManager.has_signal("seed_changed"):
-		SeedManager.seed_changed.connect(_on_seed_changed)
+	# Connect to the main scene's GameSettings
+	call_deferred("_find_game_settings")
+
+func _find_game_settings() -> void:
+	await get_tree().process_frame
 	
-	# Initialize after a frame to ensure autoloads are ready
-	call_deferred("_initialize")
+	# Find GameSettings in the main scene
+	var main_scene = get_tree().current_scene
+	game_settings = main_scene.get_node_or_null("GameSettings")
+	
+	# Continue initialization
+	_initialize()
 
 func _initialize() -> void:
 	if _initialized:
@@ -151,96 +111,17 @@ func _initialize() -> void:
 	_initialized = true
 	spawner_ready.emit()
 	
-	if debug_mode:
-		print("PlanetSpawner initialized with seed: ", _seed_value)
-		print("Planet category: ", "Gaseous" if planet_category == PlanetCategories.GASEOUS else "Terran")
-
-# Spawn a planet with specific category and theme (as strings)
-func spawn_specific_planet(category_name: String = "random", theme_name: String = "random") -> Node2D:
-	# Determine category enum value
-	var category_enum: int
-	if category_name == "random":
-		category_enum = planet_category  # Use exported value
-	else:
-		category_name = category_name.to_lower()
-		category_enum = CATEGORY_MAP.get(category_name, planet_category)
-	
-	# Determine theme enum value
-	var theme_enum: int = -1  # -1 means random
-	if theme_name != "random":
-		theme_name = theme_name.to_lower()
-		theme_enum = THEME_MAP.get(theme_name, -1)
-	
-	# Special case for gaseous planets (only gas_giant theme available)
-	if category_enum == PlanetCategories.GASEOUS:
-		theme_enum = PlanetThemes.GAS_GIANT
-	
-	# Update internal state
-	planet_category = category_enum
-	if category_enum == PlanetCategories.TERRAN and theme_enum >= 0:
-		# +1 because 0 is "Random" in the export enum
-		terran_theme = theme_enum + 1
-	
-	# Spawn the planet with updated parameters
-	return spawn_planet()
-
-# Convenient method to spawn a terran planet with specific theme
-func spawn_terran_planet(theme_name: String = "random") -> Node2D:
-	return spawn_specific_planet("terran", theme_name)
-
-# Convenient method to spawn a gaseous planet
-func spawn_gaseous_planet() -> Node2D:
-	return spawn_specific_planet("gaseous")
-
-# Spawn a planet with a complete parameter dictionary
-func spawn_with_params(params: Dictionary) -> Node2D:
-	# Extract and apply parameters
-	if params.has("category"):
-		var category_name = params.category.to_lower()
-		if CATEGORY_MAP.has(category_name):
-			planet_category = CATEGORY_MAP[category_name]
-	
-	if params.has("theme") and planet_category == PlanetCategories.TERRAN:
-		var theme_name = params.theme.to_lower()
-		if THEME_MAP.has(theme_name):
-			terran_theme = THEME_MAP[theme_name] + 1  # +1 for export enum offset
-	
-	# Apply additional parameters
-	if params.has("moon_chance"):
-		moon_chance = params.moon_chance
-	
-	if params.has("planet_scale"):
-		planet_scale = params.planet_scale
-	
-	if params.has("grid_x"):
-		grid_x = params.grid_x
-	
-	if params.has("grid_y"):
-		grid_y = params.grid_y
-	
-	if params.has("local_seed_offset"):
-		local_seed_offset = params.local_seed_offset
-	
-	if params.has("z_index_base"):
-		z_index_base = params.z_index_base
-	
-	if params.has("moon_orbit_speed_factor"):
-		moon_orbit_speed_factor = params.moon_orbit_speed_factor
-	
-	# Update seed and spawn
-	_update_seed_value()
-	return spawn_planet()
+	# Debug output
+	if game_settings and game_settings.debug_mode:
+		print("PlanetSpawner: Initialized at grid position (%d, %d) with seed: %d" % 
+			  [grid_x, grid_y, _seed_value])
 
 func _update_seed_value() -> void:
-	if force_random_seed:
-		# Generate completely random seed regardless of position
-		_seed_value = randi()
-		_rng.seed = _seed_value
-	elif has_node("/root/SeedManager"):
-		# Get base seed from SeedManager
-		var base_seed = SeedManager.get_seed()
+	if game_settings:
+		# Get base seed from GameSettings
+		var base_seed = game_settings.get_seed()
 		
-		# Add grid position to create unique seeds per grid cell
+		# Add grid position to create unique seeds per cell
 		if use_grid_position:
 			_seed_value = base_seed + (grid_x * 1000) + (grid_y * 100) + local_seed_offset
 		else:
@@ -248,7 +129,7 @@ func _update_seed_value() -> void:
 			var pos_hash = (int(global_position.x) * 13) + (int(global_position.y) * 7)
 			_seed_value = base_seed + pos_hash + local_seed_offset
 	else:
-		# Fallback when SeedManager isn't available
+		# Fallback when GameSettings isn't available
 		_seed_value = hash(str(grid_x) + str(grid_y) + str(local_seed_offset) + str(Time.get_unix_time_from_system()))
 	
 	# Initialize RNG with our seed
@@ -359,8 +240,13 @@ func _spawn_terran_planet() -> Node2D:
 	
 	# Calculate position
 	var spawn_position = Vector2.ZERO
-	if use_grid_position and has_node("/root/GridManager"):
-		spawn_position = GridManager.cell_to_world(Vector2i(grid_x, grid_y))
+	if use_grid_position:
+		# Use GameSettings or GridManager to get the cell position
+		if game_settings:
+			spawn_position = game_settings.get_cell_world_position(Vector2i(grid_x, grid_y))
+		elif has_node("/root/GridManager"):
+			spawn_position = GridManager.cell_to_world(Vector2i(grid_x, grid_y))
+		
 		_planet_instance.global_position = spawn_position
 	else:
 		_planet_instance.global_position = global_position
@@ -377,8 +263,8 @@ func _spawn_terran_planet() -> Node2D:
 		
 		# Verify it's really a terran theme (safety check)
 		if theme_to_use >= PlanetThemes.GAS_GIANT:
-			if debug_mode:
-				push_warning("Invalid terran theme selected; reverting to random terran theme")
+			if game_settings and game_settings.debug_mode:
+				print("Invalid terran theme selected; reverting to random terran theme")
 			theme_to_use = -1
 	
 	if theme_to_use < 0:
@@ -411,17 +297,16 @@ func _spawn_terran_planet() -> Node2D:
 	
 	# Connect to planet's loaded signal to handle moons if they spawn
 	if _planet_instance.has_signal("planet_loaded"):
-		if not _planet_instance.is_connected("planet_loaded", Callable(self, "_on_planet_loaded")):
-			_planet_instance.connect("planet_loaded", Callable(self, "_on_planet_loaded"))
-	
-	if debug_mode:
-		print("Terran planet spawned at position: ", _planet_instance.global_position)
-		if theme_to_use >= 0 and theme_to_use < PlanetThemes.size():
-			var theme_names = ["Arid", "Ice", "Lava", "Lush", "Desert", "Alpine", "Ocean", "Gas Giant"]
-			print("Planet theme: ", theme_names[theme_to_use])
+		if not _planet_instance.is_connected("planet_loaded", _on_planet_loaded):
+			_planet_instance.connect("planet_loaded", _on_planet_loaded)
 	
 	# Emit spawned signal
 	planet_spawned.emit(_planet_instance)
+	
+	# Debug output
+	if game_settings and game_settings.debug_mode:
+		print("Spawned terran planet at position ", _planet_instance.global_position)
+		print("Planet theme: ", _get_theme_name(theme_to_use))
 	
 	return _planet_instance
 
@@ -436,8 +321,13 @@ func _spawn_gaseous_planet() -> Node2D:
 	
 	# Calculate position
 	var spawn_position = Vector2.ZERO
-	if use_grid_position and has_node("/root/GridManager"):
-		spawn_position = GridManager.cell_to_world(Vector2i(grid_x, grid_y))
+	if use_grid_position:
+		# Use GameSettings or GridManager to get the cell position
+		if game_settings:
+			spawn_position = game_settings.get_cell_world_position(Vector2i(grid_x, grid_y))
+		elif has_node("/root/GridManager"):
+			spawn_position = GridManager.cell_to_world(Vector2i(grid_x, grid_y))
+		
 		_planet_instance.global_position = spawn_position
 	else:
 		_planet_instance.global_position = global_position
@@ -470,15 +360,16 @@ func _spawn_gaseous_planet() -> Node2D:
 	
 	# Connect to planet's loaded signal to handle moons if they spawn
 	if _planet_instance.has_signal("planet_loaded"):
-		if not _planet_instance.is_connected("planet_loaded", Callable(self, "_on_planet_loaded")):
-			_planet_instance.connect("planet_loaded", Callable(self, "_on_planet_loaded"))
-	
-	if debug_mode:
-		print("Gaseous planet (Gas Giant) spawned at position: ", _planet_instance.global_position)
-		print("Gas giant type: ", _seed_value % 4)  # Shows which of the 4 gas giant palettes is used
+		if not _planet_instance.is_connected("planet_loaded", _on_planet_loaded):
+			_planet_instance.connect("planet_loaded", _on_planet_loaded)
 	
 	# Emit spawned signal
 	planet_spawned.emit(_planet_instance)
+	
+	# Debug output
+	if game_settings and game_settings.debug_mode:
+		print("Spawned gaseous planet (Gas Giant) at position ", _planet_instance.global_position)
+		print("Gas giant type: ", _seed_value % 4)  # Shows which of the 4 gas giant palettes is used
 	
 	return _planet_instance
 
@@ -493,7 +384,7 @@ func _on_planet_loaded(planet) -> void:
 				if has_node("/root/EntityManager"):
 					EntityManager.register_entity(moon, "moon")
 				
-				if debug_mode:
+				if game_settings and game_settings.debug_mode:
 					print("Moon registered: ", moon.moon_name)
 
 # Clean up existing planet and moons
@@ -502,8 +393,8 @@ func cleanup() -> void:
 	if _planet_instance and is_instance_valid(_planet_instance):
 		# Disconnect signal to avoid issues
 		if _planet_instance.has_signal("planet_loaded"):
-			if _planet_instance.is_connected("planet_loaded", Callable(self, "_on_planet_loaded")):
-				_planet_instance.disconnect("planet_loaded", Callable(self, "_on_planet_loaded"))
+			if _planet_instance.is_connected("planet_loaded", _on_planet_loaded):
+				_planet_instance.disconnect("planet_loaded", _on_planet_loaded)
 		
 		# Deregister from EntityManager
 		if has_node("/root/EntityManager"):
@@ -515,17 +406,6 @@ func cleanup() -> void:
 	# Clear moon references
 	_moon_instances.clear()
 
-func _on_seed_changed(new_seed: int) -> void:
-	# Update seed and respawn if already spawned
-	_update_seed_value()
-	
-	if auto_spawn and _initialized:
-		spawn_planet()
-		
-	if debug_mode:
-		print("PlanetSpawner updated with new seed: ", _seed_value)
-		print("Planet category: ", "Gaseous" if planet_category == PlanetCategories.GASEOUS else "Terran")
-
 # Set grid position and update
 func set_grid_position(x: int, y: int) -> void:
 	grid_x = x
@@ -533,12 +413,20 @@ func set_grid_position(x: int, y: int) -> void:
 	_update_seed_value()
 	
 	# Update position if using grid
-	if use_grid_position and has_node("/root/GridManager") and _planet_instance and is_instance_valid(_planet_instance):
-		var new_pos = GridManager.cell_to_world(Vector2i(grid_x, grid_y))
+	if use_grid_position and _planet_instance and is_instance_valid(_planet_instance):
+		var new_pos
+		
+		if game_settings:
+			new_pos = game_settings.get_cell_world_position(Vector2i(grid_x, grid_y))
+		elif has_node("/root/GridManager"):
+			new_pos = GridManager.cell_to_world(Vector2i(grid_x, grid_y))
+		else:
+			return
+			
 		_planet_instance.global_position = new_pos
-	
-	if debug_mode:
-		print("PlanetSpawner grid position updated to: ", Vector2i(grid_x, grid_y))
+		
+		if game_settings and game_settings.debug_mode:
+			print("PlanetSpawner: Updated position to grid (%d, %d)" % [grid_x, grid_y])
 
 # Force a specific planet type
 func force_planet_type(is_gaseous: bool, theme_index: int = -1) -> void:
@@ -572,12 +460,29 @@ func is_terran_planet() -> bool:
 func get_category_name() -> String:
 	return "Gaseous" if is_gaseous_planet() else "Terran"
 
-# Get a specific parameter for the planet from SeedManager
+# Get a specific parameter for the planet from seed
 func get_deterministic_param(param_name: String, min_val: float, max_val: float, sub_id: int = 0) -> float:
-	if has_node("/root/SeedManager"):
-		# Generate a unique object ID based on our parameters
+	if game_settings:
+		# Use GameSettings for deterministic values
+		var object_id = _seed_value + hash(param_name)
+		return game_settings.get_random_value(object_id, min_val, max_val, sub_id)
+	elif has_node("/root/SeedManager"):
+		# Fallback to SeedManager
 		var object_id = _seed_value + hash(param_name)
 		return SeedManager.get_random_value(object_id, min_val, max_val, sub_id)
 	else:
-		# Fallback using local RNG
+		# Local fallback
 		return min_val + (max_val - min_val) * _rng.randf()
+
+# Get theme name for debugging
+func _get_theme_name(theme_id: int) -> String:
+	match theme_id:
+		PlanetThemes.ARID: return "Arid"
+		PlanetThemes.ICE: return "Ice"
+		PlanetThemes.LAVA: return "Lava"
+		PlanetThemes.LUSH: return "Lush"
+		PlanetThemes.DESERT: return "Desert"
+		PlanetThemes.ALPINE: return "Alpine"
+		PlanetThemes.OCEAN: return "Ocean"
+		PlanetThemes.GAS_GIANT: return "Gas Giant"
+		_: return "Unknown"

@@ -3,8 +3,7 @@
 # Purpose:
 #   Core game management system that controls game state, levels, and gameplay systems.
 #   Handles the game lifecycle including starting, pausing, ending, and restarting.
-#   Manages player upgrades and ship components through the Strategy pattern.
-#   Provides save game functionality and game state persistence.
+#   Updated to work with GameSettings for centralized configuration.
 #
 # Interface:
 #   Signals:
@@ -25,32 +24,8 @@
 #     - end_game()
 #     - restart_game()
 #
-#   Upgrade Methods:
-#     - purchase_upgrade(upgrade_index, component_name)
-#     - remove_upgrade(upgrade_index)
-#     - get_available_upgrades_for_component(component_name)
-#
-#   Save Methods:
-#     - save_game(save_id)
-#     - load_game(save_id)
-#
-# Dependencies:
-#   - EntityManager
-#   - ResourceManager
-#   - EventManager
-#   - SeedManager
-#
-# Usage Example:
-#   # Start a new game
-#   GameManager.start_game()
-#   
-#   # Purchase an upgrade for the player's weapon
-#   var upgrade_index = 0
-#   GameManager.purchase_upgrade(upgrade_index, "WeaponComponent")
-#   
-#   # Save and load the game
-#   GameManager.save_game("mysave")
-#   GameManager.load_game("mysave")
+#   GameSettings Integration:
+#     - configure_with_settings(settings)
 
 extends Node
 
@@ -69,6 +44,7 @@ var game_running: bool = false
 var is_game_paused: bool = false
 var current_level: String = ""
 var player_ship = null
+var game_settings: GameSettings = null
 
 # Upgrade system
 var available_upgrades: Array = []
@@ -87,6 +63,10 @@ func _ready() -> void:
 	call_deferred("_initialize_systems")
 
 func _initialize_systems() -> void:
+	# Find GameSettings in the main scene
+	var main_scene = get_tree().current_scene
+	game_settings = main_scene.get_node_or_null("GameSettings")
+	
 	# Check which systems are available
 	_check_dependencies()
 	
@@ -153,6 +133,26 @@ func _connect_resource_signals() -> void:
 		else:
 			push_warning("GameManager: ResourceManager is missing signal: resource_changed")
 
+# Configure with GameSettings
+func configure_with_settings(settings: GameSettings) -> void:
+	game_settings = settings
+	
+	if game_settings.debug_mode:
+		print("GameManager: Configured with GameSettings")
+	
+	# Update SeedManager with our settings if available
+	if _seed_ready:
+		SeedManager.set_seed(game_settings.get_seed())
+		
+		# Connect to settings seed changes
+		if not game_settings.is_connected("seed_changed", _on_settings_seed_changed):
+			game_settings.connect("seed_changed", _on_settings_seed_changed)
+
+func _on_settings_seed_changed(new_seed: int) -> void:
+	# Update SeedManager if it exists
+	if _seed_ready:
+		SeedManager.set_seed(new_seed)
+
 # Game lifecycle methods
 func start_game() -> void:
 	if game_running:
@@ -167,10 +167,17 @@ func start_game() -> void:
 	is_game_paused = false
 	player_upgrades.clear()
 	
-	# Spawn the player
-	var viewport_size = get_viewport().get_visible_rect().size
+	# Spawn the player at the position from GameSettings if available
+	var spawn_position = Vector2.ZERO
+	
+	if game_settings:
+		spawn_position = game_settings.get_player_starting_position()
+	else:
+		var viewport_size = get_viewport().get_visible_rect().size
+		spawn_position = viewport_size / 2
+		
 	if _entities_ready:
-		player_ship = EntityManager.spawn_player(viewport_size / 2)
+		player_ship = EntityManager.spawn_player(spawn_position)
 	else:
 		push_error("GameManager: Cannot spawn player - EntityManager autoload not found")
 		return
@@ -181,9 +188,14 @@ func start_game() -> void:
 		for resource_id in ResourceManager.resource_data:
 			ResourceManager.inventory[resource_id] = 0
 		
-		# Set starting resources
-		ResourceManager.add_resource(ResourceManager.ResourceType.CREDITS, 1000)
-		ResourceManager.add_resource(ResourceManager.ResourceType.FUEL, 100)
+		# Set starting resources from GameSettings if available
+		if game_settings:
+			ResourceManager.add_resource(ResourceManager.ResourceType.CREDITS, game_settings.player_starting_credits)
+			ResourceManager.add_resource(ResourceManager.ResourceType.FUEL, game_settings.player_starting_fuel)
+		else:
+			# Default starting resources
+			ResourceManager.add_resource(ResourceManager.ResourceType.CREDITS, 1000)
+			ResourceManager.add_resource(ResourceManager.ResourceType.FUEL, 100)
 	
 	# Emit game started signal
 	game_started.emit()
@@ -265,8 +277,15 @@ func _on_player_died() -> void:
 	
 	if player_ship and is_instance_valid(player_ship):
 		# Respawn the player
-		var viewport_size = get_viewport().get_visible_rect().size
-		player_ship.respawn(viewport_size / 2)
+		var respawn_position
+		
+		if game_settings:
+			respawn_position = game_settings.get_player_starting_position()
+		else:
+			var viewport_size = get_viewport().get_visible_rect().size
+			respawn_position = viewport_size / 2
+			
+		player_ship.respawn(respawn_position)
 	else:
 		# End the game if player is no longer valid
 		end_game()
@@ -433,7 +452,7 @@ func save_game(save_id: String = "") -> bool:
 			# Add more player state here
 		},
 		"resources": ResourceManager.inventory if _resources_ready else {},
-		"seed": SeedManager.get_seed() if _seed_ready else 0,
+		"seed": game_settings.get_seed() if game_settings else (SeedManager.get_seed() if _seed_ready else 0),
 		# Add more game state here
 	}
 	
@@ -482,9 +501,12 @@ func load_game(save_id: String) -> bool:
 	if game_running:
 		end_game()
 	
-	# Restore game state
-	if _seed_ready and save_data.has("seed"):
-		SeedManager.set_seed(save_data.seed)
+	# Restore seed
+	if save_data.has("seed"):
+		if game_settings:
+			game_settings.set_seed(save_data.seed)
+		elif _seed_ready:
+			SeedManager.set_seed(save_data.seed)
 	
 	# Start a new game
 	start_game()
