@@ -1,387 +1,340 @@
-# scripts/entities/planet.gd
+# scripts/main.gd
 extends Node2D
 
-# Import classification constants
-const PlanetThemes = preload("res://scripts/generators/planet_generator.gd").PlanetTheme
-const PlanetCategories = preload("res://scripts/generators/planet_generator.gd").PlanetCategory
+# Node references
+@onready var player_ship = $PlayerShip
+@onready var camera = $Camera2D
+@onready var space_background = $SpaceBackground
+@onready var world_grid = $WorldGrid
+@onready var settings = $GameSettings
 
-signal planet_loaded(planet)
+# Planet management
+var planet_spawners = []
+var planets_generated = 0
+var planets_loaded = 0
+var starting_planet = null
+var screen_size: Vector2
+var generation_complete = false
+var startup_timer = 0.0
 
-@export var max_moons: int = 2
-@export var moon_chance: int = 40
-@export var min_moon_distance_factor: float = 1.8
-@export var max_moon_distance_factor: float = 2.5
-@export var max_orbit_deviation: float = 0.15
-@export var moon_orbit_factor: float = 0.05
+# Signals
+signal planets_ready
+signal grid_ready
+signal game_initialized
 
-var seed_value: int = 0
-var pixel_size: int = 256
-var planet_texture: Texture2D
-var atmosphere_texture: Texture2D
-var theme_id: int
-var planet_name: String
-var atmosphere_data: Dictionary
-var moons = []
-var grid_x: int = 0
-var grid_y: int = 0
-
-# Planet classification properties
-var planet_category: int = PlanetCategories.TERRAN  # Default to terran
-
-# Define moon types for consistent reference
-enum MoonType {
-	ROCKY,
-	ICE,
-	LAVA
-}
-
-var name_component
-var use_texture_cache: bool = true
+# Preloaded resources
+var planet_spawner_scene = preload("res://scenes/world/planet_spawner.tscn")
 
 func _ready() -> void:
-	name_component = get_node_or_null("NameComponent")
-	# Set appropriate z-index to render behind player but in front of atmosphere
-	z_index = -10
+	# Get screen size
+	screen_size = get_viewport_rect().size
+	
+	# Connect to settings changes
+	if settings and settings.has_signal("settings_changed"):
+		settings.connect("settings_changed", _on_settings_changed)
+	
+	# Register camera in group for backgrounds and other systems
+	camera.add_to_group("camera")
+	
+	# Start the game initialization sequence
+	call_deferred("_start_game_initialization")
 
-func _process(delta: float) -> void:
-	queue_redraw()
-	_update_moons(delta)
+func _start_game_initialization() -> void:
+	print("Starting game initialization...")
+	var loading_indicator = _create_loading_indicator()
+	
+	# Initialize seed first
+	_initialize_seed()
+	
+	# Setup grid with settings
+	_setup_world_grid()
+	
+	# Allow one frame for autoloads to initialize
+	await get_tree().process_frame
+	
+	# Initialize space background
+	if space_background:
+		if not space_background.initialized:
+			space_background.setup_background()
+	
+	# Generate planets
+	generate_planets()
+	
+	# Wait for planets to be generated
+	await planets_ready
+	
+	# Position player at starting planet
+	_position_player_at_starting_planet()
+	
+	# Remove loading indicator
+	if loading_indicator:
+		loading_indicator.queue_free()
+	
+	# Start the game
+	_start_game_via_manager()
+	
+	# Emit initialization complete signal
+	game_initialized.emit()
+	
+	print("Game initialization complete!")
 
-func _draw() -> void:
-	if atmosphere_texture:
-		# Draw atmosphere first so it's behind the planet
-		draw_texture(atmosphere_texture, -Vector2(atmosphere_texture.get_width(), atmosphere_texture.get_height()) / 2, Color.WHITE)
-	
-	if planet_texture:
-		draw_texture(planet_texture, -Vector2(pixel_size, pixel_size) / 2, Color.WHITE)
-
-func _update_moons(_delta: float) -> void:
-	var time = Time.get_ticks_msec() / 1000.0
-	
-	for moon in moons:
-		if is_instance_valid(moon):
-			# Calculate the orbit angle based on time, speed and initial offset
-			var moon_angle = moon.base_angle + time * moon.orbit_speed + moon.phase_offset
-			
-			# Calculate deviation for elliptical orbits using sine function
-			var deviation_factor = sin(moon_angle * 2) * moon.orbit_deviation
-			
-			# Calculate moon position using parametric equation of ellipse
-			moon.global_position = global_position + Vector2(
-				cos(moon_angle) * moon.distance * (1.0 + deviation_factor * 0.3),
-				sin(moon_angle) * moon.distance
-			)
-			
-			# Determine if moon is behind or in front of planet
-			# When sin(moon_angle) is negative, the moon is in the "back half" of its orbit
-			var relative_y = sin(moon_angle)
-			
-			# Set z-index dynamically based on position relative to planet
-			# This creates the visual effect of moon passing behind the planet and atmosphere
-			moon.z_index = -12 if relative_y < 0 else -9
-
-func initialize(params: Dictionary) -> void:
-	seed_value = params.seed_value
-	grid_x = params.grid_x
-	grid_y = params.grid_y
-	
-	# Apply customizations if provided
-	if "max_moons" in params: max_moons = params.max_moons
-	if "moon_chance" in params: moon_chance = params.moon_chance
-	if "min_moon_distance_factor" in params: min_moon_distance_factor = params.min_moon_distance_factor
-	if "max_moon_distance_factor" in params: max_moon_distance_factor = params.max_moon_distance_factor
-	if "max_orbit_deviation" in params: max_orbit_deviation = params.max_orbit_deviation
-	if "moon_orbit_factor" in params: moon_orbit_factor = params.moon_orbit_factor
-	if "use_texture_cache" in params: use_texture_cache = params.use_texture_cache
-	if "moon_orbit_speed_factor" in params and params.moon_orbit_speed_factor != 1.0:
-		moon_orbit_factor *= params.moon_orbit_speed_factor
-	
-	# Allow theme override if specified
-	if "theme_override" in params and params.theme_override >= 0:
-		theme_id = params.theme_override
-	else:
-		# Determine theme from seed
-		var planet_generator = PlanetGenerator.new()
-		theme_id = planet_generator.get_planet_theme(seed_value)
-	
-	# Determine planet category based on theme
-	planet_category = PlanetGenerator.get_planet_category(theme_id)
-	
-	# Check if specific category was requested
-	if "category_override" in params:
-		planet_category = params.category_override
-		# Need to adjust theme if category changed
-		if planet_category == PlanetCategories.GASEOUS:
-			theme_id = PlanetThemes.GAS_GIANT  # Currently the only gaseous type
-		elif planet_category == PlanetCategories.TERRAN and theme_id == PlanetThemes.GAS_GIANT:
-			# If we need a terran planet but had gas giant theme, pick a random terran theme
-			var planet_generator = PlanetGenerator.new()
-			theme_id = planet_generator.get_themed_planet_for_category(seed_value, PlanetCategories.TERRAN)
-	
-	# For convenience, detect if this is a gaseous planet
-	var is_gaseous = planet_category == PlanetCategories.GASEOUS
-	
-	# Adjust moon parameters based on planet category
-	if is_gaseous:
-		var rng = RandomNumberGenerator.new()
-		rng.seed = seed_value + 12345
-		# Gaseous planets always have 3-6 moons
-		max_moons = rng.randi_range(3, 6)
-		moon_chance = 100  # Gaseous planets ALWAYS have moons
-	
-	# Attempt to use cached textures if texture caching is enabled
-	if use_texture_cache and PlanetSpawner.texture_cache != null:
-		# Try to get planet texture from cache
-		if PlanetSpawner.texture_cache.planets.has(seed_value):
-			planet_texture = PlanetSpawner.texture_cache.planets[seed_value]
-			pixel_size = 512 if is_gaseous else 256
+func _initialize_seed() -> void:
+	if has_node("/root/SeedManager"):
+		if settings.use_random_seed:
+			SeedManager.set_random_seed()
+			print("Game initialized with random seed: ", SeedManager.get_seed())
 		else:
-			# Generate and cache the texture
-			var planet_generator = PlanetGenerator.new()
-			var textures = planet_generator.create_planet_texture(seed_value)
-			planet_texture = textures[0]
-			pixel_size = 512 if is_gaseous else 256
-			PlanetSpawner.texture_cache.planets[seed_value] = planet_texture
+			SeedManager.set_seed(settings.game_seed)
+			print("Game initialized with fixed seed: ", settings.game_seed)
+
+func _setup_world_grid() -> void:
+	if world_grid:
+		# Configure grid using settings
+		world_grid.configure(
+			settings.grid_size, 
+			settings.cell_size, 
+			settings.grid_color, 
+			settings.grid_line_width, 
+			settings.grid_opacity
+		)
 		
-		# Try to get atmosphere texture from cache
-		if PlanetSpawner.texture_cache.atmospheres.has(seed_value):
-			atmosphere_texture = PlanetSpawner.texture_cache.atmospheres[seed_value]
-		else:
-			# Generate and cache the texture
-			var atmosphere_generator = AtmosphereGenerator.new()
-			atmosphere_data = atmosphere_generator.generate_atmosphere_data(theme_id, seed_value)
-			atmosphere_texture = atmosphere_generator.generate_atmosphere_texture(
-				theme_id, seed_value, atmosphere_data.color, atmosphere_data.thickness)
-			PlanetSpawner.texture_cache.atmospheres[seed_value] = atmosphere_texture
-	else:
-		# Generate textures without caching
-		var planet_gen_params = _generate_planet_data(seed_value)
+		# Wait for grid to initialize if it hasn't already
+		if not world_grid._initialized:
+			await world_grid.grid_initialized
 		
-		theme_id = planet_gen_params.theme if not "theme_override" in params else params.theme_override
-		pixel_size = planet_gen_params.pixel_size
-		planet_texture = planet_gen_params.texture
-		atmosphere_data = planet_gen_params.atmosphere
-		atmosphere_texture = planet_gen_params.atmosphere_texture
-		planet_category = PlanetGenerator.get_planet_category(theme_id)
-	
-	# Set up name component
-	name_component = get_node_or_null("NameComponent")
-	if name_component:
-		var type_prefix = ""
-		if is_gaseous:
-			type_prefix = "Gas Giant"
-		name_component.initialize(seed_value, grid_x, grid_y, "", type_prefix)
-		planet_name = name_component.get_entity_name()
-	else:
-		# Fallback naming if no name component
-		if is_gaseous:
-			planet_name = "Gas Giant-" + str(seed_value % 1000)
-		else:
-			planet_name = "Planet-" + str(seed_value % 1000)
-	
-	# Defer moon creation to avoid stuttering
-	call_deferred("_create_moons")
-
-func _emit_planet_loaded() -> void:
-	planet_loaded.emit(self)
-
-func _generate_planet_data(planet_seed: int) -> Dictionary:
-	var planet_generator = PlanetGenerator.new()
-	var theme = planet_generator.get_planet_theme(planet_seed)
-	var category = PlanetGenerator.get_planet_category(theme)
-	
-	var textures = planet_generator.create_planet_texture(planet_seed)
-	
-	var atmosphere_generator = AtmosphereGenerator.new()
-	var atm_data = atmosphere_generator.generate_atmosphere_data(theme, planet_seed)
-	var atm_texture = atmosphere_generator.generate_atmosphere_texture(
-		theme, 
-		planet_seed,
-		atm_data.color,
-		atm_data.thickness
-	)
-	
-	return {
-		"texture": textures[0],
-		"theme": theme,
-		"pixel_size": (512 if category == PlanetCategories.GASEOUS else 256),
-		"atmosphere": atm_data,
-		"atmosphere_texture": atm_texture
-	}
-
-func _create_moons() -> void:
-	# Use the correct path to moon scene
-	var moon_scene = load("res://scenes/world/moon.tscn")
-	if not moon_scene:
-		push_error("Error: Moon scene couldn't be loaded from res://scenes/world/moon.tscn")
-		return
-	
-	var rng = RandomNumberGenerator.new()
-	rng.seed = seed_value
-	
-	# For gaseous planets, always spawn moons. For other planets, check chance.
-	var is_gaseous = planet_category == PlanetCategories.GASEOUS
-	var has_moons = is_gaseous || (rng.randi() % 100 < moon_chance)
-	var num_moons = 0
-	
-	if has_moons:
-		if is_gaseous:
-			# Gaseous planets always have 3-6 moons
-			num_moons = max_moons  # We already set this to rng.randi_range(3, 6) in initialize()
-		else:
-			# Terran planets can have 1-max_moons
-			num_moons = rng.randi_range(1, max_moons)
-	
-	# If no moons, exit early
-	if num_moons <= 0:
-		_emit_planet_loaded()
-		return
-	
-	# Generate orbital parameters for all moons to prevent collisions
-	var orbital_params = _generate_orbital_parameters(num_moons, rng)
-	
-	for m in range(num_moons):
-		var moon_seed = seed_value + m * 100 + rng.randi() % 1000
+		grid_ready.emit()
 		
-		var moon_instance = moon_scene.instantiate()
-		if not moon_instance:
+		print("World grid initialized with size: ", settings.grid_size, 
+			", cell size: ", settings.cell_size)
+
+func generate_planets() -> void:
+	print("Starting planet generation...")
+	
+	# Clean previous spawners if any
+	for spawner in planet_spawners:
+		if is_instance_valid(spawner):
+			spawner.queue_free()
+	
+	planet_spawners = []
+	planets_generated = 0
+	planets_loaded = 0
+	starting_planet = null
+	
+	# Track occupied grid cells using the grid manager directly
+	if world_grid:
+		world_grid.reset_grid()
+	
+	# Get planet types in priority order (starting with preferred type)
+	var planet_types = settings.get_planet_types_ordered()
+	var starting_type = planet_types[0]
+	
+	# Prepare a list of planets to generate
+	var planets_to_generate = []
+	
+	# Add starting type first
+	planets_to_generate.append(starting_type)
+	
+	# Add all other unique types until we fill our quota
+	var type_index = 1
+	while planets_to_generate.size() < settings.num_terran_planets and type_index < planet_types.size():
+		planets_to_generate.append(planet_types[type_index])
+		type_index += 1
+	
+	# If we still need more planets, add random types from the remainder
+	while planets_to_generate.size() < settings.num_terran_planets:
+		var random_index = randi() % planet_types.size()
+		if random_index != 0:  # Don't duplicate the starting type too much
+			planets_to_generate.append(planet_types[random_index])
+		else:
+			planets_to_generate.append(planet_types[1 % planet_types.size()])
+	
+	print("Planning to generate ", planets_to_generate.size(), " planets: ", planets_to_generate)
+	
+	# Generate planets systematically - ensure we get all types represented
+	for i in range(planets_to_generate.size()):
+		var planet_type = planets_to_generate[i]
+		
+		# Find a valid grid position
+		var grid_pos = _find_valid_grid_position()
+		
+		if grid_pos.x < 0 or grid_pos.y < 0:
+			push_warning("Could not find valid position for planet " + str(i))
 			continue
 		
-		# Determine moon type based on planet category and orbital position
-		var moon_type = MoonType.ROCKY  # Default for all moons
+		# Mark cells as occupied
+		_mark_cells_around_position(grid_pos)
 		
-		if is_gaseous:
-			# Apply the specific distribution pattern for gaseous planets:
-			# - Innermost moon (m=0): LAVA (volcanic due to tidal forces)
-			# - Second moon (m=1): ROCKY
-			# - Outer moons (m>=2): ICE (colder as they're further away)
-			if m == 0:
-				moon_type = MoonType.LAVA
-			elif m == 1:
-				moon_type = MoonType.ROCKY
-			else:
-				moon_type = MoonType.ICE
+		# Create planet spawner
+		var spawner = _create_planet_spawner(grid_pos.x, grid_pos.y, planet_type, i == 0)
+		planet_spawners.append(spawner)
+		
+		planets_generated += 1
+		
+		# Wait briefly between planet generation to avoid stuttering
+		if settings.async_planet_generation:
+			await get_tree().create_timer(0.1).timeout
+	
+	# If we spawned at least one planet, wait for all to be loaded
+	if planets_generated > 0:
+		_wait_for_planets_loaded()
+	else:
+		push_error("Failed to generate any planets")
+		planets_ready.emit()  # Signal even though failed, to avoid hanging
+
+# Wait for all planets to complete loading
+func _wait_for_planets_loaded() -> void:
+	# If we're using threading, we need to wait for all planets to be loaded
+	if settings.use_threading:
+		# Set up a timer to check periodically
+		while planets_loaded < planets_generated:
+			await get_tree().create_timer(0.1).timeout
+		
+		print("All planets loaded successfully")
+		planets_ready.emit()
+	else:
+		# For non-threaded mode, emit immediately
+		print("Planets generated in synchronous mode")
+		planets_ready.emit()
+
+func _find_valid_grid_position() -> Vector2i:
+	# Get all possible grid cells
+	var all_cells = world_grid.get_all_valid_cells()
+	
+	# Randomly shuffle cells for better distribution
+	all_cells.shuffle()
+	
+	# Check cells one by one to find unoccupied one
+	for cell in all_cells:
+		if not world_grid.is_cell_occupied(cell):
+			return cell
+	
+	# Return invalid position if none found
+	return Vector2i(-1, -1)
+
+func _mark_cells_around_position(grid_pos: Vector2i) -> void:
+	if not world_grid:
+		return
+	
+	# Mark this cell as occupied
+	world_grid.register_cell(grid_pos, "planet")
+	
+	# Mark surrounding cells based on min_distance
+	for dx in range(-settings.min_planet_distance, settings.min_planet_distance + 1):
+		for dy in range(-settings.min_planet_distance, settings.min_planet_distance + 1):
+			var nx = grid_pos.x + dx
+			var ny = grid_pos.y + dy
+			var neighbor_pos = Vector2i(nx, ny)
+			
+			if world_grid.is_valid_cell(neighbor_pos) and not world_grid.is_cell_occupied(neighbor_pos):
+				world_grid.register_cell(neighbor_pos, "exclusion")
+
+func _create_planet_spawner(grid_x: int, grid_y: int, planet_type: String, is_starting_planet: bool = false) -> Node:
+	var spawner = planet_spawner_scene.instantiate()
+	add_child(spawner)
+	
+	# Configure spawner
+	spawner.set_grid_position(grid_x, grid_y)
+	spawner.use_threading = settings.use_threading
+	spawner.use_texture_cache = settings.preload_textures
+	
+	# Connect to signals
+	if is_starting_planet:
+		spawner.connect("planet_spawned", _on_starting_planet_spawned)
+	
+	# Connect to generation completion signal
+	spawner.connect("generation_completed", _on_planet_generation_completed)
+	
+	# Spawn planet of requested type
+	spawner.spawn_terran_planet(planet_type)
+	
+	print("Created planet spawner for type ", planet_type, " at grid position ", grid_x, ",", grid_y)
+	
+	return spawner
+
+func _on_starting_planet_spawned(planet_instance) -> void:
+	starting_planet = planet_instance
+	print("Starting planet spawned: ", planet_instance.planet_name if planet_instance else "None")
+
+func _on_planet_generation_completed() -> void:
+	planets_loaded += 1
+	print("Planet ", planets_loaded, "/", planets_generated, " completed generation")
+
+func _position_player_at_starting_planet() -> void:
+	# Use starting planet position if available
+	if starting_planet and is_instance_valid(starting_planet):
+		player_ship.global_position = starting_planet.global_position
+		camera.global_position = player_ship.global_position
+		print("Positioned player at starting planet: ", starting_planet.planet_name)
+	else:
+		# Default to center of grid if no starting planet
+		var grid_center = Vector2(
+			world_grid.position.x + world_grid._grid_total_size.x / 2, 
+			world_grid.position.y + world_grid._grid_total_size.y / 2
+		)
+		player_ship.global_position = grid_center
+		camera.global_position = grid_center
+		print("WARNING: Starting planet not found, positioned player at grid center")
+
+func _start_game_via_manager() -> void:
+	if has_node("/root/GameManager"):
+		var game_manager = get_node("/root/GameManager")
+		if game_manager.has_method("start_game"):
+			game_manager.start_game()
+			
+			# If game manager needs the player ship, make sure it's set
+			if game_manager.player_ship == null and is_instance_valid(player_ship):
+				game_manager.player_ship = player_ship
+			
+			print("Game started via GameManager")
 		else:
-			# Terran planets can only have rocky moons (for now)
-			moon_type = MoonType.ROCKY
-		
-		# Use the pre-calculated orbital parameters
-		var moon_params = {
-			"seed_value": moon_seed,
-			"parent_planet": self,
-			"distance": orbital_params[m].distance,
-			"base_angle": orbital_params[m].base_angle,
-			"orbit_speed": orbital_params[m].orbit_speed,
-			"orbit_deviation": orbital_params[m].orbit_deviation,
-			"phase_offset": orbital_params[m].phase_offset,
-			"parent_name": planet_name,
-			"use_texture_cache": use_texture_cache,
-			"moon_type": moon_type  # Apply the moon type we determined
-		}
-		
-		add_child(moon_instance)
-		moon_instance.initialize(moon_params)
-		moons.append(moon_instance)
-	
-	# Emit signal that the planet has been loaded (after moons are created)
-	_emit_planet_loaded()
-
-# Get a random moon type with proper weighting
-func _get_random_moon_type(rng: RandomNumberGenerator) -> int:
-	# For terran planets, always return ROCKY
-	if planet_category == PlanetCategories.TERRAN:
-		return MoonType.ROCKY
-	
-	# This can be kept for backward compatibility or custom distribution
-	var roll = rng.randi() % 100
-	
-	if roll < 60:
-		return MoonType.ROCKY
-	elif roll < 80:
-		return MoonType.ICE
+			push_error("GameManager found but doesn't have start_game method")
 	else:
-		return MoonType.LAVA
+		push_warning("GameManager autoload not found, running in standalone mode")
 
-# Generate well-distributed orbital parameters to prevent moon collisions
-func _generate_orbital_parameters(moon_count: int, rng: RandomNumberGenerator) -> Array:
-	var params = []
+func _on_settings_changed() -> void:
+	# Update the world grid if it exists
+	if world_grid:
+		world_grid.configure(
+			settings.grid_size, 
+			settings.cell_size, 
+			settings.grid_color, 
+			settings.grid_line_width, 
+			settings.grid_opacity
+		)
 	
-	if moon_count <= 0:
-		return params
-	
-	# Calculate planet radius for reference
-	var planet_radius = pixel_size / 2.0
-	
-	# Define distance range based on planet size
-	var min_distance = planet_radius * min_moon_distance_factor
-	var max_distance = planet_radius * max_moon_distance_factor
-	
-	# For gaseous planets, expand the orbital range for moons
-	if planet_category == PlanetCategories.GASEOUS:
-		max_distance = planet_radius * (max_moon_distance_factor + 0.5)
-	
-	# For multiple moons, use intelligent parameter distribution
-	if moon_count > 1:
-		# Step 1: Calculate distances with spacing to avoid crowding
-		var distance_step = (max_distance - min_distance) / (moon_count)
-		
-		for i in range(moon_count):
-			# Apply even spacing with a little randomness
-			var base_distance = min_distance + i * distance_step
-			var jitter = distance_step * 0.2 * rng.randf_range(-1.0, 1.0)
-			var distance = clamp(base_distance + jitter, min_distance, max_distance)
-			
-			# Step 2: Calculate orbital speed based on distance (Kepler's law)
-			# Closer moons orbit faster (sqrt relationship)
-			var speed_factor = 1.0 / sqrt(distance / min_distance)
-			
-			# Gaseous planets have slower orbiting moons due to greater mass
-			var orbit_modifier = 0.8 if planet_category == PlanetCategories.GASEOUS else 1.0
-			var orbit_speed = rng.randf_range(0.2, 0.4) * moon_orbit_factor * speed_factor * orbit_modifier
-			
-			# Step 3: Distribute phase offsets evenly around orbit
-			# This ensures moons start at different positions
-			var phase_offset = (i * TAU / moon_count) + rng.randf_range(-0.2, 0.2)
-			
-			# Step 4: Set orbit deviation (for elliptical orbits)
-			# Larger deviation for farther moons
-			var orbit_deviation = rng.randf_range(0.05, max_orbit_deviation) * (distance / max_distance)
-			
-			params.append({
-				"distance": distance,
-				"base_angle": 0.0, # Start at same position, but phase_offset will separate them
-				"orbit_speed": orbit_speed,
-				"orbit_deviation": orbit_deviation,
-				"phase_offset": phase_offset
-			})
+	print("Game settings changed, grid updated")
+
+func _process(delta: float) -> void:
+	# Follow player with camera
+	if has_node("/root/GameManager") and GameManager.player_ship and is_instance_valid(GameManager.player_ship):
+		camera.global_position = GameManager.player_ship.global_position
 	else:
-		# For a single moon, use simpler parameters
-		params.append({
-			"distance": rng.randf_range(min_distance, max_distance),
-			"base_angle": 0.0,
-			"orbit_speed": rng.randf_range(0.2, 0.5) * moon_orbit_factor * (0.8 if planet_category == PlanetCategories.GASEOUS else 1.0),
-			"orbit_deviation": rng.randf_range(0.05, max_orbit_deviation),
-			"phase_offset": rng.randf_range(0, TAU) # Random starting position
-		})
+		camera.global_position = player_ship.global_position
 	
-	return params
+	# Handle window resize events
+	var current_size = get_viewport_rect().size
+	if current_size != screen_size:
+		screen_size = current_size
+		if space_background:
+			space_background.update_viewport_size()
 
-# Get planet category name as string (for debugging/UI)
-func get_category_name() -> String:
-	match planet_category:
-		PlanetCategories.TERRAN: return "Terran"
-		PlanetCategories.GASEOUS: return "Gaseous"
-		_: return "Unknown"
-
-# Get theme name as string (for debugging/UI)
-func get_theme_name() -> String:
-	match theme_id:
-		PlanetThemes.ARID: return "Arid"
-		PlanetThemes.ICE: return "Ice"
-		PlanetThemes.LAVA: return "Lava"
-		PlanetThemes.LUSH: return "Lush"
-		PlanetThemes.DESERT: return "Desert"
-		PlanetThemes.ALPINE: return "Alpine"
-		PlanetThemes.OCEAN: return "Ocean"
-		PlanetThemes.GAS_GIANT: return "Gas Giant"
-		_: return "Unknown"
+func _create_loading_indicator() -> Control:
+	var indicator = Control.new()
+	indicator.name = "LoadingIndicator"
+	indicator.z_index = 100
+	add_child(indicator)
+	
+	var panel = Panel.new()
+	panel.anchor_right = 1.0
+	panel.anchor_bottom = 1.0
+	indicator.add_child(panel)
+	
+	var label = Label.new()
+	label.text = "Generating planets..."
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.anchor_right = 1.0
+	label.anchor_bottom = 1.0
+	label.position.y = 20
+	panel.add_child(label)
+	
+	return indicator

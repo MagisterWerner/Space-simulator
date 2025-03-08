@@ -1,14 +1,26 @@
-[gd_scene load_steps=5 format=3 uid="uid://ddsnaxcqqd81s"]
+[gd_scene load_steps=6 format=3 uid="uid://ddsnaxcqqd81s"]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1_txjaf"]
 [ext_resource type="PackedScene" uid="uid://rhas31gnv33u" path="res://scenes/player/player_ship.tscn" id="2_cayce"]
+[ext_resource type="Script" path="res://scripts/game_settings.gd" id="2_settings"]
 [ext_resource type="PackedScene" uid="uid://8iqbtdgouxfb" path="res://scenes/backgrounds/space_background.tscn" id="3_t8g3p"]
 [ext_resource type="PackedScene" uid="uid://baujd316t5ufb" path="res://scenes/world/world_grid.tscn" id="5_84hlr"]
 
 [node name="Main" type="Node2D"]
 script = ExtResource("1_txjaf")
 
+[node name="GameSettings" type="Node" parent="."]
+script = ExtResource("2_settings")
+game_seed = 12345
+use_random_seed = false
+grid_size = 5
+cell_size = 256
+num_terran_planets = 3
+
 [node name="SpaceBackground" parent="." instance=ExtResource("3_t8g3p")]
+
+[node name="WorldGrid" parent="." instance=ExtResource("5_84hlr")]
+z_index = -15
 
 [node name="PlayerShip" parent="." instance=ExtResource("2_cayce")]
 z_index = 20
@@ -17,7 +29,3 @@ z_index = 20
 zoom = Vector2(0.8, 0.8)
 position_smoothing_enabled = true
 position_smoothing_speed = 3.0
-
-[node name="WorldGrid" parent="." instance=ExtResource("5_84hlr")]
-grid_size = 5
-grid_opacity = 0.1
