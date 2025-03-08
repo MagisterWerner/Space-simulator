@@ -1,8 +1,6 @@
 # scripts/world/world_grid.gd
+# Draws a grid in the game world that remains fixed as the player moves
 extends Node2D
-class_name WorldGrid
-
-signal grid_initialized
 
 ## Grid cell size in pixels
 @export var cell_size: int = 1024
@@ -26,19 +24,10 @@ signal grid_initialized
 var _camera: Camera2D = null
 var _viewport_size: Vector2 = Vector2.ZERO
 var _grid_total_size: Vector2 = Vector2.ZERO
-var _initialized: bool = false
-var _grid_cells: Dictionary = {}
 
 func _ready() -> void:
 	# Make this node available globally if needed
 	add_to_group("world_grid")
-	
-	# Initialize grid after waiting for the scene to be ready
-	call_deferred("initialize_grid")
-
-func initialize_grid() -> void:
-	if _initialized:
-		return
 	
 	# Calculate the total grid size in pixels
 	_grid_total_size = Vector2(cell_size, cell_size) * grid_size
@@ -55,19 +44,10 @@ func initialize_grid() -> void:
 	# Force update when ready
 	queue_redraw()
 	
-	_initialized = true
-	grid_initialized.emit()
-	
 	if debug_mode:
-		print("WorldGrid: Initialized with cell size ", cell_size, " and grid size ", grid_size, 
-			", total size: ", _grid_total_size)
-		print("WorldGrid: Positioned at ", position)
+		print("WorldGrid: Initialized with cell size ", cell_size, " and grid size ", grid_size)
 
 func _process(_delta: float) -> void:
-	# Only redraw if initialized
-	if not _initialized:
-		return
-		
 	# Update viewport size if it changed
 	var current_viewport_size = get_viewport_rect().size
 	if current_viewport_size != _viewport_size:
@@ -79,9 +59,6 @@ func _process(_delta: float) -> void:
 		queue_redraw()
 
 func _draw() -> void:
-	if not _initialized:
-		return
-	
 	if not _camera or not is_instance_valid(_camera):
 		_find_camera()
 		if not _camera:
@@ -128,13 +105,6 @@ func _draw() -> void:
 		# Draw grid bounds for debugging
 		var grid_rect = Rect2(Vector2.ZERO, _grid_total_size)
 		draw_rect(grid_rect, Color.RED, false, 3.0)
-		
-		# Draw grid coordinates
-		#for cell_key in _grid_cells:
-			#var grid_pos = _grid_cells[cell_key]
-			#var cell_position = get_cell_center(grid_pos)
-			#var text = str(grid_pos.x) + "," + str(grid_pos.y)
-			#draw_string(get_theme_default_font(), cell_position, text, HORIZONTAL_ALIGNMENT_CENTER)
 
 func _find_camera() -> void:
 	# Try to find the camera in various ways
@@ -159,31 +129,28 @@ func _find_camera() -> void:
 		else:
 			push_warning("WorldGrid: Camera not found, grid won't update properly")
 
-# Register a cell as occupied (for planet placement)
-func register_cell(cell_coords: Vector2i, entity_name: String = "") -> void:
-	var cell_key = str(cell_coords.x) + "," + str(cell_coords.y)
-	_grid_cells[cell_key] = {"coords": cell_coords, "entity": entity_name}
+# Centers the grid so the player is in the middle
+func center_grid_on_player() -> void:
+	var player_ships = get_tree().get_nodes_in_group("player")
+	if player_ships.is_empty():
+		return
+		
+	var player_ship = player_ships[0]
+	
+	# Calculate grid center
+	var grid_center = _grid_total_size / 2.0
+	
+	# Reposition grid so player is at the center
+	position = player_ship.global_position - grid_center
+	
+	queue_redraw()
 	
 	if debug_mode:
-		print("WorldGrid: Registered cell ", cell_coords, " with entity: ", entity_name)
-	
-	# Force redraw to update debug view
-	if debug_mode:
-		queue_redraw()
-
-# Check if a cell is occupied
-func is_cell_occupied(cell_coords: Vector2i) -> bool:
-	var cell_key = str(cell_coords.x) + "," + str(cell_coords.y)
-	return _grid_cells.has(cell_key)
-
-# Get the number of occupied cells
-func get_occupied_cell_count() -> int:
-	return _grid_cells.size()
+		print("WorldGrid: Centered grid on player at position ", player_ship.global_position)
 
 # Reset the grid to its default position
 func reset_grid() -> void:
 	position = -_grid_total_size / 2
-	_grid_cells.clear()
 	queue_redraw()
 
 # Get the cell coordinates for a given world position
@@ -200,39 +167,3 @@ func get_cell_position(cell_coords: Vector2i) -> Vector2:
 # Get the world position of a cell's center
 func get_cell_center(cell_coords: Vector2i) -> Vector2:
 	return get_cell_position(cell_coords) + Vector2(cell_size / 2.0, cell_size / 2.0)
-
-# Check if cell coordinates are valid (within grid bounds)
-func is_valid_cell(cell_coords: Vector2i) -> bool:
-	return cell_coords.x >= 0 and cell_coords.x < grid_size and cell_coords.y >= 0 and cell_coords.y < grid_size
-
-# Get a list of all valid cells
-func get_all_valid_cells() -> Array[Vector2i]:
-	var cells: Array[Vector2i] = []
-	for x in range(grid_size):
-		for y in range(grid_size):
-			cells.append(Vector2i(x, y))
-	return cells
-
-# Update grid configuration at runtime
-func configure(new_size: int, new_cell_size: int, new_color: Color, new_width: float, new_opacity: float) -> void:
-	var changed = false
-	
-	if grid_size != new_size:
-		grid_size = new_size
-		changed = true
-	
-	if cell_size != new_cell_size:
-		cell_size = new_cell_size
-		changed = true
-	
-	grid_color = new_color
-	line_width = new_width
-	grid_opacity = new_opacity
-	
-	if changed:
-		# Recalculate grid size and position
-		_grid_total_size = Vector2(cell_size, cell_size) * grid_size
-		position = -_grid_total_size / 2.0
-		_grid_cells.clear()
-	
-	queue_redraw()
