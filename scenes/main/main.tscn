@@ -23,5 +23,5 @@ position_smoothing_speed = 3.0
 grid_size = 5
 grid_opacity = 0.1
 
-[node name="WorldCreation" type="Node2D" parent="."]
+[node name="WorldCreation" type="Node" parent="."]
 script = ExtResource("5_kvmw1")

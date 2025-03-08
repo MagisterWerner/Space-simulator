@@ -57,7 +57,6 @@ var _planet_instance = null
 var _moon_instances = []
 var _initialized: bool = false
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
-var _world_grid = null  # Reference to the world grid
 
 # Texture cache shared between all planet spawners
 static var texture_cache = {
@@ -116,9 +115,6 @@ func _initialize() -> void:
 	if _initialized:
 		return
 	
-	# Find the world grid
-	_find_world_grid()
-	
 	# Initialize seed value
 	_update_seed_value()
 	
@@ -127,22 +123,6 @@ func _initialize() -> void:
 	
 	if debug_mode:
 		print("PlanetSpawner initialized with seed: ", _seed_value)
-
-# Find and store a reference to the world grid
-func _find_world_grid() -> void:
-	# Try to find the world grid
-	var grids = get_tree().get_nodes_in_group("world_grid")
-	if not grids.is_empty():
-		_world_grid = grids[0]
-		if debug_mode:
-			print("PlanetSpawner: Found world grid at ", _world_grid.get_path())
-	else:
-		# Try to find in Main scene
-		var main = get_node_or_null("/root/Main")
-		if main:
-			_world_grid = main.get_node_or_null("WorldGrid")
-			if _world_grid and debug_mode:
-				print("PlanetSpawner: Found world grid in Main scene")
 
 # PUBLIC API
 
@@ -193,10 +173,13 @@ func spawn_planet_at_grid_position(grid_coords: Vector2i, category_name: String 
 	
 	if has_node("/root/GridManager"):
 		world_position = GridManager.cell_to_world(grid_coords)
-	elif _world_grid != null:
-		# Use the stored reference to the world grid
-		if _world_grid.has_method("get_cell_center"):
-			world_position = _world_grid.get_cell_center(grid_coords)
+	else:
+		# Try to find a WorldGrid node
+		var grids = get_tree().get_nodes_in_group("world_grid")
+		if not grids.is_empty():
+			var grid = grids[0]
+			if grid.has_method("get_cell_center"):
+				world_position = grid.get_cell_center(grid_coords)
 	
 	# Set grid position for tracking
 	grid_x = grid_coords.x
@@ -209,10 +192,11 @@ func spawn_planet_at_grid_position(grid_coords: Vector2i, category_name: String 
 	var planet = spawn_specific_planet(category_name, theme_name, world_position)
 	
 	# Update grid data if possible
-	if _world_grid != null:
-		if _world_grid.has_method("set_cell_content"):
+	if not grids.is_empty():
+		var grid = grids[0]
+		if grid.has_method("set_cell_content"):
 			var content_type = "planet_" + category_name.to_lower()
-			_world_grid.set_cell_content(grid_coords, content_type, planet)
+			grid.set_cell_content(grid_coords, content_type, planet)
 	
 	# Emit signal with grid coordinates
 	planet_spawned.emit(planet, grid_coords)
@@ -274,8 +258,8 @@ func spawn_planet_with_params(params: Dictionary) -> Node2D:
 	
 	# Connect to planet's loaded signal to handle moons if they spawn
 	if _planet_instance.has_signal("planet_loaded"):
-		if not _planet_instance.is_connected("planet_loaded", _on_planet_loaded):
-			_planet_instance.connect("planet_loaded", _on_planet_loaded)
+		if not _planet_instance.is_connected("planet_loaded", Callable(self, "_on_planet_loaded")):
+			_planet_instance.connect("planet_loaded", Callable(self, "_on_planet_loaded"))
 	
 	if debug_mode:
 		print("Planet spawned at position: ", _planet_instance.global_position)
@@ -337,8 +321,8 @@ func cleanup() -> void:
 	if _planet_instance and is_instance_valid(_planet_instance):
 		# Disconnect signal to avoid issues
 		if _planet_instance.has_signal("planet_loaded"):
-			if _planet_instance.is_connected("planet_loaded", _on_planet_loaded):
-				_planet_instance.disconnect("planet_loaded", _on_planet_loaded)
+			if _planet_instance.is_connected("planet_loaded", Callable(self, "_on_planet_loaded")):
+				_planet_instance.disconnect("planet_loaded", Callable(self, "_on_planet_loaded"))
 		
 		# Deregister from EntityManager
 		if has_node("/root/EntityManager"):
@@ -456,7 +440,7 @@ func _on_planet_loaded(planet) -> void:
 				if debug_mode:
 					print("Moon registered: ", moon.moon_name)
 
-func _on_seed_changed(_new_seed: int) -> void:
+func _on_seed_changed(new_seed: int) -> void:
 	# Just update seed, don't auto-respawn
 	_update_seed_value()
 	
