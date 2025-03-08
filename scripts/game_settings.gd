@@ -4,28 +4,6 @@
 #   Centralized configuration node for all game-wide settings
 #   Handles seed management, grid configuration, player starting position
 #   Provides consistent access to game parameters for all systems
-#
-# Interface:
-#   Signals:
-#     - settings_initialized: Emitted when settings are fully initialized
-#     - seed_changed(new_seed): Emitted when the game seed changes
-#
-#   Seed Methods:
-#     - get_seed(): Returns the current game seed
-#     - set_seed(new_seed): Sets a specific seed value
-#     - generate_random_seed(): Creates a new random seed
-#
-#   Grid Methods:
-#     - get_player_starting_position(): Get world position for player start
-#     - get_cell_world_position(cell_coords): Get world position of a grid cell
-#     - get_cell_coords(world_position): Get cell coordinates for a world position
-#
-# Dependencies:
-#   - None (designed to be dependency-free)
-#
-# Usage:
-#   Add this node to your main scene and reference it from other scripts.
-#   Access settings through direct properties or helper methods.
 
 extends Node
 class_name GameSettings
@@ -68,6 +46,8 @@ var seed_hash: String = ""
 @export_category("World Generation")
 ## Chance (0-100) of a planet spawning in each cell
 @export var planet_chance_per_cell: int = 70
+## Minimum distance between planets (0=adjacent allowed, 1=one cell gap, etc.)
+@export var planet_proximity: int = 0
 ## Chance (0-100) of an asteroid field in each cell
 @export var asteroid_field_chance_per_cell: int = 50
 ## Chance (0-100) of a station in each cell
