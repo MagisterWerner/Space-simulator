@@ -1,6 +1,7 @@
 # scripts/entities/moon.gd
-# Enhanced moon script with multiple moon type support
+# Enhanced moon script with support for multiple moon types and procedural generation
 extends Node2D
+class_name Moon
 
 # Moon types must match planet.gd enum
 enum MoonType {
@@ -8,6 +9,8 @@ enum MoonType {
 	ICE,
 	LAVA
 }
+
+signal property_changed(property_name, old_value, new_value)
 
 var seed_value: int = 0
 var pixel_size: int = 32
@@ -23,22 +26,26 @@ var moon_type: int = MoonType.ROCKY  # Default to rocky moon
 
 var name_component
 var use_texture_cache: bool = true
+var _debug_mode: bool = false
 
-func _ready():
+func _ready() -> void:
 	name_component = get_node_or_null("NameComponent")
 	# Set appropriate z-index to be behind player but may be in front or behind planet
 	# The actual z-index will be dynamically adjusted by parent planet based on orbit position
 	# Default to -9, will be set to -12 when behind planet (and atmosphere)
 	z_index = -9
 
-func _process(_delta):
+func _process(_delta) -> void:
 	queue_redraw()
 
-func _draw():
+func _draw() -> void:
 	if moon_texture:
 		draw_texture(moon_texture, -Vector2(pixel_size, pixel_size) / 2, Color.WHITE)
 
-func initialize(params: Dictionary):
+# PUBLIC API
+
+## Initialize the moon with parameters
+func initialize(params: Dictionary) -> void:
 	seed_value = params.seed_value
 	parent_planet = params.parent_planet
 	distance = params.distance
@@ -47,11 +54,14 @@ func initialize(params: Dictionary):
 	orbit_deviation = params.orbit_deviation
 	phase_offset = params.phase_offset
 	
-	if "use_texture_cache" in params:
+	if params.has("use_texture_cache"):
 		use_texture_cache = params.use_texture_cache
+	
+	if params.has("debug_mode"):
+		_debug_mode = params.debug_mode
 		
 	# Set moon type if provided, otherwise default to rocky
-	if "moon_type" in params:
+	if params.has("moon_type"):
 		moon_type = params.moon_type
 	
 	# Create a unique cache key that includes both seed and type
@@ -85,6 +95,46 @@ func initialize(params: Dictionary):
 	else:
 		# Create a basic name using the moon type and seed
 		moon_name = _get_moon_type_prefix() + " Moon-" + str(seed_value % 1000)
+
+## Set a moon property and emit the property_changed signal
+func set_property(property_name: String, value) -> void:
+	if has_property(self, property_name):
+		var old_value = get(property_name)
+		set(property_name, value)
+		property_changed.emit(property_name, old_value, value)
+
+## Check if a property exists
+static func has_property(object: Object, property_name: String) -> bool:
+	for property in object.get_property_list():
+		if property.name == property_name:
+			return true
+	return false
+
+## Get the moon type as a string
+func get_moon_type_name() -> String:
+	match moon_type:
+		MoonType.ROCKY: return "Rocky"
+		MoonType.ICE: return "Icy"
+		MoonType.LAVA: return "Volcanic"
+		_: return "Unknown"
+
+## Get the parent planet
+func get_parent_planet() -> Node:
+	return parent_planet
+
+## Set the orbit speed
+func set_orbit_speed(new_speed: float) -> void:
+	orbit_speed = new_speed
+
+## Set the distance from parent planet
+func set_distance(new_distance: float) -> void:
+	distance = new_distance
+
+## Set the orbit deviation (ellipse shape)
+func set_orbit_deviation(new_deviation: float) -> void:
+	orbit_deviation = new_deviation
+
+# PRIVATE METHODS
 
 func _generate_moon_data(moon_seed: int, type: int) -> Dictionary:
 	var moon_generator = MoonGenerator.new()
