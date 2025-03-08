@@ -1,10 +1,9 @@
-[gd_scene load_steps=6 format=3 uid="uid://ddsnaxcqqd81s"]
+[gd_scene load_steps=5 format=3 uid="uid://ddsnaxcqqd81s"]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1_txjaf"]
 [ext_resource type="PackedScene" uid="uid://rhas31gnv33u" path="res://scenes/player/player_ship.tscn" id="2_cayce"]
 [ext_resource type="PackedScene" uid="uid://8iqbtdgouxfb" path="res://scenes/backgrounds/space_background.tscn" id="3_t8g3p"]
 [ext_resource type="PackedScene" uid="uid://baujd316t5ufb" path="res://scenes/world/world_grid.tscn" id="5_84hlr"]
-[ext_resource type="Script" path="res://scripts/world/world_creation.gd" id="5_kvmw1"]
 
 [node name="Main" type="Node2D"]
 script = ExtResource("1_txjaf")
@@ -22,6 +21,3 @@ position_smoothing_speed = 3.0
 [node name="WorldGrid" parent="." instance=ExtResource("5_84hlr")]
 grid_size = 5
 grid_opacity = 0.1
-
-[node name="WorldCreation" type="Node" parent="."]
-script = ExtResource("5_kvmw1")

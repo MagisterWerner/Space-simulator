@@ -1,18 +1,12 @@
 # scripts/entities/planet.gd
-# A planet class that supports extensive customization for procedural generation
-# Manages planet appearance, properties, and orbiting moons
 extends Node2D
-class_name Planet
 
 # Import classification constants
 const PlanetThemes = preload("res://scripts/generators/planet_generator.gd").PlanetTheme
 const PlanetCategories = preload("res://scripts/generators/planet_generator.gd").PlanetCategory
 
 signal planet_loaded(planet)
-signal property_changed(property_name, old_value, new_value)
 
-## Planet Configuration
-@export_category("Planet Configuration")
 @export var max_moons: int = 2
 @export var moon_chance: int = 40
 @export var min_moon_distance_factor: float = 1.8
@@ -20,14 +14,6 @@ signal property_changed(property_name, old_value, new_value)
 @export var max_orbit_deviation: float = 0.15
 @export var moon_orbit_factor: float = 0.05
 
-## Moon Type Enum (must match moon.gd)
-enum MoonType {
-	ROCKY,
-	ICE,
-	LAVA
-}
-
-# Planet properties
 var seed_value: int = 0
 var pixel_size: int = 256
 var planet_texture: Texture2D
@@ -42,15 +28,15 @@ var grid_y: int = 0
 # Planet classification properties
 var planet_category: int = PlanetCategories.TERRAN  # Default to terran
 
-# Moon related fields
-var moon_scene = preload("res://scenes/world/moon.tscn")
-var custom_moons: Array = []  # For procedurally specified moons
+# Define moon types for consistent reference
+enum MoonType {
+	ROCKY,
+	ICE,
+	LAVA
+}
 
-# Component references
 var name_component
 var use_texture_cache: bool = true
-var _initialized: bool = false
-var _debug_mode: bool = false
 
 func _ready() -> void:
 	name_component = get_node_or_null("NameComponent")
@@ -69,7 +55,7 @@ func _draw() -> void:
 	if planet_texture:
 		draw_texture(planet_texture, -Vector2(pixel_size, pixel_size) / 2, Color.WHITE)
 
-func _update_moons(delta: float) -> void:
+func _update_moons(_delta: float) -> void:
 	var time = Time.get_ticks_msec() / 1000.0
 	
 	for moon in moons:
@@ -94,31 +80,24 @@ func _update_moons(delta: float) -> void:
 			# This creates the visual effect of moon passing behind the planet and atmosphere
 			moon.z_index = -12 if relative_y < 0 else -9
 
-# PUBLIC API
-
-## Initialize the planet with parameters
 func initialize(params: Dictionary) -> void:
 	seed_value = params.seed_value
-	grid_x = params.get("grid_x", 0)
-	grid_y = params.get("grid_y", 0)
+	grid_x = params.grid_x
+	grid_y = params.grid_y
 	
 	# Apply customizations if provided
-	if params.has("max_moons"): max_moons = params.max_moons
-	if params.has("moon_chance"): moon_chance = params.moon_chance
-	if params.has("min_moon_distance_factor"): min_moon_distance_factor = params.min_moon_distance_factor
-	if params.has("max_moon_distance_factor"): max_moon_distance_factor = params.max_moon_distance_factor
-	if params.has("max_orbit_deviation"): max_orbit_deviation = params.max_orbit_deviation
-	if params.has("moon_orbit_factor"): moon_orbit_factor = params.moon_orbit_factor
-	if params.has("use_texture_cache"): use_texture_cache = params.use_texture_cache
-	if params.has("debug_mode"): _debug_mode = params.debug_mode
-	if params.has("custom_moons"): custom_moons = params.custom_moons
-	
-	var moon_orbit_speed_factor = params.get("moon_orbit_speed_factor", 1.0)
-	if moon_orbit_speed_factor != 1.0:
-		moon_orbit_factor *= moon_orbit_speed_factor
+	if "max_moons" in params: max_moons = params.max_moons
+	if "moon_chance" in params: moon_chance = params.moon_chance
+	if "min_moon_distance_factor" in params: min_moon_distance_factor = params.min_moon_distance_factor
+	if "max_moon_distance_factor" in params: max_moon_distance_factor = params.max_moon_distance_factor
+	if "max_orbit_deviation" in params: max_orbit_deviation = params.max_orbit_deviation
+	if "moon_orbit_factor" in params: moon_orbit_factor = params.moon_orbit_factor
+	if "use_texture_cache" in params: use_texture_cache = params.use_texture_cache
+	if "moon_orbit_speed_factor" in params and params.moon_orbit_speed_factor != 1.0:
+		moon_orbit_factor *= params.moon_orbit_speed_factor
 	
 	# Allow theme override if specified
-	if params.has("theme_override") and params.theme_override >= 0:
+	if "theme_override" in params and params.theme_override >= 0:
 		theme_id = params.theme_override
 	else:
 		# Determine theme from seed
@@ -129,7 +108,7 @@ func initialize(params: Dictionary) -> void:
 	planet_category = PlanetGenerator.get_planet_category(theme_id)
 	
 	# Check if specific category was requested
-	if params.has("category_override"):
+	if "category_override" in params:
 		planet_category = params.category_override
 		# Need to adjust theme if category changed
 		if planet_category == PlanetCategories.GASEOUS:
@@ -150,149 +129,42 @@ func initialize(params: Dictionary) -> void:
 		max_moons = rng.randi_range(3, 6)
 		moon_chance = 100  # Gaseous planets ALWAYS have moons
 	
-	# Create/get planet textures
+	# Attempt to use cached textures if texture caching is enabled
 	if use_texture_cache and PlanetSpawner.texture_cache != null:
-		_initialize_with_texture_cache(is_gaseous)
+		# Try to get planet texture from cache
+		if PlanetSpawner.texture_cache.planets.has(seed_value):
+			planet_texture = PlanetSpawner.texture_cache.planets[seed_value]
+			pixel_size = 512 if is_gaseous else 256
+		else:
+			# Generate and cache the texture
+			var planet_generator = PlanetGenerator.new()
+			var textures = planet_generator.create_planet_texture(seed_value)
+			planet_texture = textures[0]
+			pixel_size = 512 if is_gaseous else 256
+			PlanetSpawner.texture_cache.planets[seed_value] = planet_texture
+		
+		# Try to get atmosphere texture from cache
+		if PlanetSpawner.texture_cache.atmospheres.has(seed_value):
+			atmosphere_texture = PlanetSpawner.texture_cache.atmospheres[seed_value]
+		else:
+			# Generate and cache the texture
+			var atmosphere_generator = AtmosphereGenerator.new()
+			atmosphere_data = atmosphere_generator.generate_atmosphere_data(theme_id, seed_value)
+			atmosphere_texture = atmosphere_generator.generate_atmosphere_texture(
+				theme_id, seed_value, atmosphere_data.color, atmosphere_data.thickness)
+			PlanetSpawner.texture_cache.atmospheres[seed_value] = atmosphere_texture
 	else:
-		_initialize_without_cache(is_gaseous)
+		# Generate textures without caching
+		var planet_gen_params = _generate_planet_data(seed_value)
+		
+		theme_id = planet_gen_params.theme if not "theme_override" in params else params.theme_override
+		pixel_size = planet_gen_params.pixel_size
+		planet_texture = planet_gen_params.texture
+		atmosphere_data = planet_gen_params.atmosphere
+		atmosphere_texture = planet_gen_params.atmosphere_texture
+		planet_category = PlanetGenerator.get_planet_category(theme_id)
 	
 	# Set up name component
-	_setup_name_component(is_gaseous)
-	
-	_initialized = true
-	
-	# Defer moon creation to avoid stuttering
-	call_deferred("_create_moons")
-
-## Set a planet property and emit the property_changed signal
-func set_property(property_name: String, value) -> void:
-	if has_property(self, property_name):
-		var old_value = get(property_name)
-		set(property_name, value)
-		property_changed.emit(property_name, old_value, value)
-
-## Check if a property exists
-static func has_property(object: Object, property_name: String) -> bool:
-	for property in object.get_property_list():
-		if property.name == property_name:
-			return true
-	return false
-
-## Get planet category name as string (for debugging/UI)
-func get_category_name() -> String:
-	match planet_category:
-		PlanetCategories.TERRAN: return "Terran"
-		PlanetCategories.GASEOUS: return "Gaseous"
-		_: return "Unknown"
-
-## Get theme name as string (for debugging/UI)
-func get_theme_name() -> String:
-	match theme_id:
-		PlanetThemes.ARID: return "Arid"
-		PlanetThemes.ICE: return "Ice"
-		PlanetThemes.LAVA: return "Lava"
-		PlanetThemes.LUSH: return "Lush"
-		PlanetThemes.DESERT: return "Desert"
-		PlanetThemes.ALPINE: return "Alpine"
-		PlanetThemes.OCEAN: return "Ocean"
-		PlanetThemes.GAS_GIANT: return "Gas Giant"
-		_: return "Unknown"
-
-## Add a moon to the planet programmatically
-func add_moon(moon_params: Dictionary) -> Node:
-	if not moon_scene:
-		push_error("Moon scene not available")
-		return null
-	
-	var moon_instance = moon_scene.instantiate()
-	if not moon_instance:
-		push_error("Failed to instantiate moon scene")
-		return null
-	
-	# Apply defaults for missing parameters
-	var params = moon_params.duplicate()
-	if not params.has("seed_value"):
-		params["seed_value"] = seed_value + moons.size() * 100
-	if not params.has("parent_planet"):
-		params["parent_planet"] = self
-	if not params.has("parent_name"):
-		params["parent_name"] = planet_name
-	
-	# Add the moon
-	add_child(moon_instance)
-	moon_instance.initialize(params)
-	moons.append(moon_instance)
-	
-	return moon_instance
-
-## Get all moons of a specific type
-func get_moons_by_type(type: int) -> Array:
-	var result = []
-	for moon in moons:
-		if is_instance_valid(moon) and moon.moon_type == type:
-			result.append(moon)
-	return result
-
-## Get count of moons by type
-func get_moon_count_by_type(type: int) -> int:
-	var count = 0
-	for moon in moons:
-		if is_instance_valid(moon) and moon.moon_type == type:
-			count += 1
-	return count
-
-## Get total moon count
-func get_moon_count() -> int:
-	return moons.size()
-
-## Adjust moon orbit speed
-func set_moon_orbit_speed(speed_factor: float) -> void:
-	for moon in moons:
-		if is_instance_valid(moon):
-			moon.orbit_speed *= speed_factor
-	
-	moon_orbit_factor *= speed_factor
-
-# PRIVATE METHODS
-
-func _initialize_with_texture_cache(is_gaseous: bool) -> void:
-	"""Initialize planet using the texture cache"""
-	# Try to get planet texture from cache
-	if PlanetSpawner.texture_cache.planets.has(seed_value):
-		planet_texture = PlanetSpawner.texture_cache.planets[seed_value]
-		pixel_size = 512 if is_gaseous else 256
-	else:
-		# Generate and cache the texture
-		var planet_generator = PlanetGenerator.new()
-		var textures = planet_generator.create_planet_texture(seed_value)
-		planet_texture = textures[0]
-		pixel_size = 512 if is_gaseous else 256
-		PlanetSpawner.texture_cache.planets[seed_value] = planet_texture
-	
-	# Try to get atmosphere texture from cache
-	if PlanetSpawner.texture_cache.atmospheres.has(seed_value):
-		atmosphere_texture = PlanetSpawner.texture_cache.atmospheres[seed_value]
-	else:
-		# Generate and cache the texture
-		var atmosphere_generator = AtmosphereGenerator.new()
-		atmosphere_data = atmosphere_generator.generate_atmosphere_data(theme_id, seed_value)
-		atmosphere_texture = atmosphere_generator.generate_atmosphere_texture(
-			theme_id, seed_value, atmosphere_data.color, atmosphere_data.thickness)
-		PlanetSpawner.texture_cache.atmospheres[seed_value] = atmosphere_texture
-
-func _initialize_without_cache(is_gaseous: bool) -> void:
-	"""Initialize planet without using the texture cache"""
-	var planet_gen_params = _generate_planet_data(seed_value)
-	
-	theme_id = planet_gen_params.theme
-	pixel_size = planet_gen_params.pixel_size
-	planet_texture = planet_gen_params.texture
-	atmosphere_data = planet_gen_params.atmosphere
-	atmosphere_texture = planet_gen_params.atmosphere_texture
-	planet_category = PlanetGenerator.get_planet_category(theme_id)
-
-func _setup_name_component(is_gaseous: bool) -> void:
-	"""Set up the planet name using the name component"""
 	name_component = get_node_or_null("NameComponent")
 	if name_component:
 		var type_prefix = ""
@@ -306,6 +178,9 @@ func _setup_name_component(is_gaseous: bool) -> void:
 			planet_name = "Gas Giant-" + str(seed_value % 1000)
 		else:
 			planet_name = "Planet-" + str(seed_value % 1000)
+	
+	# Defer moon creation to avoid stuttering
+	call_deferred("_create_moons")
 
 func _emit_planet_loaded() -> void:
 	planet_loaded.emit(self)
@@ -335,15 +210,10 @@ func _generate_planet_data(planet_seed: int) -> Dictionary:
 	}
 
 func _create_moons() -> void:
-	"""Create moons based on planet parameters"""
-	# If custom moons array is not empty, use it instead of random generation
-	if not custom_moons.is_empty():
-		_create_custom_moons()
-		return
-	
+	# Use the correct path to moon scene
+	var moon_scene = load("res://scenes/world/moon.tscn")
 	if not moon_scene:
-		push_error("Error: Moon scene couldn't be loaded")
-		_emit_planet_loaded()
+		push_error("Error: Moon scene couldn't be loaded from res://scenes/world/moon.tscn")
 		return
 	
 	var rng = RandomNumberGenerator.new()
@@ -416,27 +286,24 @@ func _create_moons() -> void:
 	# Emit signal that the planet has been loaded (after moons are created)
 	_emit_planet_loaded()
 
-func _create_custom_moons() -> void:
-	"""Create moons based on the custom_moons array"""
-	for moon_data in custom_moons:
-		var moon_instance = moon_scene.instantiate()
-		if not moon_instance:
-			continue
-		
-		# Make sure parent_planet is set properly
-		moon_data["parent_planet"] = self
-		if not moon_data.has("parent_name"):
-			moon_data["parent_name"] = planet_name
-		
-		add_child(moon_instance)
-		moon_instance.initialize(moon_data)
-		moons.append(moon_instance)
+# Get a random moon type with proper weighting
+func _get_random_moon_type(rng: RandomNumberGenerator) -> int:
+	# For terran planets, always return ROCKY
+	if planet_category == PlanetCategories.TERRAN:
+		return MoonType.ROCKY
 	
-	# Emit signal that the planet has been loaded
-	_emit_planet_loaded()
+	# This can be kept for backward compatibility or custom distribution
+	var roll = rng.randi() % 100
+	
+	if roll < 60:
+		return MoonType.ROCKY
+	elif roll < 80:
+		return MoonType.ICE
+	else:
+		return MoonType.LAVA
 
+# Generate well-distributed orbital parameters to prevent moon collisions
 func _generate_orbital_parameters(moon_count: int, rng: RandomNumberGenerator) -> Array:
-	"""Generate well-distributed orbital parameters to prevent moon collisions"""
 	var params = []
 	
 	if moon_count <= 0:
@@ -498,3 +365,23 @@ func _generate_orbital_parameters(moon_count: int, rng: RandomNumberGenerator) -
 		})
 	
 	return params
+
+# Get planet category name as string (for debugging/UI)
+func get_category_name() -> String:
+	match planet_category:
+		PlanetCategories.TERRAN: return "Terran"
+		PlanetCategories.GASEOUS: return "Gaseous"
+		_: return "Unknown"
+
+# Get theme name as string (for debugging/UI)
+func get_theme_name() -> String:
+	match theme_id:
+		PlanetThemes.ARID: return "Arid"
+		PlanetThemes.ICE: return "Ice"
+		PlanetThemes.LAVA: return "Lava"
+		PlanetThemes.LUSH: return "Lush"
+		PlanetThemes.DESERT: return "Desert"
+		PlanetThemes.ALPINE: return "Alpine"
+		PlanetThemes.OCEAN: return "Ocean"
+		PlanetThemes.GAS_GIANT: return "Gas Giant"
+		_: return "Unknown"
