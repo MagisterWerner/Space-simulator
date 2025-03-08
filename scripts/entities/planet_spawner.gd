@@ -1,5 +1,5 @@
 # scripts/entities/planet_spawner.gd
-# Enhanced and simplified planet spawner that uses GameSettings for consistent generation
+# Enhanced planet spawner that uses GameSettings for consistent generation
 extends Node2D
 class_name PlanetSpawner
 
@@ -10,12 +10,16 @@ const PlanetCategories = preload("res://scripts/generators/planet_generator.gd")
 signal planet_spawned(planet_instance)
 signal spawner_ready
 
-# Planet Type Selection - SIMPLIFIED to prevent mixing
+# Planet Type Selection
 @export_enum("Terran", "Gaseous") var planet_category: int = 0  # 0=Terran, 1=Gaseous
 
 # Terran Planet Theme (only used when planet_category is Terran)
 @export_enum("Random", "Arid", "Ice", "Lava", "Lush", "Desert", "Alpine", "Ocean") 
 var terran_theme: int = 0  # 0=Random, 1-7=Specific Terran theme
+
+# Gaseous Planet Theme (only used when planet_category is Gaseous)
+@export_enum("Random", "Jupiter-like", "Saturn-like", "Neptune-like", "Exotic") 
+var gaseous_theme: int = 0  # 0=Random, 1-4=Specific Gaseous theme
 
 # Planet Configuration
 @export_category("Planet Configuration")
@@ -36,6 +40,9 @@ var terran_theme: int = 0  # 0=Random, 1-7=Specific Terran theme
 
 @export_category("Rendering")
 @export var z_index_base: int = -10  # Base z-index for planets
+
+@export_category("Debug")
+@export var debug_planet_generation: bool = true
 
 # Internal variables
 var _seed_value: int = 0
@@ -59,21 +66,12 @@ static var texture_cache = {
 const MAX_CACHE_SIZE = 30
 var _cache_last_cleaned = 0
 
-# String-to-enum mappings for planet types
-const CATEGORY_MAP = {
-	"terran": PlanetCategories.TERRAN,
-	"gaseous": PlanetCategories.GASEOUS
-}
-
-const THEME_MAP = {
-	"arid": PlanetThemes.ARID,
-	"ice": PlanetThemes.ICE,
-	"lava": PlanetThemes.LAVA,
-	"lush": PlanetThemes.LUSH,
-	"desert": PlanetThemes.DESERT,
-	"alpine": PlanetThemes.ALPINE,
-	"ocean": PlanetThemes.OCEAN,
-	"gas_giant": PlanetThemes.GAS_GIANT
+# Gas giant type constants
+enum GasGiantType {
+	JUPITER = 0,  # Jupiter-like (beige/tan tones)
+	SATURN = 1,   # Saturn-like (golden tones)
+	NEPTUNE = 2,  # Neptune-like (blue tones)
+	EXOTIC = 3    # Exotic (lavender tones)
 }
 
 func _ready() -> void:
@@ -97,11 +95,7 @@ func _initialize() -> void:
 	# Initialize seed value
 	_update_seed_value()
 	
-	# Pregenerate textures if enabled
-	if pregenerate and use_texture_cache:
-		_pregenerate_textures()
-	
-	# Always spawn planet immediately - removed auto_spawn check
+	# Always spawn planet immediately
 	spawn_planet()
 	
 	_initialized = true
@@ -130,89 +124,6 @@ func _update_seed_value() -> void:
 	
 	# Initialize RNG with our seed
 	_rng.seed = _seed_value
-
-func _pregenerate_textures() -> void:
-	# Get theme for this planet
-	var theme: int = -1
-	
-	if planet_category == PlanetCategories.GASEOUS:
-		# For gaseous, only GAS_GIANT is available
-		theme = PlanetThemes.GAS_GIANT
-	else:
-		# For Terran, either specific theme or random
-		if terran_theme > 0:
-			theme = terran_theme - 1  # Convert from enum dropdown (1-7) to actual theme (0-6)
-		else:
-			# Random terran theme
-			var generator = PlanetGenerator.new()
-			theme = generator.get_themed_planet_for_category(_seed_value, PlanetCategories.TERRAN)
-	
-	# Make sure base textures for this seed are cached
-	if not texture_cache.planets.has(_seed_value):
-		_generate_and_cache_planet_texture(_seed_value, theme)
-	
-	if not texture_cache.atmospheres.has(_seed_value):
-		_generate_and_cache_atmosphere_texture(_seed_value, theme)
-	
-	# Generate just one moon texture type for performance (we'll generate others on demand)
-	var moon_seed = _seed_value + 100
-	var cache_key = moon_seed * 10 + 0  # 0 = ROCKY type
-	if not texture_cache.moons.has(cache_key):
-		_generate_and_cache_moon_texture(moon_seed, 0)
-	
-	# Clean cache if it's getting too large
-	_clean_cache_if_needed()
-
-func _generate_and_cache_planet_texture(seed_value: int, theme: int = -1) -> Texture2D:
-	var generator = PlanetGenerator.new()
-	var texture = generator.create_planet_texture(seed_value, theme)[0]
-	texture_cache.planets[seed_value] = texture
-	return texture
-
-func _generate_and_cache_atmosphere_texture(seed_value: int, theme: int) -> Texture2D:
-	var atmosphere_generator = AtmosphereGenerator.new()
-	var atm_data = atmosphere_generator.generate_atmosphere_data(theme, seed_value)
-	var texture = atmosphere_generator.generate_atmosphere_texture(
-		theme, seed_value, atm_data.color, atm_data.thickness)
-	texture_cache.atmospheres[seed_value] = texture
-	return texture
-
-func _generate_and_cache_moon_texture(seed_value: int, moon_type: int = 0) -> Texture2D:
-	var moon_generator = MoonGenerator.new()
-	var cache_key = seed_value * 10 + moon_type  # Combine seed and type for unique key
-	var texture = moon_generator.create_moon_texture(seed_value, moon_type)
-	texture_cache.moons[cache_key] = texture
-	return texture
-
-func _clean_cache_if_needed() -> void:
-	# Only clean cache occasionally
-	var current_time = Time.get_ticks_msec()
-	if current_time - _cache_last_cleaned < 10000:  # 10 seconds
-		return
-		
-	_cache_last_cleaned = current_time
-	
-	# Check planet textures
-	if texture_cache.planets.size() > MAX_CACHE_SIZE:
-		var keys = texture_cache.planets.keys()
-		keys.sort()  # Sort by seed value
-		# Remove oldest half
-		for i in range(keys.size() / 2):
-			texture_cache.planets.erase(keys[i])
-	
-	# Check atmosphere textures
-	if texture_cache.atmospheres.size() > MAX_CACHE_SIZE:
-		var keys = texture_cache.atmospheres.keys()
-		keys.sort()
-		for i in range(keys.size() / 2):
-			texture_cache.atmospheres.erase(keys[i])
-	
-	# Check moon textures
-	if texture_cache.moons.size() > MAX_CACHE_SIZE:
-		var keys = texture_cache.moons.keys()
-		keys.sort()
-		for i in range(keys.size() / 2):
-			texture_cache.moons.erase(keys[i])
 
 # Main spawn function - dispatches to correct type
 func spawn_planet() -> Node2D:
@@ -255,27 +166,29 @@ func _spawn_terran_planet() -> Node2D:
 	# Apply scale
 	_planet_instance.scale = Vector2(planet_scale, planet_scale)
 	
-	# Determine terran theme
-	var theme_to_use = -1  # Default to random
+	# Determine terran theme (don't generate it here, let planet.gd decide if it's random)
+	var theme_to_use: int = -1
 	
 	if terran_theme > 0:
 		# User selected specific theme (subtract 1 because 0 is Random in the export enum)
 		theme_to_use = terran_theme - 1
 		
-		# Verify it's really a terran theme (safety check)
+		# Verify it's a valid terran theme
 		if theme_to_use >= PlanetThemes.GAS_GIANT:
 			if game_settings and game_settings.debug_mode:
-				print("Invalid terran theme selected; reverting to random terran theme")
+				print("PlanetSpawner: Invalid terran theme selected; reverting to random terran theme")
 			theme_to_use = -1
 	
-	if theme_to_use < 0:
-		# Pick a random terran theme
-		var generator = PlanetGenerator.new()
-		theme_to_use = generator.get_themed_planet_for_category(_seed_value, PlanetCategories.TERRAN)
+	# Force-generate a random terran seed that will be used in planet.gd
+	var random_terran_seed: int = _seed_value
+	if terran_theme == 0:  # Random theme requested
+		# Generate a unique seed for theme selection
+		random_terran_seed = _seed_value * 17 + 31  # Prime multiplier to avoid patterns
 	
 	# Set up the planet parameters
 	var planet_params = {
 		"seed_value": _seed_value,
+		"random_terran_seed": random_terran_seed,
 		"grid_x": grid_x,
 		"grid_y": grid_y,
 		"moon_chance": moon_chance,
@@ -286,8 +199,14 @@ func _spawn_terran_planet() -> Node2D:
 		"use_texture_cache": use_texture_cache,
 		"theme_override": theme_to_use,
 		"category_override": PlanetCategories.TERRAN,  # Force terran category
-		"moon_orbit_speed_factor": moon_orbit_speed_factor  # Pass the moon orbit speed factor
+		"moon_orbit_speed_factor": moon_orbit_speed_factor,  # Pass the moon orbit speed factor
+		"is_random_theme": terran_theme == 0,  # Flag indicating if we want a random theme
+		"debug_planet_generation": debug_planet_generation
 	}
+	
+	# If debug is enabled, add additional debug info to the parameters
+	if debug_planet_generation:
+		planet_params["debug_theme_source"] = "From terran_theme export: " + str(terran_theme)
 	
 	# Initialize the planet with our parameters
 	_planet_instance.initialize(planet_params)
@@ -305,9 +224,11 @@ func _spawn_terran_planet() -> Node2D:
 	planet_spawned.emit(_planet_instance)
 	
 	# Debug output
-	if game_settings and game_settings.debug_mode:
-		print("Spawned terran planet at position ", _planet_instance.global_position)
-		print("Planet theme: ", _get_theme_name(theme_to_use))
+	if game_settings and game_settings.debug_mode or debug_planet_generation:
+		print("PlanetSpawner: Spawned terran planet at position ", _planet_instance.global_position)
+		print("PlanetSpawner: Selected terran_theme=", terran_theme, " (0=Random, 1-7=specific)")
+		if _planet_instance.has_method("get_theme_name"):
+			print("PlanetSpawner: Actual theme used: ", _planet_instance.get_theme_name())
 	
 	return _planet_instance
 
@@ -341,9 +262,23 @@ func _spawn_gaseous_planet() -> Node2D:
 	# Apply scale
 	_planet_instance.scale = Vector2(planet_scale, planet_scale)
 	
-	# Set up the planet parameters - always gas giant for gaseous category
+	# Determine gas giant type
+	var gas_giant_type: int = -1  # -1 means let planet.gd decide
+	
+	if gaseous_theme > 0:
+		# User selected specific gas giant type (1=Jupiter, 2=Saturn, etc.)
+		gas_giant_type = gaseous_theme - 1
+	
+	# Force-generate a random gas giant seed if needed
+	var random_gas_seed: int = _seed_value
+	if gaseous_theme == 0:
+		# Generate a unique seed for gas giant type selection
+		random_gas_seed = _seed_value * 23 + 41  # Different prime multiplier
+	
+	# Set up the planet parameters
 	var planet_params = {
 		"seed_value": _seed_value,
+		"random_gas_seed": random_gas_seed,
 		"grid_x": grid_x,
 		"grid_y": grid_y,
 		"moon_chance": 100,  # Always spawn moons for gas giants
@@ -354,8 +289,15 @@ func _spawn_gaseous_planet() -> Node2D:
 		"use_texture_cache": use_texture_cache,
 		"theme_override": PlanetThemes.GAS_GIANT,  # Force gas giant theme
 		"category_override": PlanetCategories.GASEOUS,  # Force gaseous category
-		"moon_orbit_speed_factor": moon_orbit_speed_factor  # Pass the moon orbit speed factor
+		"moon_orbit_speed_factor": moon_orbit_speed_factor,  # Pass the moon orbit speed factor
+		"gas_giant_type_override": gas_giant_type,  # Pass our gas giant type override
+		"is_random_gaseous": gaseous_theme == 0,  # Flag indicating if we want a random gas giant
+		"debug_planet_generation": debug_planet_generation
 	}
+	
+	# If debug is enabled, add additional debug info to the parameters
+	if debug_planet_generation:
+		planet_params["debug_gas_theme_source"] = "From gaseous_theme export: " + str(gaseous_theme)
 	
 	# Initialize the planet with our parameters
 	_planet_instance.initialize(planet_params)
@@ -373,9 +315,11 @@ func _spawn_gaseous_planet() -> Node2D:
 	planet_spawned.emit(_planet_instance)
 	
 	# Debug output
-	if game_settings and game_settings.debug_mode:
-		print("Spawned gaseous planet (Gas Giant) at position ", _planet_instance.global_position)
-		print("Gas giant type: ", _seed_value % 4)  # Shows which of the 4 gas giant palettes is used
+	if game_settings and game_settings.debug_mode or debug_planet_generation:
+		print("PlanetSpawner: Spawned gaseous planet at position ", _planet_instance.global_position)
+		print("PlanetSpawner: Selected gaseous_theme=", gaseous_theme, " (0=Random, 1-4=specific)")
+		if _planet_instance.has_method("get_gas_giant_type_name"):
+			print("PlanetSpawner: Actual gas giant type: ", _planet_instance.get_gas_giant_type_name())
 	
 	return _planet_instance
 
@@ -440,11 +384,25 @@ func force_planet_type(is_gaseous: bool, theme_index: int = -1) -> void:
 	
 	if not is_gaseous and theme_index >= 0 and theme_index < PlanetThemes.GAS_GIANT:
 		terran_theme = theme_index + 1  # +1 because 0 is Random in the export enum
+	elif is_gaseous and theme_index >= 0 and theme_index < 4:
+		# Set gaseous theme if it's within the valid range
+		gaseous_theme = theme_index + 1  # +1 because 0 is Random
 		
 	# Update and respawn if already initialized
 	if _initialized:
 		_update_seed_value()
 		spawn_planet()
+
+# Force a specific gas giant type
+func force_gas_giant_type(type_index: int) -> void:
+	if type_index >= 0 and type_index < 4:
+		planet_category = PlanetCategories.GASEOUS
+		gaseous_theme = type_index + 1  # +1 because 0 is Random
+		
+		# Update and respawn if already initialized
+		if _initialized:
+			_update_seed_value()
+			spawn_planet()
 
 # Public getter for the spawned planet instance
 func get_planet_instance() -> Node2D:
@@ -491,4 +449,13 @@ func _get_theme_name(theme_id: int) -> String:
 		PlanetThemes.ALPINE: return "Alpine"
 		PlanetThemes.OCEAN: return "Ocean"
 		PlanetThemes.GAS_GIANT: return "Gas Giant"
+		_: return "Unknown"
+
+# Get gas giant type name for debugging
+func _get_gas_giant_type_name(type_id: int) -> String:
+	match type_id:
+		GasGiantType.JUPITER: return "Jupiter-like"
+		GasGiantType.SATURN: return "Saturn-like"
+		GasGiantType.NEPTUNE: return "Neptune-like"
+		GasGiantType.EXOTIC: return "Exotic"
 		_: return "Unknown"
