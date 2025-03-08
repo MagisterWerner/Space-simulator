@@ -35,8 +35,6 @@ class_name WorldGrid
 signal grid_initialized(cell_size, grid_size)
 signal grid_updated(cell_size, grid_size)
 signal cell_clicked(cell_coords)
-signal cell_content_cleared(cell_coords)
-signal cell_content_set(cell_coords, content_type, content_node)
 
 # Internal variables
 var _camera: Camera2D = null
@@ -44,8 +42,6 @@ var _viewport_size: Vector2 = Vector2.ZERO
 var _grid_total_size: Vector2 = Vector2.ZERO
 var _initialized: bool = false
 var _grid_data: Dictionary = {}  # Can store custom data for each cell
-var _last_check_frame: int = 0
-var _check_interval: int = 30  # Check every 30 frames
 
 func _ready() -> void:
 	# Make this node available globally if needed
@@ -94,36 +90,6 @@ func _process(_delta: float) -> void:
 	# Only redraw when camera moves
 	if _camera and is_instance_valid(_camera):
 		queue_redraw()
-	
-	# Periodically check for invalid content references
-	var current_frame = Engine.get_frames_drawn()
-	if current_frame - _last_check_frame >= _check_interval:
-		_last_check_frame = current_frame
-		_check_for_invalid_content()
-
-func _check_for_invalid_content() -> void:
-	# Check all cells for invalid content references
-	var cells_to_clear = []
-	
-	for cell_coords in _grid_data.keys():
-		var content = _grid_data[cell_coords].get("content")
-		if content != null and not is_instance_valid(content):
-			cells_to_clear.append(cell_coords)
-	
-	# Clear invalid references
-	for cell_coords in cells_to_clear:
-		if debug_mode:
-			print("WorldGrid: Content in cell ", cell_coords, " was freed, clearing reference")
-		
-		# Store the current type before clearing
-		var content_type = _grid_data[cell_coords].get("type", "empty")
-		
-		# Clear the reference
-		_grid_data[cell_coords]["content"] = null
-		
-		# If it was something other than empty, emit the signal
-		if content_type != "empty":
-			cell_content_cleared.emit(cell_coords)
 
 func _draw() -> void:
 	if not _camera or not is_instance_valid(_camera):
@@ -195,8 +161,7 @@ func _find_camera() -> void:
 		var player_ships = get_tree().get_nodes_in_group("player")
 		if not player_ships.is_empty():
 			var player_ship = player_ships[0]
-			if is_instance_valid(player_ship):
-				_camera = player_ship.get_viewport().get_camera_2d()
+			_camera = player_ship.get_viewport().get_camera_2d()
 	
 	if not _camera:
 		# Try to find through the "Main" scene
@@ -285,39 +250,17 @@ func get_cell_data(cell_coords: Vector2i, key: String, default_value = null):
 func set_cell_content(cell_coords: Vector2i, content_type: String, content_node: Node = null) -> bool:
 	if not is_valid_cell(cell_coords):
 		return false
-	
-	# Clear any previous content first
-	var previous_content = _grid_data[cell_coords].get("content")
-	if previous_content != null and is_instance_valid(previous_content) and previous_content != content_node:
-		# Don't actually free the content, just unlink it from the cell
-		if debug_mode:
-			print("WorldGrid: Replacing content in cell ", cell_coords)
-	
+		
 	_grid_data[cell_coords]["type"] = content_type
 	_grid_data[cell_coords]["content"] = content_node
-	
-	# Emit signal for content change
-	cell_content_set.emit(cell_coords, content_type, content_node)
-	
 	return true
 
-## Get cell content - FIXED: Check for valid instances before returning
+## Get cell content
 func get_cell_content(cell_coords: Vector2i) -> Node:
 	if not is_valid_cell(cell_coords) or not _grid_data.has(cell_coords):
 		return null
-	
-	# Get the content reference
-	var content = _grid_data[cell_coords].get("content")
-	
-	# Check if the content actually exists and is valid
-	if content != null and not is_instance_valid(content):
-		# Clear reference to freed object
-		if debug_mode:
-			print("WorldGrid: Content in cell ", cell_coords, " was freed, clearing reference")
-		_grid_data[cell_coords]["content"] = null
-		return null
-	
-	return content
+		
+	return _grid_data[cell_coords].get("content")
 
 ## Get all cells of a specific type
 func get_cells_by_type(type: String) -> Array:
@@ -362,13 +305,6 @@ func get_cell_distance(from_cell: Vector2i, to_cell: Vector2i) -> int:
 
 ## Clear all grid data
 func clear_grid_data() -> void:
-	# Signal that we're clearing content for all cells
-	for cell_coords in _grid_data.keys():
-		var content = _grid_data[cell_coords].get("content")
-		if content != null:
-			cell_content_cleared.emit(cell_coords)
-	
-	# Then initialize clean grid data
 	_initialize_grid_data()
 
 ## Reset the grid to its default position
@@ -389,8 +325,7 @@ func center_grid_on_player() -> void:
 		return
 		
 	var player_ship = player_ships[0]
-	if is_instance_valid(player_ship):
-		center_grid_on_position(player_ship.global_position)
+	center_grid_on_position(player_ship.global_position)
 
 ## Gets the total grid size in pixels
 func get_total_grid_size() -> Vector2:
