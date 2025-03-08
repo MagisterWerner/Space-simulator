@@ -217,8 +217,9 @@ func generate_planet_palette(theme: int, seed_value: int) -> PackedColorArray:
 	
 	match theme:
 		PlanetTheme.GAS_GIANT:
-			# Force deterministic gas giant type selection based on seed
-			var gas_giant_type = seed_value % 4
+			# Extract gas giant type from the higher bits of the seed
+			# This ensures we use the type encoded by planet.gd
+			var gas_giant_type = (seed_value / 10000) % 4
 			
 			match gas_giant_type:
 				0:  # Jupiter-like (balanced beige/tan/brown tones)

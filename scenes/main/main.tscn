@@ -41,13 +41,9 @@ position_smoothing_speed = 3.0
 
 [node name="PlanetSpawner" parent="Planets" instance=ExtResource("6_hujxm")]
 position = Vector2(227, 128)
-planet_category = 1
 terran_theme = 0
-gaseous_theme = 3
 grid_y = 1
 
 [node name="PlanetSpawner2" parent="Planets" instance=ExtResource("6_hujxm")]
-planet_category = 1
 terran_theme = 0
-gaseous_theme = 2
 grid_x = 1

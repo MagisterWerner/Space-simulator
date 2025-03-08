@@ -133,11 +133,22 @@ func initialize(params: Dictionary) -> void:
 			theme_id = params.theme_override
 			print("Using explicit terran theme: ", theme_id)
 		else:
-			# Generate a truly random terran theme - critical to fix the issue
+			# Generate a truly random terran theme with improved entropy
 			var theme_generator = RandomNumberGenerator.new()
-			theme_generator.seed = seed_value ^ 12345  # Use XOR for unique seeding
+			
+			# Create a better unique seed for each planet
+			var unique_seed = seed_value
+			
+			# Add grid position entropy
+			if "grid_x" in params and "grid_y" in params:
+				unique_seed = unique_seed ^ (params.grid_x * 31 + params.grid_y * 37)
+			
+			# Mix in more bit variation with prime multipliers
+			unique_seed = unique_seed ^ (seed_value * 73 + 9973)
+			
+			theme_generator.seed = unique_seed
 			theme_id = theme_generator.randi() % PlanetThemes.GAS_GIANT
-			print("Generated random terran theme: ", theme_id)
+			print("Generated random terran theme: ", theme_id, " from unique seed: ", unique_seed)
 	else:
 		# GASEOUS PLANET - Always GAS_GIANT theme
 		theme_id = PlanetThemes.GAS_GIANT
