@@ -69,7 +69,7 @@ func _draw() -> void:
 	if planet_texture:
 		draw_texture(planet_texture, -Vector2(pixel_size, pixel_size) / 2, Color.WHITE)
 
-func _update_moons(delta: float) -> void:
+func _update_moons(_delta: float) -> void:
 	var time = Time.get_ticks_msec() / 1000.0
 	
 	for moon in moons:
@@ -280,7 +280,7 @@ func _initialize_with_texture_cache(is_gaseous: bool) -> void:
 			theme_id, seed_value, atmosphere_data.color, atmosphere_data.thickness)
 		PlanetSpawner.texture_cache.atmospheres[seed_value] = atmosphere_texture
 
-func _initialize_without_cache(is_gaseous: bool) -> void:
+func _initialize_without_cache(_is_gaseous: bool) -> void:
 	"""Initialize planet without using the texture cache"""
 	var planet_gen_params = _generate_planet_data(seed_value)
 	
