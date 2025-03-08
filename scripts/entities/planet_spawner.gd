@@ -1,5 +1,5 @@
 # scripts/entities/planet_spawner.gd
-# Enhanced planet spawner that uses GameSettings for consistent generation
+# Enhanced and simplified planet spawner that uses GameSettings for consistent generation
 extends Node2D
 class_name PlanetSpawner
 
@@ -19,8 +19,6 @@ var terran_theme: int = 0  # 0=Random, 1-7=Specific Terran theme
 
 # Planet Configuration
 @export_category("Planet Configuration")
-@export var auto_spawn: bool = false
-@export var planet_scene: PackedScene # Will be set to preload("res://scenes/world/planet.tscn") in _ready
 @export var use_grid_position: bool = true
 @export var grid_x: int = 0
 @export var grid_y: int = 0
@@ -28,7 +26,7 @@ var terran_theme: int = 0  # 0=Random, 1-7=Specific Terran theme
 
 # Planet properties
 @export_category("Planet Properties")
-@export var moon_chance: int = 50 # Percentage chance for terran planets to spawn moons
+@export var moon_chance: int = 50  # Percentage chance for terran planets to spawn moons
 @export var planet_scale: float = 1.0
 @export var moon_orbit_speed_factor: float = 1.0  # Multiplier for moon orbit speed
 
@@ -46,6 +44,9 @@ var _moon_instances = []
 var _initialized: bool = false
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var game_settings: GameSettings = null
+
+# Hardcoded planet scene reference
+var planet_scene: PackedScene = preload("res://scenes/world/planet.tscn")
 
 # Texture cache shared between all planet spawners
 static var texture_cache = {
@@ -76,10 +77,6 @@ const THEME_MAP = {
 }
 
 func _ready() -> void:
-	# Load planet scene if not set
-	if planet_scene == null:
-		planet_scene = load("res://scenes/world/planet.tscn")
-	
 	# Connect to the main scene's GameSettings
 	call_deferred("_find_game_settings")
 
@@ -104,9 +101,8 @@ func _initialize() -> void:
 	if pregenerate and use_texture_cache:
 		_pregenerate_textures()
 	
-	# Automatically spawn if set
-	if auto_spawn:
-		spawn_planet()
+	# Always spawn planet immediately - removed auto_spawn check
+	spawn_planet()
 	
 	_initialized = true
 	spawner_ready.emit()
@@ -231,6 +227,11 @@ func spawn_planet() -> Node2D:
 
 # Spawn a terran planet with fixed parameters
 func _spawn_terran_planet() -> Node2D:
+	# Check if the planet scene is valid
+	if planet_scene == null:
+		push_error("PlanetSpawner: Planet scene is not loaded!")
+		return null
+	
 	# Create planet instance
 	_planet_instance = planet_scene.instantiate()
 	add_child(_planet_instance)
@@ -312,6 +313,11 @@ func _spawn_terran_planet() -> Node2D:
 
 # Spawn a gaseous planet with fixed parameters
 func _spawn_gaseous_planet() -> Node2D:
+	# Check if the planet scene is valid
+	if planet_scene == null:
+		push_error("PlanetSpawner: Planet scene is not loaded!")
+		return null
+		
 	# Create planet instance
 	_planet_instance = planet_scene.instantiate()
 	add_child(_planet_instance)
