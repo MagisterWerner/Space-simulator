@@ -1,4 +1,4 @@
-# scripts/entities/planet_base.gd
+# scripts/entities/planets/planet_base.gd
 # Base planet class with shared functionality across planet types
 extends Node2D
 class_name PlanetBase
@@ -124,6 +124,10 @@ func initialize(params: Dictionary) -> void:
 func _perform_specialized_initialization(_params: Dictionary) -> void:
 	push_error("PlanetBase: _perform_specialized_initialization is a virtual method that should be overridden")
 
+# Get the scaling factor for moon sizes
+func _get_moon_size_scale() -> float:
+	return 1.0  # Default no scaling
+
 # Moon creation - common for all planet types
 func _create_moons() -> void:
 	if not _moon_scene:
@@ -171,7 +175,8 @@ func _create_moons() -> void:
 			"phase_offset": orbital_params[m].phase_offset,
 			"parent_name": planet_name,
 			"use_texture_cache": use_texture_cache,
-			"moon_type": moon_type
+			"moon_type": moon_type,
+			"size_scale": _get_moon_size_scale()  # Add size scaling parameter
 		}
 		
 		add_child(moon_instance)

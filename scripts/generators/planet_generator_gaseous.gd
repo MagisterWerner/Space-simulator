@@ -20,8 +20,8 @@ const GAS_GIANT_FLOW: float = 2.0       # How much the bands "flow" horizontally
 enum GasGiantType {
 	JUPITER = 0,  # Jupiter-like (beige/tan tones)
 	SATURN = 1,   # Saturn-like (golden tones)
-	NEPTUNE = 2,  # Neptune-like (blue tones)
-	EXOTIC = 3    # Exotic (lavender tones)
+	URANUS = 2,  # Uranus-like (pale cyan tones)
+	NEPTUNE = 3    # Neptune-like (deep blue tones)
 }
 
 # Get or generate a gaseous planet texture
@@ -89,28 +89,28 @@ func generate_gas_giant_palette(gas_giant_type: int, seed_value: int) -> PackedC
 				Color(0.71, 0.68, 0.42)   # Dark golden tan
 			])
 			
-		GasGiantType.NEPTUNE:  # Neptune-like (balanced blue tones)
+		GasGiantType.URANUS:  # Uranus-like (pale cyan)
 			return PackedColorArray([
-				Color(0.60, 0.75, 0.85),  # Light blue
-				Color(0.55, 0.72, 0.83),  # Sky blue
-				Color(0.50, 0.69, 0.81),  # Azure
-				Color(0.45, 0.66, 0.79),  # Medium blue
-				Color(0.40, 0.63, 0.77),  # Blue
-				Color(0.35, 0.60, 0.75),  # Deep blue
-				Color(0.30, 0.57, 0.73),  # Dark blue
-				Color(0.25, 0.54, 0.71)   # Navy blue
+				Color(0.75, 0.95, 0.95),  # Pale cyan
+				Color(0.70, 0.90, 0.90),  # Light cyan
+				Color(0.65, 0.85, 0.85),  # Cyan
+				Color(0.60, 0.80, 0.80),  # Greenish cyan
+				Color(0.55, 0.75, 0.75),  # Teal
+				Color(0.50, 0.70, 0.70),  # Medium teal
+				Color(0.45, 0.65, 0.65),  # Deep teal
+				Color(0.40, 0.60, 0.60)   # Dark teal
 			])
 			
-		GasGiantType.EXOTIC:  # Exotic gas giant (subtle purple/lavender tones)
+		GasGiantType.NEPTUNE:  # Neptune-like (deeper blue)
 			return PackedColorArray([
-				Color(0.75, 0.70, 0.85),  # Very light lavender
-				Color(0.70, 0.65, 0.83),  # Light lavender
-				Color(0.65, 0.60, 0.81),  # Lavender
-				Color(0.60, 0.55, 0.79),  # Medium lavender
-				Color(0.55, 0.50, 0.77),  # Dusky lavender
-				Color(0.50, 0.45, 0.75),  # Light purple
-				Color(0.45, 0.40, 0.73),  # Purple
-				Color(0.40, 0.35, 0.71)   # Deep purple
+				Color(0.40, 0.50, 0.90),  # Bright blue
+				Color(0.35, 0.45, 0.85),  # Royal blue
+				Color(0.30, 0.40, 0.80),  # Cobalt blue
+				Color(0.25, 0.35, 0.75),  # Deep blue
+				Color(0.20, 0.30, 0.70),  # Indigo
+				Color(0.15, 0.25, 0.65),  # Purple blue
+				Color(0.10, 0.20, 0.60),  # Dark indigo
+				Color(0.05, 0.15, 0.55)   # Deep indigo
 			])
 			
 		_:  # Fallback
@@ -185,7 +185,6 @@ func create_planet_texture(seed_value: int, gas_giant_type: int = -1) -> Array:
 			# Add special gas giant type-specific details
 			match giant_type:
 				GasGiantType.JUPITER:
-					# Add a hint of the great red spot-like feature
 					var spot_x = sphere_uv.x * 8.0
 					var spot_y = sphere_uv.y * 4.0 - 0.2
 					var spot = fbm(spot_x, spot_y, 2, seed_value + 7890) * 0.1
@@ -193,20 +192,17 @@ func create_planet_texture(seed_value: int, gas_giant_type: int = -1) -> Array:
 						band_value = max(band_value - 0.1, 0.0)  # Darken spot area
 					
 				GasGiantType.SATURN:
-					# Add more flowing streams
 					var flow = fbm(sphere_uv.x * 12.0, sphere_uv.y * 8.0, 2, seed_value + 1234) * 0.05
 					band_value = band_value * 0.95 + flow
 					
-				GasGiantType.NEPTUNE:
-					# Add large storm-like feature
+				GasGiantType.URANUS:
 					var storm_x = sphere_uv.x * 6.0 + 0.5
 					var storm_y = sphere_uv.y * 3.0 + 0.3
 					var storm = fbm(storm_x, storm_y, 2, seed_value + 4567) * 0.15
 					if storm > 0.1:
 						band_value = min(band_value + 0.2, 1.0)  # Lighten storm area
 					
-				GasGiantType.EXOTIC:
-					# Add swirling patterns
+				GasGiantType.NEPTUNE:
 					var swirl_x = sphere_uv.x * 10.0 + sin(sphere_uv.y * 4.0) * 0.5
 					var swirl_y = sphere_uv.y * 5.0 + cos(sphere_uv.x * 6.0) * 0.3
 					var swirl = fbm(swirl_x, swirl_y, 3, seed_value + 2468) * 0.1

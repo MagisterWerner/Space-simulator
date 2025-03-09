@@ -15,6 +15,7 @@ var orbit_deviation: float = 0
 var phase_offset: float = 0
 var moon_name: String
 var use_texture_cache: bool = true
+var size_scale: float = 1.0  # Added for moon size scaling
 
 # Components
 var name_component
@@ -33,7 +34,7 @@ func _draw():
 	if moon_texture:
 		draw_texture(moon_texture, -Vector2(pixel_size, pixel_size) / 2, Color.WHITE)
 
-func initialize(params: Dictionary):
+func initialize(params: Dictionary) -> void:
 	seed_value = params.seed_value
 	parent_planet = params.parent_planet
 	distance = params.distance
@@ -45,8 +46,15 @@ func initialize(params: Dictionary):
 	if "use_texture_cache" in params:
 		use_texture_cache = params.use_texture_cache
 	
+	# Apply size scale if provided
+	if "size_scale" in params:
+		size_scale = params.size_scale
+	
 	# Generate moon texture
 	_generate_moon_texture()
+	
+	# Apply size scaling after generating texture
+	pixel_size = int(pixel_size * size_scale)
 	
 	# Set up name component
 	_setup_name_component(params)

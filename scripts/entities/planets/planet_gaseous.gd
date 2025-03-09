@@ -1,4 +1,4 @@
-# scripts/entities/planet_gaseous.gd
+# scripts/entities/planets/planet_gaseous.gd
 # Specialized implementation for gaseous planets (gas giants)
 extends "res://scripts/entities/planets/planet_base.gd"
 class_name PlanetGaseous
@@ -102,6 +102,10 @@ func _get_moon_type_for_position(moon_position: int, _total_moons: int, _rng: Ra
 		return MoonType.ROCKY
 	else:
 		return MoonType.ICE
+
+# Override for moon size scale - gas giant moons are 50% larger
+func _get_moon_size_scale() -> float:
+	return 2.0  # 100% larger moons for gaseous planets
 
 # Override for orbit speed - gas giants have slower orbiting moons due to mass
 func _get_orbit_speed_modifier() -> float:

@@ -1,4 +1,4 @@
-# scripts/entities/planet_terran.gd
+# scripts/entities/planets/planet_terran.gd
 # Specialized implementation for terran planets (rocky planets with solid surfaces)
 extends "res://scripts/entities/planets/planet_base.gd"
 class_name PlanetTerran
@@ -19,12 +19,13 @@ func _perform_specialized_initialization(params: Dictionary) -> void:
 	
 	# Determine theme based on seed or override
 	var explicit_theme = params.get("theme_override", -1)
-	theme_id = explicit_theme if explicit_theme >= 0 else _determine_theme(seed_value)
 	
-	# Validate the theme is actually terran
-	if theme_id >= PlanetThemes.GAS_GIANT:
-		push_warning("PlanetTerran: Invalid terran theme requested, using random terran theme instead")
-		theme_id = rng.randi() % PlanetThemes.GAS_GIANT
+	if explicit_theme >= 0 and explicit_theme < PlanetThemes.GAS_GIANT:
+		# Use the explicitly requested theme if it's a valid terran theme
+		theme_id = explicit_theme
+	else:
+		# Generate a random terran theme
+		theme_id = _determine_theme(seed_value)
 	
 	# Set the terran subtype for reference
 	terran_subtype = get_theme_name().to_lower()
@@ -38,12 +39,14 @@ func _perform_specialized_initialization(params: Dictionary) -> void:
 	# Set the pixel size for terran planets
 	pixel_size = 256
 
-# Determine theme based on seed
+# Determine theme based on seed - returns a valid terran theme
 func _determine_theme(seed_val: int) -> int:
 	var rng = RandomNumberGenerator.new()
 	rng.seed = seed_val
 	
 	# Generate a random terran theme (0 to GAS_GIANT-1)
+	# Note: PlanetThemes.GAS_GIANT is the first non-terran theme in the enum,
+	# so we use it as an upper bound for random generation
 	return rng.randi() % PlanetThemes.GAS_GIANT
 
 # Generate planet textures
@@ -84,27 +87,9 @@ func _generate_atmosphere_texture() -> void:
 			PlanetGeneratorBase.texture_cache.atmospheres[unique_identifier] = atmosphere_texture
 
 # Override to determine appropriate moon types for terran planets
-func _get_moon_type_for_position(_moon_position: int, _total_moons: int, rng: RandomNumberGenerator) -> int:
-	# Terran planets mostly have rocky moons
-	var moon_roll = rng.randi() % 100
-	
-	# Theme-specific moon preferences
-	match theme_id:
-		PlanetThemes.ICE:
-			# Ice planets have ice moons more often
-			if moon_roll < 60:
-				return MoonType.ICE
-			return MoonType.ROCKY
-			
-		PlanetThemes.LAVA:
-			# Lava planets can have lava moons
-			if moon_roll < 40:
-				return MoonType.LAVA
-			return MoonType.ROCKY
-			
-		_:
-			# Other planet types mostly have rocky moons
-			return MoonType.ROCKY
+func _get_moon_type_for_position(_moon_position: int, _total_moons: int, _rng: RandomNumberGenerator) -> int:
+	# All terran planets now only spawn rocky moons as requested
+	return MoonType.ROCKY
 
 # Override for orbit speed - terran planets have faster moon orbits
 func _get_orbit_speed_modifier() -> float:
