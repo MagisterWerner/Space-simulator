@@ -1,6 +1,6 @@
 # scripts/entities/planet_terran.gd
 # Specialized implementation for terran planets (rocky planets with solid surfaces)
-extends "res://scripts/entities/planet_base.gd"
+extends "res://scripts/entities/planets/planet_base.gd"
 class_name PlanetTerran
 
 # Additional terran-specific properties

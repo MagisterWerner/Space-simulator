@@ -1,6 +1,6 @@
 # scripts/entities/planet_gaseous.gd
 # Specialized implementation for gaseous planets (gas giants)
-extends "res://scripts/entities/planet_base.gd"
+extends "res://scripts/entities/planets/planet_base.gd"
 class_name PlanetGaseous
 
 # Gas giant types (same as in planet_generator_gaseous.gd for consistency)
