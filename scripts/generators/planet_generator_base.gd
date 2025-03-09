@@ -58,7 +58,7 @@ func _init() -> void:
 	# Initialize cubic interpolation lookup table for smoother noise
 	cubic_lookup.resize(CUBIC_RESOLUTION)
 	for i in range(CUBIC_RESOLUTION):
-		var t = float(i) / (CUBIC_RESOLUTION - 1)
+		var t = float(i) / float(CUBIC_RESOLUTION - 1)
 		cubic_lookup[i] = t * t * (3.0 - 2.0 * t)
 
 # Get the category for a planet theme - kept as static method for compatibility
@@ -74,7 +74,7 @@ static func clean_texture_cache() -> void:
 	
 	for category in ["terran", "gaseous", "atmospheres"]:
 		if texture_cache[category].size() > max_cache_items:
-			var keys_to_remove = texture_cache[category].keys().slice(0, max_cache_items / 4)
+			var keys_to_remove = texture_cache[category].keys().slice(0, max_cache_items / 4.0)
 			for key in keys_to_remove:
 				texture_cache[category].erase(key)
 

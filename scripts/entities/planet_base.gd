@@ -64,7 +64,7 @@ func _draw() -> void:
 	if planet_texture:
 		draw_texture(planet_texture, -Vector2(pixel_size, pixel_size) / 2, Color.WHITE)
 
-func _update_moons(delta: float) -> void:
+func _update_moons(_delta: float) -> void:
 	var time = Time.get_ticks_msec() / 1000.0
 	
 	for moon in moons:
@@ -187,7 +187,7 @@ func _get_moon_type_for_position(_position: int, _total_moons: int, _rng: Random
 	return MoonType.ROCKY
 
 # Name setup for all planets
-func _setup_name_component(params: Dictionary) -> void:
+func _setup_name_component(_params: Dictionary) -> void:
 	name_component = get_node_or_null("NameComponent")
 	if name_component:
 		# The name component initialization depends on the planet type

@@ -225,19 +225,19 @@ static func _check_and_clean_cache() -> void:
 	
 	if texture_cache.planets.size() > MAX_CACHE_SIZE:
 		var keys = texture_cache.planets.keys()
-		for i in range(MAX_CACHE_SIZE / 3):  # Remove 1/3 of the cache
+		for i in range(int(float(MAX_CACHE_SIZE) / 3.0)):  # Remove 1/3 of the cache - Fixed integer division
 			if i < keys.size():
 				texture_cache.planets.erase(keys[i])
 				
 	if texture_cache.atmospheres.size() > MAX_CACHE_SIZE:
 		var keys = texture_cache.atmospheres.keys()
-		for i in range(MAX_CACHE_SIZE / 3):
+		for i in range(int(float(MAX_CACHE_SIZE) / 3.0)):  # Fixed integer division
 			if i < keys.size():
 				texture_cache.atmospheres.erase(keys[i])
 				
 	if texture_cache.moons.size() > MAX_CACHE_SIZE:
 		var keys = texture_cache.moons.keys()
-		for i in range(MAX_CACHE_SIZE / 3):
+		for i in range(int(float(MAX_CACHE_SIZE) / 3.0)):  # Fixed integer division
 			if i < keys.size():
 				texture_cache.moons.erase(keys[i])
 

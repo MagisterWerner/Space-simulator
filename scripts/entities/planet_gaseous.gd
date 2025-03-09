@@ -1,6 +1,6 @@
 # scripts/entities/planet_gaseous.gd
 # Specialized implementation for gaseous planets (gas giants)
-extends PlanetBase
+extends "res://scripts/entities/planet_base.gd"
 class_name PlanetGaseous
 
 # Gas giant types (same as in planet_generator_gaseous.gd for consistency)
@@ -90,15 +90,15 @@ func _generate_atmosphere_texture() -> void:
 			PlanetGeneratorBase.texture_cache.atmospheres[unique_identifier] = atmosphere_texture
 
 # Override to determine appropriate moon types for gas giants
-func _get_moon_type_for_position(position: int, total_moons: int, rng: RandomNumberGenerator) -> int:
+func _get_moon_type_for_position(moon_position: int, _total_moons: int, _rng: RandomNumberGenerator) -> int:
 	# Gas giants have specialized moon distribution
 	# - Innermost moon (position=0): LAVA (volcanic due to tidal forces)
 	# - Second moon (position=1): ROCKY
 	# - Outer moons (position>=2): ICE (colder as they're further away)
 	
-	if position == 0:
+	if moon_position == 0:
 		return MoonType.LAVA
-	elif position == 1:
+	elif moon_position == 1:
 		return MoonType.ROCKY
 	else:
 		return MoonType.ICE

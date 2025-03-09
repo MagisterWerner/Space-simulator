@@ -1,6 +1,6 @@
 # scripts/entities/planet_terran.gd
 # Specialized implementation for terran planets (rocky planets with solid surfaces)
-extends PlanetBase
+extends "res://scripts/entities/planet_base.gd"
 class_name PlanetTerran
 
 # Additional terran-specific properties
@@ -84,7 +84,7 @@ func _generate_atmosphere_texture() -> void:
 			PlanetGeneratorBase.texture_cache.atmospheres[unique_identifier] = atmosphere_texture
 
 # Override to determine appropriate moon types for terran planets
-func _get_moon_type_for_position(position: int, total_moons: int, rng: RandomNumberGenerator) -> int:
+func _get_moon_type_for_position(_moon_position: int, _total_moons: int, rng: RandomNumberGenerator) -> int:
 	# Terran planets mostly have rocky moons
 	var moon_roll = rng.randi() % 100
 	
