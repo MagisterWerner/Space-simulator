@@ -176,7 +176,8 @@ func _create_moons() -> void:
 			"parent_name": planet_name,
 			"use_texture_cache": use_texture_cache,
 			"moon_type": moon_type,
-			"size_scale": _get_moon_size_scale()  # Add size scaling parameter
+			"size_scale": _get_moon_size_scale(),  # Add size scaling parameter
+			"is_gaseous": false  # Explicitly mark as not a gaseous planet moon
 		}
 		
 		add_child(moon_instance)

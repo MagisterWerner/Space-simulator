@@ -16,6 +16,7 @@ var phase_offset: float = 0
 var moon_name: String
 var use_texture_cache: bool = true
 var size_scale: float = 1.0  # Added for moon size scaling
+var is_gaseous: bool = false  # Flag to indicate if moon belongs to a gaseous planet
 
 # Components
 var name_component
@@ -49,6 +50,10 @@ func initialize(params: Dictionary) -> void:
 	# Apply size scale if provided
 	if "size_scale" in params:
 		size_scale = params.size_scale
+	
+	# Store if this moon belongs to a gaseous planet
+	if "is_gaseous" in params:
+		is_gaseous = params.is_gaseous
 	
 	# Generate moon texture
 	_generate_moon_texture()

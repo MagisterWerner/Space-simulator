@@ -1,7 +1,4 @@
-[gd_scene load_steps=2 format=3 uid="uid://f42fns42vlsd"]
-
-[sub_resource type="GDScript" id="GDScript_ykxwu"]
-script/source = "# scripts/entities/moon.gd
+# scripts/entities/moon.gd
 # Enhanced moon script with multiple moon type support
 extends Node2D
 
@@ -23,12 +20,13 @@ var orbit_deviation: float = 0
 var phase_offset: float = 0
 var moon_name: String
 var moon_type: int = MoonType.ROCKY  # Default to rocky moon
+var is_gaseous: bool = false  # Flag to indicate if moon belongs to a gaseous planet
 
 var name_component
 var use_texture_cache: bool = true
 
 func _ready():
-	name_component = get_node_or_null(\"NameComponent\")
+	name_component = get_node_or_null("NameComponent")
 	# Set appropriate z-index to be behind player but may be in front or behind planet
 	# The actual z-index will be dynamically adjusted by parent planet based on orbit position
 	# Default to -9, will be set to -12 when behind planet (and atmosphere)
@@ -50,12 +48,16 @@ func initialize(params: Dictionary):
 	orbit_deviation = params.orbit_deviation
 	phase_offset = params.phase_offset
 	
-	if \"use_texture_cache\" in params:
+	if "use_texture_cache" in params:
 		use_texture_cache = params.use_texture_cache
 		
 	# Set moon type if provided, otherwise default to rocky
-	if \"moon_type\" in params:
+	if "moon_type" in params:
 		moon_type = params.moon_type
+		
+	# Store if this moon belongs to a gaseous planet
+	if "is_gaseous" in params:
+		is_gaseous = params.is_gaseous
 	
 	# Create a unique cache key that includes both seed and type
 	var cache_key = seed_value * 10 + moon_type
@@ -65,12 +67,12 @@ func initialize(params: Dictionary):
 		if PlanetSpawnerBase.texture_cache.moons.has(cache_key):
 			# Use cached texture
 			moon_texture = PlanetSpawnerBase.texture_cache.moons[cache_key]
-			pixel_size = MoonGenerator.new().get_moon_size(seed_value)
+			pixel_size = MoonGenerator.new().get_moon_size(seed_value, is_gaseous)
 		else:
 			# Generate and cache texture
 			var moon_generator = MoonGenerator.new()
 			moon_texture = moon_generator.create_moon_texture(seed_value, moon_type)
-			pixel_size = moon_generator.get_moon_size(seed_value)
+			pixel_size = moon_generator.get_moon_size(seed_value, is_gaseous)
 			PlanetSpawnerBase.texture_cache.moons[cache_key] = moon_texture
 	else:
 		# Generate without caching
@@ -79,7 +81,7 @@ func initialize(params: Dictionary):
 		pixel_size = moon_data.pixel_size
 	
 	# Set up name component
-	name_component = get_node_or_null(\"NameComponent\")
+	name_component = get_node_or_null("NameComponent")
 	if name_component:
 		# Add moon type to name through NameComponent
 		var type_prefix = _get_moon_type_prefix()
@@ -87,26 +89,22 @@ func initialize(params: Dictionary):
 		moon_name = name_component.get_entity_name()
 	else:
 		# Create a basic name using the moon type and seed
-		moon_name = _get_moon_type_prefix() + \" Moon-\" + str(seed_value % 1000)
+		moon_name = _get_moon_type_prefix() + " Moon-" + str(seed_value % 1000)
 
 func _generate_moon_data(moon_seed: int, type: int) -> Dictionary:
 	var moon_generator = MoonGenerator.new()
 	var texture = moon_generator.create_moon_texture(moon_seed, type)
-	var size = moon_generator.get_moon_size(moon_seed)
+	var size = moon_generator.get_moon_size(moon_seed, is_gaseous)
 	
 	return {
-		\"texture\": texture,
-		\"pixel_size\": size
+		"texture": texture,
+		"pixel_size": size
 	}
 
 # Helper function to get moon type name prefix
 func _get_moon_type_prefix() -> String:
 	match moon_type:
-		MoonType.ROCKY: return \"Rocky\"
-		MoonType.ICE: return \"Icy\"
-		MoonType.LAVA: return \"Volcanic\"
-		_: return \"\"
-"
-
-[node name="Moon" type="Node2D"]
-script = SubResource("GDScript_ykxwu")
+		MoonType.ROCKY: return "Rocky"
+		MoonType.ICE: return "Icy"
+		MoonType.LAVA: return "Volcanic"
+		_: return ""
