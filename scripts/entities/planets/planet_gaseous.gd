@@ -94,14 +94,14 @@ func _get_moon_type_for_position(moon_position: int, total_moons: int, rng: Rand
 	# CHANGED: Updated distribution for better variety
 	# Distribute moon types based on position in orbit
 	if moon_position == 0:
-		return MoonType.LAVA  # Innermost moon (volcanic due to tidal forces)
+		return MoonType.VOLCANIC  # Innermost moon (volcanic due to tidal forces)
 	elif moon_position < total_moons / 3:
 		return MoonType.ROCKY  # Inner moons are rocky
 	elif moon_position < 2 * total_moons / 3:
 		# Mix of rocky and ice in the middle region
-		return MoonType.ROCKY if rng.randf() < 0.5 else MoonType.ICE
+		return MoonType.ROCKY if rng.randf() < 0.5 else MoonType.ICY
 	else:
-		return MoonType.ICE  # Outer moons are icy (colder as they're further away)
+		return MoonType.ICY  # Outer moons are icy (colder as they're further away)
 
 # Override for moon size scale - use new system with fixed sizes instead
 func _get_moon_size_scale() -> float:
@@ -181,8 +181,8 @@ func _generate_orbital_parameters(moon_count: int, rng: RandomNumberGenerator) -
 
 # Override moon creation to use correct sizing for gaseous planet moons
 func _create_moons() -> void:
-	if not _moon_scene:
-		push_error("Planet: Moon scene not available for moon creation")
+	if _moon_scenes.is_empty():
+		push_error("Planet: Moon scenes not available for moon creation")
 		emit_signal("planet_loaded", self)
 		return
 	
@@ -208,12 +208,25 @@ func _create_moons() -> void:
 	for m in range(num_moons):
 		var moon_seed = seed_value + m * 100 + rng.randi() % 1000
 		
-		var moon_instance = _moon_scene.instantiate()
-		if not moon_instance:
-			continue
-		
 		# Determine moon type based on position
 		var moon_type = _get_moon_type_for_position(m, num_moons, rng)
+		
+		# Get the correct moon scene for this type
+		if not _moon_scenes.has(moon_type):
+			push_warning("Planet: Moon type not available: " + str(moon_type) + ", using ROCKY")
+			moon_type = MoonType.ROCKY
+			
+		if not _moon_scenes.has(moon_type):
+			push_error("Planet: No moon scenes available")
+			continue
+			
+		var moon_scene = _moon_scenes[moon_type]
+		if not moon_scene:
+			continue
+			
+		var moon_instance = moon_scene.instantiate()
+		if not moon_instance:
+			continue
 		
 		# Use the pre-calculated orbital parameters
 		var moon_params = {

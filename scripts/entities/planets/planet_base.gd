@@ -32,14 +32,14 @@ var grid_y: int = 0
 # Define moon types for consistent reference
 enum MoonType {
 	ROCKY,
-	ICE,
-	LAVA
+	ICY,
+	VOLCANIC
 }
 
 # Base class properties
 var name_component
 var use_texture_cache: bool = true
-var _moon_scene: PackedScene
+var _moon_scenes: Dictionary = {}
 var _initialized: bool = false
 
 func _ready() -> void:
@@ -47,10 +47,29 @@ func _ready() -> void:
 	# Set appropriate z-index to render behind player but in front of atmosphere
 	z_index = -10
 	
-	# Load moon scene reference
-	_moon_scene = load("res://scenes/world/moon.tscn")
-	if not _moon_scene:
-		push_error("Planet: Failed to load moon scene")
+	# Load moon scene references
+	_load_moon_scenes()
+	
+func _load_moon_scenes() -> void:
+	# Load all moon type scenes
+	var rocky_path = "res://scenes/world/moon_rocky.tscn"
+	var icy_path = "res://scenes/world/moon_icy.tscn"
+	var volcanic_path = "res://scenes/world/moon_volcanic.tscn"
+	
+	if ResourceLoader.exists(rocky_path):
+		_moon_scenes[MoonType.ROCKY] = load(rocky_path)
+	else:
+		push_error("Planet: Failed to load rocky moon scene")
+		
+	if ResourceLoader.exists(icy_path):
+		_moon_scenes[MoonType.ICY] = load(icy_path)
+	else:
+		push_error("Planet: Failed to load icy moon scene")
+		
+	if ResourceLoader.exists(volcanic_path):
+		_moon_scenes[MoonType.VOLCANIC] = load(volcanic_path)
+	else:
+		push_error("Planet: Failed to load volcanic moon scene")
 
 func _process(delta: float) -> void:
 	queue_redraw()
@@ -130,8 +149,8 @@ func _get_moon_size_scale() -> float:
 
 # Moon creation - common for all planet types
 func _create_moons() -> void:
-	if not _moon_scene:
-		push_error("Planet: Moon scene not available for moon creation")
+	if _moon_scenes.is_empty():
+		push_error("Planet: Moon scenes not available for moon creation")
 		emit_signal("planet_loaded", self)
 		return
 	
@@ -157,12 +176,25 @@ func _create_moons() -> void:
 	for m in range(num_moons):
 		var moon_seed = seed_value + m * 100 + rng.randi() % 1000
 		
-		var moon_instance = _moon_scene.instantiate()
-		if not moon_instance:
-			continue
-		
 		# Determine moon type based on planet category
 		var moon_type = _get_moon_type_for_position(m, num_moons, rng)
+		
+		# Get the correct moon scene for this type
+		if not _moon_scenes.has(moon_type):
+			push_warning("Planet: Moon type not available: " + str(moon_type) + ", using ROCKY")
+			moon_type = MoonType.ROCKY
+			
+		if not _moon_scenes.has(moon_type):
+			push_error("Planet: No moon scenes available")
+			continue
+			
+		var moon_scene = _moon_scenes[moon_type]
+		if not moon_scene:
+			continue
+			
+		var moon_instance = moon_scene.instantiate()
+		if not moon_instance:
+			continue
 		
 		# Use the pre-calculated orbital parameters
 		var moon_params = {
