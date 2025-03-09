@@ -2,9 +2,9 @@
 extends RefCounted
 class_name AtmosphereGenerator
 
-# Import the PlanetGenerator enums directly
-const PlanetThemes = preload("res://scripts/generators/planet_generator.gd").PlanetTheme
-const PlanetCategories = preload("res://scripts/generators/planet_generator.gd").PlanetCategory
+# Import the PlanetGeneratorBase enums directly
+const PlanetThemes = preload("res://scripts/generators/planet_generator_base.gd").PlanetTheme
+const PlanetCategories = preload("res://scripts/generators/planet_generator_base.gd").PlanetCategory
 
 # Constants for atmosphere generation
 const BASE_ATMOSPHERE_SIZE_TERRAN: int = 384
@@ -64,7 +64,7 @@ func generate_atmosphere_data(theme: int, seed_value: int) -> Dictionary:
 	var thickness_variation = 0.2
 	
 	# Check planet category for specialized processing
-	var planet_category = PlanetGenerator.get_planet_category(theme)
+	var planet_category = PlanetGeneratorBase.get_planet_category(theme)
 	
 	# Special handling for gaseous planets (currently only gas giants)
 	if planet_category == PlanetCategories.GASEOUS:
@@ -135,11 +135,11 @@ static func get_atmosphere_texture(theme: int, seed_value: int, color: Color, th
 
 # Generate pixelated atmosphere texture with adaptive step count based on planet type
 func generate_atmosphere_texture(theme: int, seed_value: int, color: Color, thickness_factor: float) -> ImageTexture:
-	var planet_category = PlanetGenerator.get_planet_category(theme)
+	var planet_category = PlanetGeneratorBase.get_planet_category(theme)
 	var is_gaseous = planet_category == PlanetCategories.GASEOUS
 	
 	# Size will match the actual planet size, not the atmosphere size
-	var planet_size = PlanetGenerator.PLANET_SIZE_GASEOUS if is_gaseous else PlanetGenerator.PLANET_SIZE_TERRAN
+	var planet_size = PlanetGeneratorBase.PLANET_SIZE_GASEOUS if is_gaseous else PlanetGeneratorBase.PLANET_SIZE_TERRAN
 	var planet_radius = planet_size / 2.0
 	
 	# Calculate the atmosphere size based on the planet size and thickness factor
