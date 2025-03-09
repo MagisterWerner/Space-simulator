@@ -160,7 +160,7 @@ func _spawn_terran_planet() -> Node2D:
 		theme_to_use = terran_theme - 1
 		
 		# Verify it's a valid terran theme
-		if theme_to_use >= PlanetThemes.GAS_GIANT:
+		if theme_to_use >= PlanetThemes.JUPITER:
 			if game_settings and game_settings.debug_mode:
 				print("PlanetSpawnerTerran: Invalid terran theme selected; reverting to random terran theme")
 			theme_to_use = -1
@@ -318,7 +318,7 @@ func set_grid_position(x: int, y: int) -> void:
 
 # Force a specific terran theme - Used for direct API calls
 func force_terran_theme(theme_index: int) -> void:
-	if theme_index >= 0 and theme_index < PlanetThemes.GAS_GIANT:
+	if theme_index >= 0 and theme_index < PlanetThemes.JUPITER:
 		terran_theme = theme_index + 1  # +1 because 0 is Random in the export enum
 		
 	# Update and respawn if already initialized

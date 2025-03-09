@@ -131,12 +131,12 @@ func generate_terran_palette(theme: int, seed_value: int) -> PackedColorArray:
 func create_planet_texture(seed_value: int, explicit_theme: int = -1) -> Array:
 	var theme = explicit_theme if explicit_theme >= 0 else get_planet_theme(seed_value)
 	
-	# Only proceed if this is a terran theme (not GAS_GIANT)
-	if theme == PlanetTheme.GAS_GIANT:
-		push_warning("PlanetGeneratorTerran: Requested GAS_GIANT theme, using a random terran theme instead")
+	# Only proceed if this is a terran theme (not JUPITER or other gas giants)
+	if theme >= PlanetTheme.JUPITER:
+		push_warning("PlanetGeneratorTerran: Requested gaseous planet theme, using a random terran theme instead")
 		var rng = RandomNumberGenerator.new()
 		rng.seed = seed_value
-		theme = rng.randi() % PlanetTheme.GAS_GIANT
+		theme = rng.randi() % PlanetTheme.JUPITER
 	
 	# Set up for terran planet generation
 	var planet_size = PLANET_SIZE_TERRAN

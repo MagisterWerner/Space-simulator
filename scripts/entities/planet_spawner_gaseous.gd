@@ -87,7 +87,7 @@ func _spawn_gaseous_planet() -> Node2D:
 		"max_orbit_deviation": 0.15,
 		"moon_orbit_factor": 0.05,
 		"use_texture_cache": use_texture_cache,
-		"theme_override": PlanetGeneratorBase.PlanetTheme.GAS_GIANT,  # Force gas giant theme
+		"theme_override": PlanetThemes.JUPITER,  # Force gas giant theme
 		"category_override": PlanetGeneratorBase.PlanetCategory.GASEOUS,  # Force gaseous category
 		"moon_orbit_speed_factor": moon_orbit_speed_factor,  # Pass the moon orbit speed factor
 		"gas_giant_type_override": gas_giant_type,  # Pass our gas giant type override
