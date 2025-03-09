@@ -25,8 +25,8 @@ const GAS_GIANT_FLOW_CYAN: float = 0.8        # Less flow for more uniform look
 enum GasGiantType {
 	JUPITER = 0,  # Jupiter-like (beige/tan tones)
 	SATURN = 1,   # Saturn-like (golden tones)
-	NEPTUNE = 2,  # Neptune-like (blue tones)
-	EXOTIC = 3    # Exotic (lavender tones)
+	URANUS = 2,   # Uranus-like (cyan/teal tones)
+	NEPTUNE = 3   # Neptune-like (blue tones)
 }
 
 # Get or generate a gaseous planet texture
@@ -74,6 +74,18 @@ func generate_gas_giant_palette(gas_giant_type: int, seed_value: int) -> PackedC
 				Color(0.71, 0.68, 0.42)   # Dark golden tan
 			])
 			
+		GasGiantType.URANUS:  # Uranus-like (cyan/teal tones)
+			return PackedColorArray([
+				Color(0.75, 0.95, 0.95),  # Pale cyan
+				Color(0.70, 0.90, 0.90),  # Light cyan
+				Color(0.65, 0.85, 0.85),  # Cyan
+				Color(0.60, 0.80, 0.80),  # Greenish cyan
+				Color(0.55, 0.75, 0.75),  # Teal
+				Color(0.50, 0.70, 0.70),  # Medium teal
+				Color(0.45, 0.65, 0.65),  # Deep teal
+				Color(0.40, 0.60, 0.60)   # Dark teal
+			])
+			
 		GasGiantType.NEPTUNE:  # Neptune-like (blue tones)
 			return PackedColorArray([
 				Color(0.40, 0.50, 0.90),  # Bright blue
@@ -84,18 +96,6 @@ func generate_gas_giant_palette(gas_giant_type: int, seed_value: int) -> PackedC
 				Color(0.15, 0.25, 0.65),  # Purple blue
 				Color(0.10, 0.20, 0.60),  # Dark indigo
 				Color(0.05, 0.15, 0.55)   # Deep indigo
-			])
-			
-		GasGiantType.EXOTIC:  # Exotic (lavender/cyan tones for Uranus)
-			return PackedColorArray([
-				Color(0.75, 0.95, 0.95),  # Pale cyan
-				Color(0.70, 0.90, 0.90),  # Light cyan
-				Color(0.65, 0.85, 0.85),  # Cyan
-				Color(0.60, 0.80, 0.80),  # Greenish cyan
-				Color(0.55, 0.75, 0.75),  # Teal
-				Color(0.50, 0.70, 0.70),  # Medium teal
-				Color(0.45, 0.65, 0.65),  # Deep teal
-				Color(0.40, 0.60, 0.60)   # Dark teal
 			])
 			
 		_:  # Fallback
@@ -114,7 +114,7 @@ func generate_gas_giant_band(y_coord: float, seed_value: int, giant_type: int) -
 	var flow_strength: float
 	
 	# Use appropriate parameters based on gas giant type
-	if giant_type == GasGiantType.NEPTUNE or giant_type == GasGiantType.EXOTIC:
+	if giant_type == GasGiantType.NEPTUNE or giant_type == GasGiantType.URANUS:
 		# Smoother, more even appearance for ice giants
 		band_count = GAS_GIANT_BANDS_CYAN
 		band_noise = GAS_GIANT_BAND_NOISE_CYAN
@@ -209,7 +209,7 @@ func create_planet_texture(seed_value: int, gas_giant_type: int = -1) -> Array:
 					# Blend heavily toward uniform color (less banding)
 					band_value = band_value * 0.25 + 0.6 + smooth_color
 					
-				GasGiantType.EXOTIC:
+				GasGiantType.URANUS:
 					# More even appearance with subtle variation
 					var uniform_x = sphere_uv.x * 3.0
 					var uniform_y = sphere_uv.y * 2.0

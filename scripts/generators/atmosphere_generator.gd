@@ -77,10 +77,10 @@ func generate_atmosphere_data(theme: int, seed_value: int) -> Dictionary:
 				base_color = Color(0.75, 0.70, 0.55, 0.3)
 			1:  # Saturn-like (golden tones)
 				base_color = Color(0.80, 0.78, 0.60, 0.3)
-			2:  # Neptune-like (blue tones)
+			2:  # Uranus-like (cyan/teal tones)
+				base_color = Color(0.65, 0.85, 0.80, 0.3)
+			3:  # Neptune-like (blue tones)
 				base_color = Color(0.50, 0.65, 0.75, 0.3)
-			3:  # Exotic (lavender tones)
-				base_color = Color(0.65, 0.60, 0.75, 0.3)
 	
 	# Vary the color components slightly
 	var r = clamp(base_color.r + (rng.randf() - 0.5) * color_variation, 0, 1)

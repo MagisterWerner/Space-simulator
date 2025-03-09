@@ -7,8 +7,8 @@ class_name PlanetGaseous
 enum GasGiantType {
 	JUPITER = 0,  # Jupiter-like (beige/tan tones)
 	SATURN = 1,   # Saturn-like (golden tones)
-	NEPTUNE = 2,  # Neptune-like (blue tones)
-	EXOTIC = 3    # Exotic (lavender tones)
+	URANUS = 2,   # Uranus-like (cyan/teal tones)
+	NEPTUNE = 3   # Neptune-like (blue tones)
 }
 
 # Gas giant specific properties
@@ -255,8 +255,8 @@ func get_gas_giant_type_name() -> String:
 	match gas_giant_type:
 		GasGiantType.JUPITER: return "Jupiter-like"
 		GasGiantType.SATURN: return "Saturn-like"
+		GasGiantType.URANUS: return "Uranus-like"
 		GasGiantType.NEPTUNE: return "Neptune-like"
-		GasGiantType.EXOTIC: return "Exotic"
 		_: return "Unknown"
 
 # Return planet category

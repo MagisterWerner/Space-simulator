@@ -7,12 +7,12 @@ extends PlanetSpawnerBase
 enum GasGiantType {
 	JUPITER = 0,  # Jupiter-like (beige/tan tones)
 	SATURN = 1,   # Saturn-like (golden tones)
-	NEPTUNE = 2,  # Neptune-like (blue tones)
-	EXOTIC = 3    # Exotic (lavender tones)
+	URANUS = 2,   # Uranus-like (cyan/teal tones)
+	NEPTUNE = 3   # Neptune-like (blue tones)
 }
 
 # Gaseous Planet Type
-@export_enum("Random", "Jupiter-like", "Saturn-like", "Neptune-like", "Exotic") 
+@export_enum("Random", "Jupiter-like", "Saturn-like", "Uranus-like", "Neptune-like") 
 var gaseous_theme: int = 0  # 0=Random, 1-4=Specific Gaseous theme
 
 func _init() -> void:
@@ -151,9 +151,9 @@ func get_gas_giant_type_name() -> String:
 		return "Jupiter-like"
 	elif gaseous_theme - 1 == GasGiantType.SATURN:
 		return "Saturn-like"
+	elif gaseous_theme - 1 == GasGiantType.URANUS:
+		return "Uranus-like"
 	elif gaseous_theme - 1 == GasGiantType.NEPTUNE:
 		return "Neptune-like"
-	elif gaseous_theme - 1 == GasGiantType.EXOTIC:
-		return "Exotic"
 	else:
 		return "Unknown"
