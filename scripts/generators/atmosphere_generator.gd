@@ -12,7 +12,7 @@ const BASE_ATMOSPHERE_SIZE_GASEOUS: int = 768
 
 # Atmosphere thickness as a percentage beyond planet radius
 const ATMOSPHERE_EXTEND_FACTOR_TERRAN: float = 0.30
-const ATMOSPHERE_EXTEND_FACTOR_GASEOUS: float = 0.25
+const ATMOSPHERE_EXTEND_FACTOR_GASEOUS: float = 0.30  # Matched to terran value
 
 # Pixelation settings - different steps for different planet types
 const ALPHA_STEPS_TERRAN: int = 16   # 16 steps for normal planets
@@ -26,7 +26,7 @@ const EDGE_OVERLAP_PIXELS: int = 2  # How many pixels to extend under the planet
 # Theme-based atmosphere colors - using PlanetThemes enum for reference
 const ATMOSPHERE_COLORS = {
 	PlanetThemes.ARID: Color(0.8, 0.6, 0.4, 0.35),
-	PlanetThemes.ICE: Color(0.8, 0.9, 1.0, 0.3),
+	PlanetThemes.ICE: Color(0.8, 0.9, 1.0, 0.3),  
 	PlanetThemes.LAVA: Color(0.9, 0.3, 0.1, 0.5),
 	PlanetThemes.LUSH: Color(0.5, 0.8, 1.0, 0.4),
 	PlanetThemes.DESERT: Color(0.9, 0.7, 0.4, 0.45),
@@ -35,16 +35,16 @@ const ATMOSPHERE_COLORS = {
 	PlanetThemes.GAS_GIANT: Color(0.75, 0.65, 0.45, 0.45)
 }
 
-# Theme-based atmosphere thickness
+# Theme-based atmosphere thickness - CHANGED: All terran planets now use ICE thickness
 const ATMOSPHERE_THICKNESS = {
-	PlanetThemes.ARID: 1.1,
-	PlanetThemes.ICE: 0.8,
-	PlanetThemes.LAVA: 1.6,
-	PlanetThemes.LUSH: 1.2,
-	PlanetThemes.DESERT: 1.3,
-	PlanetThemes.ALPINE: 0.9,
-	PlanetThemes.OCEAN: 1.15,
-	PlanetThemes.GAS_GIANT: 1.4
+	PlanetThemes.ARID: 0.8,    # Changed to match ICE
+	PlanetThemes.ICE: 0.8,     # Thinnest atmosphere - reference value
+	PlanetThemes.LAVA: 0.8,    # Changed to match ICE
+	PlanetThemes.LUSH: 0.8,    # Changed to match ICE
+	PlanetThemes.DESERT: 0.8,  # Changed to match ICE
+	PlanetThemes.ALPINE: 0.8,  # Changed to match ICE
+	PlanetThemes.OCEAN: 0.8,   # Changed to match ICE
+	PlanetThemes.GAS_GIANT: 0.8  # Same as ICE planets
 }
 
 # Texture cache for reuse
@@ -57,11 +57,12 @@ func generate_atmosphere_data(theme: int, seed_value: int) -> Dictionary:
 	
 	# Get base values for this theme
 	var base_color = ATMOSPHERE_COLORS.get(theme, Color(0.5, 0.7, 0.9, 0.4))
-	var base_thickness = ATMOSPHERE_THICKNESS.get(theme, 1.0)
+	var base_thickness = ATMOSPHERE_THICKNESS.get(theme, 0.8)  # Default to ICE thickness
 	
 	# Add some variation
 	var color_variation = 0.1
-	var thickness_variation = 0.2
+	# CHANGED: Reduced thickness variation to keep atmospheres thin
+	var thickness_variation = 0.1  # Reduced from 0.2
 	
 	# Check planet category for specialized processing
 	var planet_category = PlanetGeneratorBase.get_planet_category(theme)
@@ -73,13 +74,13 @@ func generate_atmosphere_data(theme: int, seed_value: int) -> Dictionary:
 		
 		match gas_giant_type:
 			0:  # Jupiter-like (beige/tan tones)
-				base_color = Color(0.75, 0.70, 0.55, 0.45)
+				base_color = Color(0.75, 0.70, 0.55, 0.3)
 			1:  # Saturn-like (golden tones)
-				base_color = Color(0.80, 0.78, 0.60, 0.4)
+				base_color = Color(0.80, 0.78, 0.60, 0.3)
 			2:  # Neptune-like (blue tones)
-				base_color = Color(0.50, 0.65, 0.75, 0.45)
+				base_color = Color(0.50, 0.65, 0.75, 0.3)
 			3:  # Exotic (lavender tones)
-				base_color = Color(0.65, 0.60, 0.75, 0.4)
+				base_color = Color(0.65, 0.60, 0.75, 0.3)
 	
 	# Vary the color components slightly
 	var r = clamp(base_color.r + (rng.randf() - 0.5) * color_variation, 0, 1)
@@ -90,20 +91,13 @@ func generate_atmosphere_data(theme: int, seed_value: int) -> Dictionary:
 	var color = Color(r, g, b, a)
 	var thickness = base_thickness * (1.0 + (rng.randf() - 0.5) * thickness_variation)
 	
-	# Special adjustments for specific terran planet types
-	if planet_category == PlanetCategories.TERRAN:
-		match theme:
-			PlanetThemes.LAVA:
-				thickness *= 1.2
-				color.a = min(color.a + 0.1, 0.85)
-			
-			PlanetThemes.OCEAN:
-				color.g += 0.05
+	# CHANGED: Removed special thickness adjustments for specific terran planets
+	# to maintain consistent ICE thickness level
 	
 	# For gaseous planets, ensure appropriate atmospheric characteristics
 	if planet_category == PlanetCategories.GASEOUS:
-		thickness *= 1.1
-		color.a = clamp(color.a + 0.05, 0.35, 0.6)
+		# No additional adjustments needed anymore, already using the ICE thickness
+		color.a = clamp(color.a, 0.25, 0.35) # More subtle atmosphere
 	
 	return {
 		"color": color,
@@ -232,7 +226,7 @@ func get_atmosphere_color_for_theme(theme: int) -> Color:
 
 # Get atmosphere thickness for a theme (utility function)
 func get_atmosphere_thickness_for_theme(theme: int) -> float:
-	return ATMOSPHERE_THICKNESS.get(theme, 1.0)
+	return ATMOSPHERE_THICKNESS.get(theme, 0.8)  # Default to ICE thickness
 
 # Get base atmosphere size based on planet category
 func get_atmosphere_size_for_category(category: int) -> int:

@@ -9,7 +9,9 @@ enum MoonType {
 	LAVA
 }
 
-const MOON_SIZES: Array = [24, 32, 40, 48, 56]
+# CHANGED: Separate moon sizes for terran and gaseous planets
+const TERRAN_MOON_SIZES: Array = [32, 48]   # Smaller moons for terran planets
+const GASEOUS_MOON_SIZES: Array = [96, 128]  # Larger moons for gaseous planets
 const PIXEL_RESOLUTION: int = 8
 
 const CUBIC_RESOLUTION: int = 8
@@ -128,15 +130,16 @@ func get_moon_params(moon_type: int) -> Dictionary:
 				"light_intensity": 0.35
 			}
 
-static func get_moon_texture(seed_value: int, moon_type: int = MoonType.ROCKY) -> Texture2D:
-	# Create a unique key for the cache that includes both seed and type
-	var cache_key = seed_value * 10 + moon_type
+# CHANGED: Added is_gaseous parameter
+static func get_moon_texture(seed_value: int, moon_type: int = MoonType.ROCKY, is_gaseous: bool = false) -> Texture2D:
+	# Create a unique key for the cache that includes both seed, type and planet category
+	var cache_key = seed_value * 100 + moon_type * 10 + (1 if is_gaseous else 0)
 	
 	if moon_texture_cache.has(cache_key):
 		return moon_texture_cache[cache_key]
 	
 	var generator = new()
-	var texture = generator.create_moon_texture(seed_value, moon_type)
+	var texture = generator.create_moon_texture(seed_value, moon_type, is_gaseous)
 	
 	moon_texture_cache[cache_key] = texture
 	
@@ -147,12 +150,16 @@ static func get_moon_texture(seed_value: int, moon_type: int = MoonType.ROCKY) -
 	
 	return texture
 
-func get_moon_size(seed_value: int) -> int:
+# CHANGED: Modified to use different size arrays based on is_gaseous
+func get_moon_size(seed_value: int, is_gaseous: bool = false) -> int:
 	var rng = RandomNumberGenerator.new()
 	rng.seed = seed_value
 	
-	var index = rng.randi() % MOON_SIZES.size()
-	return MOON_SIZES[index]
+	# Use appropriate size array based on planet type
+	var size_array = GASEOUS_MOON_SIZES if is_gaseous else TERRAN_MOON_SIZES
+	var index = rng.randi() % size_array.size()
+	
+	return size_array[index]
 
 func get_cubic(t: float) -> float:
 	var index = int(t * (CUBIC_RESOLUTION - 1))
@@ -378,9 +385,9 @@ func apply_lighting(color: Color, normal: Vector3) -> Color:
 		color.a
 	)
 
-# Create a moon texture with specified type
-func create_moon_texture(seed_value: int, moon_type: int = MoonType.ROCKY) -> ImageTexture:
-	var moon_size = get_moon_size(seed_value)
+# CHANGED: Added is_gaseous parameter to allow for proper sizing
+func create_moon_texture(seed_value: int, moon_type: int = MoonType.ROCKY, is_gaseous: bool = false) -> ImageTexture:
+	var moon_size = get_moon_size(seed_value, is_gaseous)
 	
 	var padding = 2
 	var padded_size = moon_size + (padding * 2)
