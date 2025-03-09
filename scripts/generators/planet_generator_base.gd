@@ -5,7 +5,7 @@
 #   Provides a consistent interface for all planet type generators
 #   Handles texture caching and resource optimization
 
-extends RefCounted
+extends Node2D
 class_name PlanetGeneratorBase
 
 # Base size constants

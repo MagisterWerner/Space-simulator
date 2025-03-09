@@ -1,140 +1,250 @@
-# scripts/entities/planet_spawner_terran.gd
-# Specialized spawner for terran planets
-class_name PlanetSpawnerTerran
-extends PlanetSpawnerBase
+# scripts/generators/planet_spawner_terran.gd
+# ============================
+# Purpose:
+#   Specialized generator for terran-type planets (rocky/terrestrial)
+#   Creates detailed planet textures with various climates and features
+#   Handles terran planet themes: Arid, Ice, Lava, Lush, Desert, Alpine, Ocean
 
-# Terran Planet Theme
-@export_enum("Random", "Arid", "Ice", "Lava", "Lush", "Desert", "Alpine", "Ocean") 
-var terran_theme: int = 0  # 0=Random, 1-7=Specific Terran theme
+extends PlanetGeneratorBase
+class_name PlanetGeneratorTerran
 
-func _init() -> void:
-	# Override the base class properties with terran-specific defaults
-	moon_chance = 40  # Lower chance of moons for terran planets
-	planet_scale = 1.0  # Standard scale for terran planets
+# Import planet theme enumeration from a shared location
+# Using PlanetThemeEnum to avoid conflict with the global PlanetThemes class
+const PlanetThemeEnum = preload("res://scripts/generators/planet_themes.gd").PlanetTheme
 
-# Override the spawner type method for debugging
-func get_spawner_type() -> String:
-	return "PlanetSpawnerTerran"
+# Noise generation constants
+const TERRAIN_OCTAVES: int = 4
+const COLOR_VARIATION: float = 1.5
+const PIXEL_RESOLUTION: int = 32
 
-# Override the spawn_planet method to specifically spawn terran planets
-func spawn_planet() -> Node2D:
-	# Clean up any previously spawned planets
-	cleanup()
-	
-	# Spawn a terran planet
-	return _spawn_terran_planet()
+# Theme-based color palettes
+var theme_colors = {
+	PlanetThemeEnum.ARID: [
+		Color(0.90, 0.70, 0.40),
+		Color(0.82, 0.58, 0.35),
+		Color(0.75, 0.47, 0.30),
+		Color(0.70, 0.42, 0.25),
+		Color(0.63, 0.38, 0.22),
+		Color(0.53, 0.30, 0.16),
+		Color(0.40, 0.23, 0.12)
+	],
+	PlanetThemeEnum.LAVA: [
+		Color(1.0, 0.6, 0.0),
+		Color(0.9, 0.4, 0.05),
+		Color(0.8, 0.2, 0.05),
+		Color(0.7, 0.1, 0.05),
+		Color(0.55, 0.08, 0.04),
+		Color(0.4, 0.06, 0.03),
+		Color(0.25, 0.04, 0.02)
+	],
+	PlanetThemeEnum.LUSH: [
+		Color(0.20, 0.70, 0.30),
+		Color(0.18, 0.65, 0.25),
+		Color(0.15, 0.60, 0.20),
+		Color(0.12, 0.55, 0.15),
+		Color(0.10, 0.50, 0.10),
+		Color(0.35, 0.50, 0.70),
+		Color(0.30, 0.45, 0.65),
+		Color(0.25, 0.40, 0.60)
+	],
+	PlanetThemeEnum.ICE: [
+		Color(0.98, 0.99, 1.0),
+		Color(0.92, 0.97, 1.0),
+		Color(0.85, 0.92, 0.98),
+		Color(0.75, 0.85, 0.95),
+		Color(0.60, 0.75, 0.90),
+		Color(0.45, 0.65, 0.85),
+		Color(0.30, 0.50, 0.75)
+	],
+	PlanetThemeEnum.DESERT: [
+		Color(0.88, 0.72, 0.45),
+		Color(0.85, 0.68, 0.40),
+		Color(0.80, 0.65, 0.38),
+		Color(0.75, 0.60, 0.35),
+		Color(0.70, 0.55, 0.30),
+		Color(0.65, 0.50, 0.28),
+		Color(0.60, 0.45, 0.25),
+		Color(0.48, 0.35, 0.20)
+	],
+	PlanetThemeEnum.ALPINE: [
+		Color(0.98, 0.98, 0.98),
+		Color(0.95, 0.95, 0.97),
+		Color(0.90, 0.90, 0.95),
+		Color(0.85, 0.85, 0.90),
+		Color(0.80, 0.85, 0.80),
+		Color(0.75, 0.85, 0.75),
+		Color(0.70, 0.80, 0.70),
+		Color(0.65, 0.75, 0.65)
+	],
+	PlanetThemeEnum.OCEAN: [
+		Color(0.10, 0.35, 0.65),
+		Color(0.15, 0.40, 0.70),
+		Color(0.15, 0.45, 0.75),
+		Color(0.18, 0.50, 0.80),
+		Color(0.20, 0.55, 0.85),
+		Color(0.25, 0.60, 0.88),
+		Color(0.30, 0.65, 0.90),
+		Color(0.40, 0.75, 0.95)
+	]
+}
 
-# Implementation of is_terran_planet for API compatibility
-func is_terran_planet() -> bool:
-	return true
+# Initialize with default values
+func _init():
+	# Any terran-specific initialization can go here
+	pass
 
-# Implementation of is_gaseous_planet for API compatibility
-func is_gaseous_planet() -> bool:
-	return false
+# Determine a theme based on seed
+# For terran planets, valid themes are 0-6 (all except GAS_GIANT which is 7)
+func get_random_theme(seed_value: int) -> int:
+	var rng = RandomNumberGenerator.new()
+	rng.seed = seed_value
+	return rng.randi() % PlanetThemeEnum.GAS_GIANT  # 0-6, not including GAS_GIANT
 
-# Spawn a terran planet with fixed parameters
-func _spawn_terran_planet() -> Node2D:
-	# Check if the planet scene is valid
-	if planet_scene == null:
-		push_error("PlanetSpawnerTerran: Planet scene is not loaded!")
-		return null
+# Main function to generate a terran planet texture
+func generate_planet_texture(seed_value: int, theme_id: int = -1) -> Array:
+	# If theme_id is negative, generate a random theme based on seed
+	if theme_id < 0:
+		theme_id = get_random_theme(seed_value)
 	
-	# Create planet instance
-	_planet_instance = planet_scene.instantiate()
-	add_child(_planet_instance)
+	# Ensure theme is valid for terran planets (not GAS_GIANT)
+	if theme_id >= PlanetThemeEnum.GAS_GIANT:
+		theme_id = theme_id % PlanetThemeEnum.GAS_GIANT
 	
-	# Set z-index for rendering order
-	_planet_instance.z_index = z_index_base
+	# Check cache first
+	var cache_key = str(seed_value) + "_terran_" + str(theme_id)
+	if texture_cache.planets.has(cache_key):
+		return [texture_cache.planets[cache_key], null, PLANET_SIZE_TERRAN]
 	
-	# Calculate position
-	var spawn_position = _calculate_spawn_position()
-	_planet_instance.global_position = spawn_position
+	# Create the planet image
+	var image = Image.create(PLANET_SIZE_TERRAN, PLANET_SIZE_TERRAN, true, Image.FORMAT_RGBA8)
 	
-	# Apply scale
-	_planet_instance.scale = Vector2(planet_scale, planet_scale)
+	# Get color palette for this theme
+	var colors = theme_colors[theme_id]
 	
-	# Determine terran theme (don't generate it here, let planet.gd decide if it's random)
-	var theme_to_use: int = -1
+	# Cache for noise lookup
+	var noise_cache = {}
 	
-	if terran_theme > 0:
-		# User selected specific theme (subtract 1 because 0 is Random in the export enum)
-		theme_to_use = terran_theme - 1
+	# Generate variation seeds
+	var variation_seed_1 = seed_value + 12345
+	var variation_seed_2 = seed_value + 67890
+	
+	# Generation constants
+	var color_size = colors.size() - 1
+	var planet_size_minus_one = PLANET_SIZE_TERRAN - 1
+	
+	# Main texture generation loop
+	for y in range(PLANET_SIZE_TERRAN):
+		var ny = float(y) / planet_size_minus_one
+		var dy = ny - 0.5
 		
-		# Verify it's a valid terran theme
-		if theme_to_use >= PlanetThemes.GAS_GIANT:
-			if game_settings and game_settings.debug_mode:
-				print("PlanetSpawnerTerran: Invalid terran theme selected; reverting to random terran theme")
-			theme_to_use = -1
+		for x in range(PLANET_SIZE_TERRAN):
+			var nx = float(x) / planet_size_minus_one
+			var dx = nx - 0.5
+			
+			var dist_squared = dx * dx + dy * dy
+			var dist = sqrt(dist_squared)
+			var normalized_dist = dist * 2.0
+			
+			# PIXEL-PERFECT EDGE: Use a hard cutoff instead of anti-aliasing
+			if normalized_dist >= 1.0:
+				image.set_pixel(x, y, Color(0, 0, 0, 0))
+				continue
+			
+			# Inside the planet - full alpha
+			var alpha = 1.0
+			
+			var sphere_uv = spherify(nx, ny)
+			
+			# TERRAN PLANET GENERATION
+			var base_noise = _generate_fbm(sphere_uv.x, sphere_uv.y, TERRAIN_OCTAVES, seed_value, noise_cache)
+			var detail_variation_1 = _generate_fbm(sphere_uv.x * 3.0, sphere_uv.y * 3.0, 2, variation_seed_1, noise_cache) * 0.1
+			var detail_variation_2 = _generate_fbm(sphere_uv.x * 5.0, sphere_uv.y * 5.0, 1, variation_seed_2, noise_cache) * 0.05
+			
+			var combined_noise = base_noise + detail_variation_1 + detail_variation_2
+			combined_noise = clamp(combined_noise * COLOR_VARIATION, 0.0, 1.0)
+			
+			var color_index = int(combined_noise * color_size)
+			color_index = clamp(color_index, 0, color_size)
+			
+			var final_color = colors[color_index]
+			
+			# Create edge shading (darker at edges)
+			var edge_shade = 1.0 - pow(normalized_dist, 2) * 0.3
+			final_color.r *= edge_shade
+			final_color.g *= edge_shade
+			final_color.b *= edge_shade
+			
+			# Apply alpha for pixel-perfect edge
+			final_color.a = alpha
+			
+			image.set_pixel(x, y, final_color)
 	
-	# Force-generate a random terran seed that will be used in planet.gd
-	var random_terran_seed: int = _seed_value
-	if terran_theme == 0:  # Random theme requested
-		# Generate a unique seed for theme selection
-		random_terran_seed = _seed_value * 17 + 31  # Prime multiplier to avoid patterns
+	# Create the texture
+	var texture = ImageTexture.create_from_image(image)
 	
-	# Set up the planet parameters
-	var planet_params = {
-		"seed_value": _seed_value,
-		"random_terran_seed": random_terran_seed,
-		"grid_x": grid_x,
-		"grid_y": grid_y,
-		"moon_chance": moon_chance,
-		"min_moon_distance_factor": 1.8,
-		"max_moon_distance_factor": 2.5,
-		"max_orbit_deviation": 0.15,
-		"moon_orbit_factor": 0.05,
-		"use_texture_cache": use_texture_cache,
-		"theme_override": theme_to_use,
-		"category_override": PlanetCategories.TERRAN,  # Force terran category
-		"moon_orbit_speed_factor": moon_orbit_speed_factor,  # Pass the moon orbit speed factor
-		"is_random_theme": terran_theme == 0,  # Flag indicating if we want a random theme
-		"debug_planet_generation": debug_planet_generation
-	}
+	# Cache the result
+	texture_cache.planets[cache_key] = texture
+	cleanup_cache()
 	
-	# If debug is enabled, add additional debug info to the parameters
-	if debug_planet_generation:
-		planet_params["debug_theme_source"] = "From terran_theme export: " + str(terran_theme)
-	
-	# Initialize the planet with our parameters
-	_planet_instance.initialize(planet_params)
-	
-	# Register the planet with EntityManager if available
-	_register_with_entity_manager(_planet_instance)
-	
-	# Connect to planet's loaded signal to handle moons if they spawn
-	if _planet_instance.has_signal("planet_loaded"):
-		if not _planet_instance.is_connected("planet_loaded", _on_planet_loaded):
-			_planet_instance.connect("planet_loaded", _on_planet_loaded)
-	
-	# Emit spawned signal
-	planet_spawned.emit(_planet_instance)
-	
-	# Debug output
-	if game_settings and game_settings.debug_mode or debug_planet_generation:
-		print("PlanetSpawnerTerran: Spawned terran planet at position ", _planet_instance.global_position)
-		print("PlanetSpawnerTerran: Selected terran_theme=", terran_theme, " (0=Random, 1-7=specific)")
-		if _planet_instance.has_method("get_theme_name"):
-			print("PlanetSpawnerTerran: Actual theme used: ", _planet_instance.get_theme_name())
-	
-	# Check if texture cache needs cleaning
-	_check_and_clean_cache()
-	
-	return _planet_instance
+	# Return the texture array (image, null atmosphere, size)
+	return [texture, null, PLANET_SIZE_TERRAN]
 
-# Force a specific terran theme - Used for direct API calls
-func force_terran_theme(theme_index: int) -> void:
-	if theme_index >= 0 and theme_index < PlanetThemes.GAS_GIANT:
-		terran_theme = theme_index + 1  # +1 because 0 is Random in the export enum
-		
-	# Update and respawn if already initialized
-	if _initialized:
-		_update_seed_value()
-		spawn_planet()
+# Generate fractal Brownian motion noise for terrain
+func _generate_fbm(x: float, y: float, octaves: int, seed_value: int, noise_cache: Dictionary) -> float:
+	var value = 0.0
+	var amplitude = 0.5
+	var frequency = 8.0
+	
+	for _i in range(octaves):
+		value += _generate_noise(x * frequency, y * frequency, seed_value, noise_cache) * amplitude
+		frequency *= 2.0
+		amplitude *= 0.5
+	
+	return value
 
-# Override base class method for API compatibility
-func force_planet_type(is_gaseous: bool, theme_index: int = -1) -> void:
-	if is_gaseous:
-		push_warning("PlanetSpawnerTerran: Cannot force gaseous planet type on a terran planet spawner")
-		return
-		
-	force_terran_theme(theme_index)
+# Generate smooth noise for a point
+func _generate_noise(x: float, y: float, seed_value: int, noise_cache: Dictionary) -> float:
+	var ix = floor(x)
+	var iy = floor(y)
+	var fx = x - ix
+	var fy = y - iy
+	
+	# Improved cubic interpolation
+	var u = fx * fx * (3.0 - 2.0 * fx)
+	var v = fy * fy * (3.0 - 2.0 * fy)
+	
+	var a = get_random_seed(ix, iy, seed_value, noise_cache)
+	var b = get_random_seed(ix + 1.0, iy, seed_value, noise_cache)
+	var c = get_random_seed(ix, iy + 1.0, seed_value, noise_cache)
+	var d = get_random_seed(ix + 1.0, iy + 1.0, seed_value, noise_cache)
+	
+	return lerp(
+		lerp(a, b, u),
+		lerp(c, d, u),
+		v
+	)
+
+# Generate theme-specific features
+func _generate_features(theme_id: int, sphere_uv: Vector2, seed_value: int, noise_cache: Dictionary) -> float:
+	match theme_id:
+		PlanetThemeEnum.OCEAN:
+			# Generate island formations
+			return _generate_fbm(sphere_uv.x * 4.0, sphere_uv.y * 4.0, 3, seed_value + 999, noise_cache) * 0.2
+			
+		PlanetThemeEnum.DESERT, PlanetThemeEnum.ARID:
+			# Generate dune patterns
+			var dunes = _generate_fbm(sphere_uv.x * 10.0, sphere_uv.y * 5.0, 2, seed_value + 888, noise_cache) * 0.15
+			return dunes
+			
+		PlanetThemeEnum.ICE:
+			# Generate crack patterns
+			var cracks = _generate_fbm(sphere_uv.x * 15.0, sphere_uv.y * 15.0, 2, seed_value + 777, noise_cache) * 0.1
+			return cracks
+			
+		PlanetThemeEnum.LAVA:
+			# Generate lava flow patterns
+			var flows = _generate_fbm(sphere_uv.x * 8.0, sphere_uv.y * 8.0, 3, seed_value + 666, noise_cache) * 0.25
+			return flows
+			
+		_:
+			return 0.0

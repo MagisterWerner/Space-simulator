@@ -1,9 +1,10 @@
 # scripts/entities/planet.gd
 extends Node2D
 
-# Import classification constants
-const PlanetThemes = preload("res://scripts/generators/planet_generator.gd").PlanetTheme
-const PlanetCategories = preload("res://scripts/generators/planet_generator.gd").PlanetCategory
+# Import classification constants - updated to use new module
+const PlanetThemes = preload("res://scripts/generators/planet_themes.gd")
+const PlanetTheme = PlanetThemes.PlanetTheme
+const PlanetCategory = PlanetThemes.PlanetCategory
 
 signal planet_loaded(planet)
 
@@ -26,7 +27,7 @@ var grid_x: int = 0
 var grid_y: int = 0
 
 # Planet classification properties
-var planet_category: int = PlanetCategories.TERRAN  # Default to terran
+var planet_category: int = PlanetCategory.TERRAN  # Default to terran
 
 # Define moon types for consistent reference
 enum MoonType {
@@ -117,18 +118,27 @@ func initialize(params: Dictionary) -> void:
 		planet_category = params.category_override
 	else:
 		# If no category specified, use the correct lookup based on theme or randomly determine
-		var planet_generator = PlanetGenerator.new()
-		var auto_theme = planet_generator.get_planet_theme(seed_value)
-		planet_category = PlanetGenerator.get_planet_category(auto_theme)
+		var auto_theme = PlanetTheme.LUSH  # Default fallback theme
+		
+		# If theme_override is provided, use it directly
+		if "theme_override" in params and params.theme_override >= 0:
+			auto_theme = params.theme_override
+		else:
+			# Determine a random theme based on seed if not specified
+			var planet_generator = PlanetGeneratorBase.new()
+			auto_theme = planet_generator.get_random_theme(seed_value)
+		
+		# Use the PlanetThemes static method to get the category
+		planet_category = PlanetThemes.get_planet_category(auto_theme)
 	
 	# Debug the category choice
-	print("Planet category set to: ", "Gaseous" if planet_category == PlanetCategories.GASEOUS else "Terran")
+	print("Planet category set to: ", "Gaseous" if planet_category == PlanetCategory.GASEOUS else "Terran")
 	
 	# ===== STEP 2: DETERMINE THEME BASED ON CATEGORY =====
 	# We need very explicit handling here to fix the issues
-	if planet_category == PlanetCategories.TERRAN:
+	if planet_category == PlanetCategory.TERRAN:
 		# TERRAN PLANET THEME SELECTION
-		if "theme_override" in params and params.theme_override >= 0 and params.theme_override < PlanetThemes.GAS_GIANT:
+		if "theme_override" in params and params.theme_override >= 0 and params.theme_override < PlanetTheme.GAS_GIANT:
 			# Use explicitly provided terran theme
 			theme_id = params.theme_override
 			print("Using explicit terran theme: ", theme_id)
@@ -147,11 +157,11 @@ func initialize(params: Dictionary) -> void:
 			unique_seed = unique_seed ^ (seed_value * 73 + 9973)
 			
 			theme_generator.seed = unique_seed
-			theme_id = theme_generator.randi() % PlanetThemes.GAS_GIANT
+			theme_id = theme_generator.randi() % PlanetTheme.GAS_GIANT
 			print("Generated random terran theme: ", theme_id, " from unique seed: ", unique_seed)
 	else:
 		# GASEOUS PLANET - Always GAS_GIANT theme
-		theme_id = PlanetThemes.GAS_GIANT
+		theme_id = PlanetTheme.GAS_GIANT
 		
 		# Determine gas giant type - this is critical to fix the issue
 		if "gas_giant_type_override" in params and params.gas_giant_type_override >= 0 and params.gas_giant_type_override < 4:
@@ -167,11 +177,11 @@ func initialize(params: Dictionary) -> void:
 	
 	# Log the selected theme and type for debugging
 	print("Final planet theme: ", theme_id, " (", _get_theme_name(theme_id), ")")
-	if planet_category == PlanetCategories.GASEOUS:
+	if planet_category == PlanetCategory.GASEOUS:
 		print("Gas giant type: ", gas_giant_type, " (", _get_gas_giant_type_name(gas_giant_type), ")")
 	
 	# For convenience, detect if this is a gaseous planet
-	var is_gaseous = planet_category == PlanetCategories.GASEOUS
+	var is_gaseous = planet_category == PlanetCategory.GASEOUS
 	
 	# Adjust moon parameters based on planet category
 	if is_gaseous:
@@ -182,7 +192,7 @@ func initialize(params: Dictionary) -> void:
 		moon_chance = 100  # Gaseous planets ALWAYS have moons
 	
 	# ===== STEP 3: GENERATE PLANET TEXTURES =====
-	if planet_category == PlanetCategories.GASEOUS:
+	if planet_category == PlanetCategory.GASEOUS:
 		# Create a gas giant with its specific type
 		var gas_giant_generator = PlanetGeneratorGaseous.new()
 		var textures = gas_giant_generator.generate_planet_texture(seed_value, gas_giant_type)
@@ -238,14 +248,14 @@ func _get_gas_giant_type_name(type_id: int) -> String:
 # Method to get theme name
 func _get_theme_name(planet_theme_id: int) -> String:
 	match planet_theme_id:
-		PlanetThemes.ARID: return "Arid"
-		PlanetThemes.ICE: return "Ice"
-		PlanetThemes.LAVA: return "Lava"
-		PlanetThemes.LUSH: return "Lush"
-		PlanetThemes.DESERT: return "Desert"
-		PlanetThemes.ALPINE: return "Alpine"
-		PlanetThemes.OCEAN: return "Ocean"
-		PlanetThemes.GAS_GIANT: return "Gas Giant"
+		PlanetTheme.ARID: return "Arid"
+		PlanetTheme.ICE: return "Ice"
+		PlanetTheme.LAVA: return "Lava"
+		PlanetTheme.LUSH: return "Lush"
+		PlanetTheme.DESERT: return "Desert"
+		PlanetTheme.ALPINE: return "Alpine"
+		PlanetTheme.OCEAN: return "Ocean"
+		PlanetTheme.GAS_GIANT: return "Gas Giant"
 		_: return "Unknown"
 
 # Get the gas giant type - for external access
@@ -267,7 +277,7 @@ func _create_moons() -> void:
 	rng.seed = seed_value
 	
 	# For gaseous planets, always spawn moons. For other planets, check chance.
-	var is_gaseous = planet_category == PlanetCategories.GASEOUS
+	var is_gaseous = planet_category == PlanetCategory.GASEOUS
 	var has_moons = is_gaseous || (rng.randi() % 100 < moon_chance)
 	var num_moons = 0
 	
@@ -348,7 +358,7 @@ func _generate_orbital_parameters(moon_count: int, rng: RandomNumberGenerator) -
 	var max_distance = planet_radius * max_moon_distance_factor
 	
 	# For gaseous planets, expand the orbital range for moons
-	if planet_category == PlanetCategories.GASEOUS:
+	if planet_category == PlanetCategory.GASEOUS:
 		max_distance = planet_radius * (max_moon_distance_factor + 0.5)
 	
 	# For multiple moons, use intelligent parameter distribution
@@ -367,7 +377,7 @@ func _generate_orbital_parameters(moon_count: int, rng: RandomNumberGenerator) -
 			var speed_factor = 1.0 / sqrt(distance / min_distance)
 			
 			# Gaseous planets have slower orbiting moons due to greater mass
-			var orbit_modifier = 0.8 if planet_category == PlanetCategories.GASEOUS else 1.0
+			var orbit_modifier = 0.8 if planet_category == PlanetCategory.GASEOUS else 1.0
 			var orbit_speed = rng.randf_range(0.2, 0.4) * moon_orbit_factor * speed_factor * orbit_modifier
 			
 			# Step 3: Distribute phase offsets evenly around orbit
@@ -390,7 +400,7 @@ func _generate_orbital_parameters(moon_count: int, rng: RandomNumberGenerator) -
 		params.append({
 			"distance": rng.randf_range(min_distance, max_distance),
 			"base_angle": 0.0,
-			"orbit_speed": rng.randf_range(0.2, 0.5) * moon_orbit_factor * (0.8 if planet_category == PlanetCategories.GASEOUS else 1.0),
+			"orbit_speed": rng.randf_range(0.2, 0.5) * moon_orbit_factor * (0.8 if planet_category == PlanetCategory.GASEOUS else 1.0),
 			"orbit_deviation": rng.randf_range(0.05, max_orbit_deviation),
 			"phase_offset": rng.randf_range(0, TAU) # Random starting position
 		})
@@ -400,8 +410,8 @@ func _generate_orbital_parameters(moon_count: int, rng: RandomNumberGenerator) -
 # Get planet category name as string (for debugging/UI)
 func get_category_name() -> String:
 	match planet_category:
-		PlanetCategories.TERRAN: return "Terran"
-		PlanetCategories.GASEOUS: return "Gaseous"
+		PlanetCategory.TERRAN: return "Terran"
+		PlanetCategory.GASEOUS: return "Gaseous"
 		_: return "Unknown"
 
 # Get theme name as string (for debugging/UI)
@@ -410,6 +420,6 @@ func get_theme_name() -> String:
 
 # Get gas giant type name as string (for debugging/UI)
 func get_gas_giant_type_name() -> String:
-	if planet_category != PlanetCategories.GASEOUS:
+	if planet_category != PlanetCategory.GASEOUS:
 		return "Not a Gas Giant"
 	return _get_gas_giant_type_name(gas_giant_type)
