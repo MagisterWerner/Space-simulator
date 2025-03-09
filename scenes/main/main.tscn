@@ -1,20 +1,19 @@
-[gd_scene load_steps=7 format=3 uid="uid://ddsnaxcqqd81s"]
+[gd_scene load_steps=8 format=3 uid="uid://ddsnaxcqqd81s"]
 
 [ext_resource type="Script" uid="uid://2lae3uvcc1c4" path="res://scripts/main.gd" id="1_txjaf"]
 [ext_resource type="PackedScene" uid="uid://rhas31gnv33u" path="res://scenes/player/player_ship.tscn" id="2_cayce"]
 [ext_resource type="PackedScene" uid="uid://8iqbtdgouxfb" path="res://scenes/backgrounds/space_background.tscn" id="3_t8g3p"]
 [ext_resource type="PackedScene" uid="uid://baujd316t5ufb" path="res://scenes/world/world_grid.tscn" id="5_84hlr"]
-[ext_resource type="PackedScene" uid="uid://q6awytble7w" path="res://scenes/world/planet_spawner.tscn" id="6_hujxm"]
+[ext_resource type="Script" uid="uid://ch8pw7k3e1x31" path="res://scripts/entities/planet_spawner_terran.gd" id="6_hujxm"]
 [ext_resource type="Script" uid="uid://d0faq8wvi3ac0" path="res://scripts/game_settings.gd" id="6_m34dp"]
+[ext_resource type="Script" uid="uid://dydfgu706e0lc" path="res://scripts/entities/planet_spawner_gaseous.gd" id="7_yyfjg"]
 
 [node name="Main" type="Node2D"]
 script = ExtResource("1_txjaf")
 
 [node name="GameSettings" type="Node" parent="."]
 script = ExtResource("6_m34dp")
-game_seed = 12345
-use_random_seed = false
-grid_cell_size = 256
+grid_cell_size = 512
 grid_size = 3
 player_starting_cell = Vector2i(1, 1)
 planet_chance_per_cell = 100
@@ -37,13 +36,10 @@ position_smoothing_speed = 3.0
 
 [node name="WorldGrid" parent="." instance=ExtResource("5_84hlr")]
 
-[node name="Planets" type="Node2D" parent="."]
+[node name="PlanetSpawnerTerran" type="Node2D" parent="."]
+script = ExtResource("6_hujxm")
 
-[node name="PlanetSpawner" parent="Planets" instance=ExtResource("6_hujxm")]
-position = Vector2(227, 128)
-terran_theme = 0
-grid_y = 1
-
-[node name="PlanetSpawner2" parent="Planets" instance=ExtResource("6_hujxm")]
-terran_theme = 0
-grid_x = 1
+[node name="PlanetSpawnerGaseous" type="Node2D" parent="."]
+script = ExtResource("7_yyfjg")
+grid_x = 2
+grid_y = 2

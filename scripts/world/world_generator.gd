@@ -18,7 +18,8 @@ var game_settings: GameSettings = null
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 
 # Scene references
-@export var planet_spawner_scene: PackedScene
+@export var planet_spawner_terran_scene: PackedScene
+@export var planet_spawner_gaseous_scene: PackedScene
 @export var asteroid_field_scene: PackedScene
 @export var station_scene: PackedScene
 
@@ -44,8 +45,25 @@ func _ready() -> void:
 	game_settings = main_scene.get_node_or_null("GameSettings")
 	
 	# Load required scenes if not set
-	if planet_spawner_scene == null:
-		planet_spawner_scene = load("res://scenes/world/planet_spawner.tscn")
+	_initialize_scenes()
+	
+	# Debug output
+	if game_settings and game_settings.debug_mode:
+		print("WorldGenerator: Initialized with game seed ", game_settings.get_seed())
+
+# Initialize required scenes
+func _initialize_scenes() -> void:
+	# Load Terran Planet Spawner scene
+	if planet_spawner_terran_scene == null:
+		var terran_path = "res://scenes/world/planet_spawner_terran.tscn"
+		if ResourceLoader.exists(terran_path):
+			planet_spawner_terran_scene = load(terran_path)
+	
+	# Load Gaseous Planet Spawner scene
+	if planet_spawner_gaseous_scene == null:
+		var gaseous_path = "res://scenes/world/planet_spawner_gaseous.tscn"
+		if ResourceLoader.exists(gaseous_path):
+			planet_spawner_gaseous_scene = load(gaseous_path)
 	
 	if asteroid_field_scene == null:
 		var asteroid_path = "res://scenes/world/asteroid_field.tscn"
@@ -56,10 +74,6 @@ func _ready() -> void:
 		var station_path = "res://scenes/world/station.tscn"
 		if ResourceLoader.exists(station_path):
 			station_scene = load(station_path)
-	
-	# Debug output
-	if game_settings and game_settings.debug_mode:
-		print("WorldGenerator: Initialized with game seed ", game_settings.get_seed())
 
 # Generate the entire world based on game settings
 func generate_world() -> void:
@@ -220,10 +234,6 @@ func generate_planets_with_proximity(max_planets: int) -> int:
 
 # Create a planet spawner and add it to the scene
 func create_planet_spawner(cell_coords: Vector2i) -> Node:
-	if planet_spawner_scene == null:
-		push_error("WorldGenerator: planet_spawner_scene is null")
-		return null
-	
 	# Initialize cell tracking if needed
 	var cell_key = get_cell_key(cell_coords)
 	if not _generated_cells.has(cell_key):
@@ -233,30 +243,49 @@ func create_planet_spawner(cell_coords: Vector2i) -> Node:
 			"stations": []
 		}
 	
-	# Create a planet spawner instance
-	var planet_spawner = planet_spawner_scene.instantiate()
-	add_child(planet_spawner)
-	
-	# Configure the spawner using its API
-	planet_spawner.set_grid_position(cell_coords.x, cell_coords.y)
-	planet_spawner.use_grid_position = true
-	
 	# Set up the cell seed
 	var cell_seed = game_settings.get_seed() + (cell_coords.x * 1000) + (cell_coords.y * 100)
-	planet_spawner.local_seed_offset = cell_seed - game_settings.get_seed()
+	var seed_offset = cell_seed - game_settings.get_seed()
 	
 	# Deterministically decide planet type based on cell's seed
 	_rng.seed = cell_seed
 	var planet_type_roll = _rng.randi_range(0, 100)
 	var is_gaseous = planet_type_roll < 20  # 20% chance of gas giant
 	
-	# For terran planets, determine theme
-	var theme_index = -1
-	if not is_gaseous:
-		theme_index = _rng.randi_range(0, 6)  # 0-6 are the terran themes
+	# Create appropriate planet spawner instance
+	var planet_spawner
 	
-	# Set the planet type using the PlanetSpawner API
-	planet_spawner.force_planet_type(is_gaseous, theme_index)
+	if is_gaseous:
+		# Create a gaseous planet spawner
+		if planet_spawner_gaseous_scene:
+			planet_spawner = planet_spawner_gaseous_scene.instantiate()
+		else:
+			planet_spawner = PlanetSpawnerGaseous.new()
+			
+		# For gas giants, determine type
+		var gas_giant_type = _rng.randi_range(0, 3)  # 0-3 are the gas giant types
+		
+		# Add to scene and configure
+		add_child(planet_spawner)
+		planet_spawner.gaseous_theme = gas_giant_type + 1  # +1 because 0 is Random
+	else:
+		# Create a terran planet spawner
+		if planet_spawner_terran_scene:
+			planet_spawner = planet_spawner_terran_scene.instantiate()
+		else:
+			planet_spawner = PlanetSpawnerTerran.new()
+			
+		# For terran planets, determine theme
+		var theme_index = _rng.randi_range(0, 6)  # 0-6 are the terran themes
+		
+		# Add to scene and configure
+		add_child(planet_spawner)
+		planet_spawner.terran_theme = theme_index + 1  # +1 because 0 is Random
+	
+	# Configure the spawner using its API
+	planet_spawner.set_grid_position(cell_coords.x, cell_coords.y)
+	planet_spawner.use_grid_position = true
+	planet_spawner.local_seed_offset = seed_offset
 	
 	# Spawn the planet
 	var planet = planet_spawner.spawn_planet()
