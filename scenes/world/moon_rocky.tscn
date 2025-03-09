@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://oi8l62hk7uj7"]
+
+[ext_resource type="Script" uid="uid://cdeuca1c4i3j5" path="res://scripts/entities/moons/moon_rocky.gd" id="1_n3rxa"]
+
+[node name="MoonRocky" type="Node2D"]
+script = ExtResource("1_n3rxa")

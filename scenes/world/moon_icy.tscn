@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://dppfn8nwryhqu"]
+
+[ext_resource type="Script" uid="uid://gjnb2pmwbwsa" path="res://scripts/entities/moons/moon_icy.gd" id="1_lfgt2"]
+
+[node name="MoonIcy" type="Node2D"]
+script = ExtResource("1_lfgt2")
