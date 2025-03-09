@@ -34,13 +34,14 @@ func is_gaseous_planet() -> bool:
 
 # Spawn a terran planet with fixed parameters
 func _spawn_terran_planet() -> Node2D:
-	# Check if the planet scene is valid
-	if planet_scene == null:
-		push_error("PlanetSpawnerTerran: Planet scene is not loaded!")
+	# Check if the planet scene is valid - load the terran planet scene
+	var terran_scene = load("res://scenes/world/planet_terran.tscn")
+	if not terran_scene:
+		push_error("PlanetSpawnerTerran: Planet terran scene is not loaded!")
 		return null
 	
 	# Create planet instance
-	_planet_instance = planet_scene.instantiate()
+	_planet_instance = terran_scene.instantiate()
 	add_child(_planet_instance)
 	
 	# Set z-index for rendering order
@@ -61,7 +62,7 @@ func _spawn_terran_planet() -> Node2D:
 		theme_to_use = terran_theme - 1
 		
 		# Verify it's a valid terran theme
-		if theme_to_use >= PlanetThemes.GAS_GIANT:
+		if theme_to_use >= PlanetGeneratorBase.PlanetTheme.GAS_GIANT:
 			if game_settings and game_settings.debug_mode:
 				print("PlanetSpawnerTerran: Invalid terran theme selected; reverting to random terran theme")
 			theme_to_use = -1
@@ -85,7 +86,7 @@ func _spawn_terran_planet() -> Node2D:
 		"moon_orbit_factor": 0.05,
 		"use_texture_cache": use_texture_cache,
 		"theme_override": theme_to_use,
-		"category_override": PlanetCategories.TERRAN,  # Force terran category
+		"category_override": PlanetGeneratorBase.PlanetCategory.TERRAN,  # Force terran category
 		"moon_orbit_speed_factor": moon_orbit_speed_factor,  # Pass the moon orbit speed factor
 		"is_random_theme": terran_theme == 0,  # Flag indicating if we want a random theme
 		"debug_planet_generation": debug_planet_generation
@@ -123,7 +124,7 @@ func _spawn_terran_planet() -> Node2D:
 
 # Force a specific terran theme - Used for direct API calls
 func force_terran_theme(theme_index: int) -> void:
-	if theme_index >= 0 and theme_index < PlanetThemes.GAS_GIANT:
+	if theme_index >= 0 and theme_index < PlanetGeneratorBase.PlanetTheme.GAS_GIANT:
 		terran_theme = theme_index + 1  # +1 because 0 is Random in the export enum
 		
 	# Update and respawn if already initialized

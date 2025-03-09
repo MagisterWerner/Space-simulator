@@ -42,13 +42,14 @@ func is_gaseous_planet() -> bool:
 
 # Spawn a gaseous planet with fixed parameters
 func _spawn_gaseous_planet() -> Node2D:
-	# Check if the planet scene is valid
-	if planet_scene == null:
-		push_error("PlanetSpawnerGaseous: Planet scene is not loaded!")
+	# Load the gaseous planet scene
+	var gaseous_scene = load("res://scenes/world/planet_gaseous.tscn")
+	if not gaseous_scene:
+		push_error("PlanetSpawnerGaseous: Planet gaseous scene is not loaded!")
 		return null
 		
 	# Create planet instance
-	_planet_instance = planet_scene.instantiate()
+	_planet_instance = gaseous_scene.instantiate()
 	add_child(_planet_instance)
 	
 	# Set z-index for rendering order
@@ -86,8 +87,8 @@ func _spawn_gaseous_planet() -> Node2D:
 		"max_orbit_deviation": 0.15,
 		"moon_orbit_factor": 0.05,
 		"use_texture_cache": use_texture_cache,
-		"theme_override": PlanetThemes.GAS_GIANT,  # Force gas giant theme
-		"category_override": PlanetCategories.GASEOUS,  # Force gaseous category
+		"theme_override": PlanetGeneratorBase.PlanetTheme.GAS_GIANT,  # Force gas giant theme
+		"category_override": PlanetGeneratorBase.PlanetCategory.GASEOUS,  # Force gaseous category
 		"moon_orbit_speed_factor": moon_orbit_speed_factor,  # Pass the moon orbit speed factor
 		"gas_giant_type_override": gas_giant_type,  # Pass our gas giant type override
 		"is_random_gaseous": gaseous_theme == 0,  # Flag indicating if we want a random gas giant
