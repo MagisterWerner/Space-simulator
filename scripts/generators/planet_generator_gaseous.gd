@@ -11,17 +11,22 @@
 extends PlanetGeneratorBase
 class_name PlanetGeneratorGaseous
 
-# Gas giant specific constants
-const GAS_GIANT_BANDS: int = 12         # Number of primary bands
-const GAS_GIANT_BAND_NOISE: float = 0.5  # How noisy the bands are
-const GAS_GIANT_FLOW: float = 2.0       # How much the bands "flow" horizontally
+# Gas giant specific constants - Base values for Jupiter/Saturn
+const GAS_GIANT_BANDS_BASE: int = 12        # Number of primary bands
+const GAS_GIANT_BAND_NOISE_BASE: float = 0.5  # How noisy the bands are
+const GAS_GIANT_FLOW_BASE: float = 2.0       # How much the bands "flow" horizontally
+
+# Reduced bands for Uranus/Neptune - more even appearance
+const GAS_GIANT_BANDS_CYAN: int = 3          # Fewer bands for ice giants
+const GAS_GIANT_BAND_NOISE_CYAN: float = 0.2  # Less noise for smoother appearance
+const GAS_GIANT_FLOW_CYAN: float = 0.8        # Less flow for more uniform look
 
 # Gas giant types for reference
 enum GasGiantType {
 	JUPITER = 0,  # Jupiter-like (beige/tan tones)
 	SATURN = 1,   # Saturn-like (golden tones)
-	URANUS = 2,  # Uranus-like (pale cyan tones)
-	NEPTUNE = 3    # Neptune-like (deep blue tones)
+	NEPTUNE = 2,  # Neptune-like (blue tones)
+	EXOTIC = 3    # Exotic (lavender tones)
 }
 
 # Get or generate a gaseous planet texture
@@ -38,26 +43,6 @@ static func get_gaseous_texture(seed_value: int, gas_giant_type: int = -1) -> Ar
 	clean_texture_cache()
 	
 	return textures
-
-# Generate gas giant band pattern
-func generate_gas_giant_band(y_coord: float, seed_value: int) -> float:
-	# Create primary band structure
-	var primary_bands = sin(y_coord * GAS_GIANT_BANDS * PI)
-	
-	# Add noise to make bands irregular
-	var noise_seed1 = seed_value + 12345
-	var noise_seed2 = seed_value + 54321
-	
-	var noise_x = y_coord * 5.0
-	var noise_y = y_coord * 2.5
-	
-	var band_noise = fbm(noise_x, noise_y, 2, noise_seed1) * GAS_GIANT_BAND_NOISE
-	
-	# Create flow effect (horizontal distortion)
-	var flow_x = y_coord * 3.0
-	var flow_noise = fbm(flow_x, 0.5, 2, noise_seed2) * GAS_GIANT_FLOW
-	
-	return (primary_bands + band_noise + flow_noise) * 0.5 + 0.5
 
 # Generate appropriate color palette for different gas giant types
 func generate_gas_giant_palette(gas_giant_type: int, seed_value: int) -> PackedColorArray:
@@ -89,19 +74,7 @@ func generate_gas_giant_palette(gas_giant_type: int, seed_value: int) -> PackedC
 				Color(0.71, 0.68, 0.42)   # Dark golden tan
 			])
 			
-		GasGiantType.URANUS:  # Uranus-like (pale cyan)
-			return PackedColorArray([
-				Color(0.75, 0.95, 0.95),  # Pale cyan
-				Color(0.70, 0.90, 0.90),  # Light cyan
-				Color(0.65, 0.85, 0.85),  # Cyan
-				Color(0.60, 0.80, 0.80),  # Greenish cyan
-				Color(0.55, 0.75, 0.75),  # Teal
-				Color(0.50, 0.70, 0.70),  # Medium teal
-				Color(0.45, 0.65, 0.65),  # Deep teal
-				Color(0.40, 0.60, 0.60)   # Dark teal
-			])
-			
-		GasGiantType.NEPTUNE:  # Neptune-like (deeper blue)
+		GasGiantType.NEPTUNE:  # Neptune-like (blue tones)
 			return PackedColorArray([
 				Color(0.40, 0.50, 0.90),  # Bright blue
 				Color(0.35, 0.45, 0.85),  # Royal blue
@@ -113,6 +86,18 @@ func generate_gas_giant_palette(gas_giant_type: int, seed_value: int) -> PackedC
 				Color(0.05, 0.15, 0.55)   # Deep indigo
 			])
 			
+		GasGiantType.EXOTIC:  # Exotic (lavender/cyan tones for Uranus)
+			return PackedColorArray([
+				Color(0.75, 0.95, 0.95),  # Pale cyan
+				Color(0.70, 0.90, 0.90),  # Light cyan
+				Color(0.65, 0.85, 0.85),  # Cyan
+				Color(0.60, 0.80, 0.80),  # Greenish cyan
+				Color(0.55, 0.75, 0.75),  # Teal
+				Color(0.50, 0.70, 0.70),  # Medium teal
+				Color(0.45, 0.65, 0.65),  # Deep teal
+				Color(0.40, 0.60, 0.60)   # Dark teal
+			])
+			
 		_:  # Fallback
 			return PackedColorArray([
 				Color(0.83, 0.78, 0.65),
@@ -121,17 +106,42 @@ func generate_gas_giant_palette(gas_giant_type: int, seed_value: int) -> PackedC
 				Color(0.65, 0.48, 0.35),
 			])
 
-# Create a gas giant texture with specific visual type
-func create_gas_giant_planet(seed_value: int, gas_giant_type: int) -> Array:
-	# Ensure valid gas giant type
-	var valid_type = gas_giant_type
-	if valid_type < 0 or valid_type > 3:
-		var rng = RandomNumberGenerator.new()
-		rng.seed = seed_value
-		valid_type = rng.randi() % 4
+# Generate gas giant band pattern - Modified to use type-specific parameters
+func generate_gas_giant_band(y_coord: float, seed_value: int, giant_type: int) -> float:
+	# Select parameters based on giant type
+	var band_count: int
+	var band_noise: float
+	var flow_strength: float
 	
-	# Generate using the specialized gas giant code
-	return create_planet_texture(seed_value, valid_type)
+	# Use appropriate parameters based on gas giant type
+	if giant_type == GasGiantType.NEPTUNE or giant_type == GasGiantType.EXOTIC:
+		# Smoother, more even appearance for ice giants
+		band_count = GAS_GIANT_BANDS_CYAN
+		band_noise = GAS_GIANT_BAND_NOISE_CYAN
+		flow_strength = GAS_GIANT_FLOW_CYAN
+	else:
+		# More bands and detail for gas giants (Jupiter/Saturn)
+		band_count = GAS_GIANT_BANDS_BASE
+		band_noise = GAS_GIANT_BAND_NOISE_BASE
+		flow_strength = GAS_GIANT_FLOW_BASE
+	
+	# Create primary band structure
+	var primary_bands = sin(y_coord * band_count * PI)
+	
+	# Add noise to make bands irregular
+	var noise_seed1 = seed_value + 12345
+	var noise_seed2 = seed_value + 54321
+	
+	var noise_x = y_coord * 5.0
+	var noise_y = y_coord * 2.5
+	
+	var band_noise_value = fbm(noise_x, noise_y, 2, noise_seed1) * band_noise
+	
+	# Create flow effect (horizontal distortion)
+	var flow_x = y_coord * 3.0
+	var flow_noise = fbm(flow_x, 0.5, 2, noise_seed2) * flow_strength
+	
+	return (primary_bands + band_noise_value + flow_noise) * 0.5 + 0.5
 
 # Main texture generation method (override from base class)
 func create_planet_texture(seed_value: int, gas_giant_type: int = -1) -> Array:
@@ -175,12 +185,8 @@ func create_planet_texture(seed_value: int, gas_giant_type: int = -1) -> Array:
 			var sphere_uv = spherify(nx, ny)
 			
 			# GASEOUS PLANET GENERATION
-			# Generate banding pattern
-			var band_value = generate_gas_giant_band(sphere_uv.y, seed_value)
-			
-			# Add horizontal turbulence
-			var turbulence = fbm(sphere_uv.x * 10.0, sphere_uv.y * 2.0, 3, seed_value + 54321) * 0.1
-			band_value = (band_value + turbulence) * 0.9
+			# Generate banding pattern using the revised method that considers planet type
+			var band_value = generate_gas_giant_band(sphere_uv.y, seed_value, giant_type)
 			
 			# Add special gas giant type-specific details
 			match giant_type:
@@ -195,18 +201,21 @@ func create_planet_texture(seed_value: int, gas_giant_type: int = -1) -> Array:
 					var flow = fbm(sphere_uv.x * 12.0, sphere_uv.y * 8.0, 2, seed_value + 1234) * 0.05
 					band_value = band_value * 0.95 + flow
 					
-				GasGiantType.URANUS:
-					var storm_x = sphere_uv.x * 6.0 + 0.5
-					var storm_y = sphere_uv.y * 3.0 + 0.3
-					var storm = fbm(storm_x, storm_y, 2, seed_value + 4567) * 0.15
-					if storm > 0.1:
-						band_value = min(band_value + 0.2, 1.0)  # Lighten storm area
-					
 				GasGiantType.NEPTUNE:
-					var swirl_x = sphere_uv.x * 10.0 + sin(sphere_uv.y * 4.0) * 0.5
-					var swirl_y = sphere_uv.y * 5.0 + cos(sphere_uv.x * 6.0) * 0.3
-					var swirl = fbm(swirl_x, swirl_y, 3, seed_value + 2468) * 0.1
-					band_value = band_value * 0.9 + swirl
+					# More even, uniform appearance with subtle swirls
+					var smooth_x = sphere_uv.x * 4.0
+					var smooth_y = sphere_uv.y * 3.0
+					var smooth_color = fbm(smooth_x, smooth_y, 2, seed_value + 4567) * 0.15
+					# Blend heavily toward uniform color (less banding)
+					band_value = band_value * 0.25 + 0.6 + smooth_color
+					
+				GasGiantType.EXOTIC:
+					# More even appearance with subtle variation
+					var uniform_x = sphere_uv.x * 3.0
+					var uniform_y = sphere_uv.y * 2.0
+					var uniform_color = fbm(uniform_x, uniform_y, 2, seed_value + 2468) * 0.1
+					# Blend more heavily toward uniform color
+					band_value = band_value * 0.3 + 0.5 + uniform_color
 			
 			# Determine color index based on band value
 			var color_index = int(band_value * color_size)

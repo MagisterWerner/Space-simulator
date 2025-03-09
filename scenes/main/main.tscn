@@ -39,6 +39,7 @@ position_smoothing_speed = 3.0
 
 [node name="PlanetSpawnerGaseous" type="Node2D" parent="."]
 script = ExtResource("7_yyfjg")
+gaseous_theme = 4
 grid_x = 2
 grid_y = 2
 
