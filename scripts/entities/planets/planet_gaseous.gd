@@ -1,9 +1,7 @@
 # scripts/entities/planets/planet_gaseous.gd
 # Specialized implementation for gaseous planets (gas giants)
-extends "res://scripts/entities/planets/planet_base.gd"
+extends PlanetBase
 class_name PlanetGaseous
-
-# Gas giant specific properties - no need for a separate enum since we now use PlanetTheme
 
 func _init() -> void:
 	# Fixed number of moons for all gaseous planets
@@ -49,7 +47,7 @@ func _generate_planet_texture() -> void:
 	# Create a unique identifier that includes the theme
 	var unique_identifier = str(seed_value) + "_theme_" + str(theme_id)
 	
-	if use_texture_cache and PlanetGeneratorBase.texture_cache.gaseous.has(unique_identifier):
+	if use_texture_cache and PlanetGeneratorBase.texture_cache.has("gaseous") and PlanetGeneratorBase.texture_cache.gaseous.has(unique_identifier):
 		# Use cached texture
 		var textures = PlanetGeneratorBase.texture_cache.gaseous[unique_identifier]
 		planet_texture = textures[0]
@@ -61,6 +59,8 @@ func _generate_planet_texture() -> void:
 		
 		# Cache the texture
 		if use_texture_cache:
+			if not PlanetGeneratorBase.texture_cache.has("gaseous"):
+				PlanetGeneratorBase.texture_cache["gaseous"] = {}
 			PlanetGeneratorBase.texture_cache.gaseous[unique_identifier] = textures
 
 # Generate atmosphere texture for gas giants
@@ -72,7 +72,7 @@ func _generate_atmosphere_texture() -> void:
 	
 	var unique_identifier = str(seed_value) + "_atmo_" + str(theme_id)
 	
-	if use_texture_cache and PlanetGeneratorBase.texture_cache.atmospheres.has(unique_identifier):
+	if use_texture_cache and PlanetGeneratorBase.texture_cache.has("atmospheres") and PlanetGeneratorBase.texture_cache.atmospheres.has(unique_identifier):
 		# Use cached atmosphere texture
 		atmosphere_texture = PlanetGeneratorBase.texture_cache.atmospheres[unique_identifier]
 	else:
@@ -82,6 +82,8 @@ func _generate_atmosphere_texture() -> void:
 			
 		# Cache the texture
 		if use_texture_cache:
+			if not PlanetGeneratorBase.texture_cache.has("atmospheres"):
+				PlanetGeneratorBase.texture_cache["atmospheres"] = {}
 			PlanetGeneratorBase.texture_cache.atmospheres[unique_identifier] = atmosphere_texture
 
 # Override to determine appropriate moon types for gas giants
@@ -89,9 +91,9 @@ func _get_moon_type_for_position(moon_position: int, total_moons: int, rng: Rand
 	# Distribute moon types based on position in orbit
 	if moon_position == 0:
 		return MoonType.VOLCANIC  # Innermost moon (volcanic due to tidal forces)
-	elif moon_position < total_moons / 3:
+	elif moon_position < int(float(total_moons) / 3.0):
 		return MoonType.ROCKY  # Inner moons are rocky
-	elif moon_position < 2 * total_moons / 3:
+	elif moon_position < int(2.0 * float(total_moons) / 3.0):
 		# Mix of rocky and ice in the middle region
 		return MoonType.ROCKY if rng.randf() < 0.5 else MoonType.ICY
 	else:
@@ -148,7 +150,7 @@ func _generate_orbital_parameters(moon_count: int, rng: RandomNumberGenerator) -
 			
 			# Step 3: Distribute phase offsets evenly around orbit
 			# This ensures moons start at different positions
-			var phase_offset = (i * TAU / moon_count) + rng.randf_range(-0.1, 0.1)
+			var phase_offset = (i * TAU / float(moon_count)) + rng.randf_range(-0.1, 0.1)
 			
 			# Step 4: Set orbit deviation (for elliptical orbits)
 			# Larger deviation for farther moons

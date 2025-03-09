@@ -1,6 +1,6 @@
 # scripts/entities/planets/planet_terran.gd
 # Specialized implementation for terran planets (rocky planets with solid surfaces)
-extends "res://scripts/entities/planets/planet_base.gd"
+extends PlanetBase
 class_name PlanetTerran
 
 # Additional terran-specific properties
@@ -20,7 +20,7 @@ func _perform_specialized_initialization(params: Dictionary) -> void:
 	# Determine theme based on seed or override
 	var explicit_theme = params.get("theme_override", -1)
 	
-	if explicit_theme >= 0 and explicit_theme < PlanetThemes.GAS_GIANT:
+	if explicit_theme >= 0 and explicit_theme < PlanetThemes.JUPITER:
 		# Use the explicitly requested theme if it's a valid terran theme
 		theme_id = explicit_theme
 	else:
@@ -44,16 +44,14 @@ func _determine_theme(seed_val: int) -> int:
 	var rng = RandomNumberGenerator.new()
 	rng.seed = seed_val
 	
-	# Generate a random terran theme (0 to GAS_GIANT-1)
-	# Note: PlanetThemes.GAS_GIANT is the first non-terran theme in the enum,
-	# so we use it as an upper bound for random generation
-	return rng.randi() % PlanetThemes.GAS_GIANT
+	# Generate a random terran theme (0 to JUPITER-1)
+	return rng.randi() % PlanetThemes.JUPITER
 
 # Generate planet textures
 func _generate_planet_texture() -> void:
 	var unique_identifier = str(seed_value) + "_terran_" + str(theme_id)
 	
-	if use_texture_cache and PlanetGeneratorBase.texture_cache.terran.has(unique_identifier):
+	if use_texture_cache and PlanetGeneratorBase.texture_cache.has("terran") and PlanetGeneratorBase.texture_cache.terran.has(unique_identifier):
 		# Use cached texture
 		var textures = PlanetGeneratorBase.texture_cache.terran[unique_identifier]
 		planet_texture = textures[0]
@@ -65,6 +63,8 @@ func _generate_planet_texture() -> void:
 		
 		# Cache the texture
 		if use_texture_cache:
+			if not PlanetGeneratorBase.texture_cache.has("terran"):
+				PlanetGeneratorBase.texture_cache["terran"] = {}
 			PlanetGeneratorBase.texture_cache.terran[unique_identifier] = textures
 
 # Generate atmosphere texture
@@ -74,7 +74,7 @@ func _generate_atmosphere_texture() -> void:
 	
 	var unique_identifier = str(seed_value) + "_atmo_" + str(theme_id)
 	
-	if use_texture_cache and PlanetGeneratorBase.texture_cache.atmospheres.has(unique_identifier):
+	if use_texture_cache and PlanetGeneratorBase.texture_cache.has("atmospheres") and PlanetGeneratorBase.texture_cache.atmospheres.has(unique_identifier):
 		# Use cached atmosphere texture
 		atmosphere_texture = PlanetGeneratorBase.texture_cache.atmospheres[unique_identifier]
 	else:
@@ -84,6 +84,8 @@ func _generate_atmosphere_texture() -> void:
 			
 		# Cache the texture
 		if use_texture_cache:
+			if not PlanetGeneratorBase.texture_cache.has("atmospheres"):
+				PlanetGeneratorBase.texture_cache["atmospheres"] = {}
 			PlanetGeneratorBase.texture_cache.atmospheres[unique_identifier] = atmosphere_texture
 
 # Override to determine appropriate moon types for terran planets
@@ -97,7 +99,7 @@ func _get_orbit_speed_modifier() -> float:
 
 # Override to return appropriate planet type name
 func _get_planet_type_name() -> String:
-	if theme_id >= 0 and theme_id < PlanetThemes.GAS_GIANT:
+	if theme_id >= 0 and theme_id < PlanetThemes.JUPITER:
 		return get_theme_name()
 	return "Terran"
 

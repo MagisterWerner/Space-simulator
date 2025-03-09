@@ -254,7 +254,7 @@ func _generate_orbital_parameters(moon_count: int, rng: RandomNumberGenerator) -
 	# For multiple moons, use intelligent parameter distribution
 	if moon_count > 1:
 		# Step 1: Calculate distances with spacing to avoid crowding
-		var distance_step = (max_distance - min_distance) / (moon_count)
+		var distance_step = (max_distance - min_distance) / float(moon_count)
 		
 		for i in range(moon_count):
 			# Apply even spacing with a little randomness
@@ -272,7 +272,7 @@ func _generate_orbital_parameters(moon_count: int, rng: RandomNumberGenerator) -
 			
 			# Step 3: Distribute phase offsets evenly around orbit
 			# This ensures moons start at different positions
-			var phase_offset = (i * TAU / moon_count) + rng.randf_range(-0.2, 0.2)
+			var phase_offset = (i * TAU / float(moon_count)) + rng.randf_range(-0.2, 0.2)
 			
 			# Step 4: Set orbit deviation (for elliptical orbits)
 			# Larger deviation for farther moons
@@ -315,5 +315,8 @@ func get_theme_name() -> String:
 		PlanetThemes.DESERT: return "Desert"
 		PlanetThemes.ALPINE: return "Alpine"
 		PlanetThemes.OCEAN: return "Ocean"
-		PlanetThemes.GAS_GIANT: return "Gas Giant"
+		PlanetThemes.JUPITER: return "Jupiter-like"
+		PlanetThemes.SATURN: return "Saturn-like"
+		PlanetThemes.URANUS: return "Uranus-like"
+		PlanetThemes.NEPTUNE: return "Neptune-like"
 		_: return "Unknown"

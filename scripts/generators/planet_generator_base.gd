@@ -76,8 +76,8 @@ static func clean_texture_cache() -> void:
 	var max_cache_items = 50 # Maximum items per category
 	
 	for category in ["terran", "gaseous", "atmospheres"]:
-		if texture_cache[category].size() > max_cache_items:
-			var keys_to_remove = texture_cache[category].keys().slice(0, max_cache_items / 4.0)
+		if texture_cache.has(category) and texture_cache[category].size() > max_cache_items:
+			var keys_to_remove = texture_cache[category].keys().slice(0, int(max_cache_items / 4.0))
 			for key in keys_to_remove:
 				texture_cache[category].erase(key)
 
@@ -199,7 +199,7 @@ static func get_planet_texture(seed_value: int) -> Array:
 	var cache_key = str(seed_value)
 	var cache_category = "terran" if category == PlanetCategory.TERRAN else "gaseous"
 	
-	if texture_cache[cache_category].has(cache_key):
+	if texture_cache.has(cache_category) and texture_cache[cache_category].has(cache_key):
 		return texture_cache[cache_category][cache_key]
 	
 	# Create appropriate generator and generate texture
@@ -212,6 +212,8 @@ static func get_planet_texture(seed_value: int) -> Array:
 	var textures = generator.create_planet_texture(seed_value)
 	
 	# Cache the result
+	if not texture_cache.has(cache_category):
+		texture_cache[cache_category] = {}
 	texture_cache[cache_category][cache_key] = textures
 	
 	# Clean cache if needed
