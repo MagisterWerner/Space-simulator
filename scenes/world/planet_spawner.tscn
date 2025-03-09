@@ -1,7 +1,0 @@
-[gd_scene load_steps=2 format=3 uid="uid://q6awytble7w"]
-
-[ext_resource type="Script" uid="uid://b8hwl3s2lcwfm" path="res://scripts/entities/planet_spawner.gd" id="1_xilyw"]
-
-[node name="PlanetSpawner" type="Node2D"]
-script = ExtResource("1_xilyw")
-terran_theme = 5

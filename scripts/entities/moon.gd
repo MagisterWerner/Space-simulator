@@ -58,17 +58,17 @@ func initialize(params: Dictionary):
 	var cache_key = seed_value * 10 + moon_type
 	
 	# Get texture - either from cache or generate new
-	if use_texture_cache and PlanetSpawner.texture_cache != null:
-		if PlanetSpawner.texture_cache.moons.has(cache_key):
+	if use_texture_cache and PlanetSpawnerBase.texture_cache != null:
+		if PlanetSpawnerBase.texture_cache.moons.has(cache_key):
 			# Use cached texture
-			moon_texture = PlanetSpawner.texture_cache.moons[cache_key]
+			moon_texture = PlanetSpawnerBase.texture_cache.moons[cache_key]
 			pixel_size = MoonGenerator.new().get_moon_size(seed_value)
 		else:
 			# Generate and cache texture
 			var moon_generator = MoonGenerator.new()
 			moon_texture = moon_generator.create_moon_texture(seed_value, moon_type)
 			pixel_size = moon_generator.get_moon_size(seed_value)
-			PlanetSpawner.texture_cache.moons[cache_key] = moon_texture
+			PlanetSpawnerBase.texture_cache.moons[cache_key] = moon_texture
 	else:
 		# Generate without caching
 		var moon_data = _generate_moon_data(seed_value, moon_type)

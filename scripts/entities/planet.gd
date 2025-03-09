@@ -54,9 +54,9 @@ func _ready() -> void:
 	# Set appropriate z-index to render behind player but in front of atmosphere
 	z_index = -10
 
-func _process(delta: float) -> void:
+func _process(_delta: float) -> void:
 	queue_redraw()
-	_update_moons(delta)
+	_update_moons(_delta)
 
 func _draw() -> void:
 	if atmosphere_texture:
@@ -66,7 +66,7 @@ func _draw() -> void:
 	if planet_texture:
 		draw_texture(planet_texture, -Vector2(pixel_size, pixel_size) / 2, Color.WHITE)
 
-func _update_moons(delta: float) -> void:
+func _update_moons(_delta: float) -> void:
 	var time = Time.get_ticks_msec() / 1000.0
 	
 	for moon in moons:
@@ -182,102 +182,31 @@ func initialize(params: Dictionary) -> void:
 		moon_chance = 100  # Gaseous planets ALWAYS have moons
 	
 	# ===== STEP 3: GENERATE PLANET TEXTURES =====
-	# For gas giants, incorporate the type into the seed to ensure different appearances
-	
 	if planet_category == PlanetCategories.GASEOUS:
-		# Add gas giant type to seed to ensure different types look different
-		var adjusted_seed = seed_value + (gas_giant_type * 10000)
+		# Create a gas giant with its specific type
+		var gas_giant_generator = PlanetGeneratorGaseous.new()
+		var textures = gas_giant_generator.generate_planet_texture(seed_value, gas_giant_type)
+		planet_texture = textures[0]
 		
-		# Check if we can use the cache
-		if use_texture_cache and PlanetSpawner.texture_cache != null:
-			var cache_key = str(adjusted_seed) + "_gas_" + str(gas_giant_type)
-			
-			if PlanetSpawner.texture_cache.has(cache_key):
-				planet_texture = PlanetSpawner.texture_cache[cache_key]
-			else:
-				# Create a gas giant planet with type-dependent appearance
-				var planet_generator = PlanetGenerator.new()
-				var textures
-				# If this planet_generator has a create_gas_giant_planet method that accepts a type
-				if planet_generator.has_method("create_gas_giant_planet"):
-					textures = planet_generator.create_gas_giant_planet(adjusted_seed, gas_giant_type)
-				else:
-					# Fallback to standard method but with adjusted seed
-					textures = planet_generator.create_planet_texture(adjusted_seed, theme_id)
-				planet_texture = textures[0]
-				PlanetSpawner.texture_cache[cache_key] = planet_texture
-			
-			# Also handle atmosphere texture
-			if PlanetSpawner.texture_cache.atmospheres.has(adjusted_seed):
-				atmosphere_texture = PlanetSpawner.texture_cache.atmospheres[adjusted_seed]
-			else:
-				# Generate and cache the texture - use the adjusted seed that incorporates gas giant type
-				var atmosphere_generator = AtmosphereGenerator.new()
-				atmosphere_data = atmosphere_generator.generate_atmosphere_data(theme_id, adjusted_seed)
-				atmosphere_texture = atmosphere_generator.generate_atmosphere_texture(
-					theme_id, adjusted_seed, atmosphere_data.color, atmosphere_data.thickness)
-				PlanetSpawner.texture_cache.atmospheres[adjusted_seed] = atmosphere_texture
-			
-			pixel_size = 512  # Gas giants are larger
-		else:
-			# Generate without caching
-			var planet_generator = PlanetGenerator.new()
-			var textures
-			# Try to use gas giant specific method if available
-			if planet_generator.has_method("create_gas_giant_planet"):
-				textures = planet_generator.create_gas_giant_planet(adjusted_seed, gas_giant_type)
-			else:
-				# Fallback to standard method with adjusted seed
-				textures = planet_generator.create_planet_texture(adjusted_seed, theme_id)
-			planet_texture = textures[0]
-			
-			var atmosphere_generator = AtmosphereGenerator.new()
-			atmosphere_data = atmosphere_generator.generate_atmosphere_data(theme_id, adjusted_seed)
-			atmosphere_texture = atmosphere_generator.generate_atmosphere_texture(
-				theme_id, adjusted_seed, atmosphere_data.color, atmosphere_data.thickness)
-			
-			pixel_size = 512  # Gas giants are larger
+		# Generate atmosphere specifically for this gas giant type
+		var atmosphere_generator = AtmosphereGenerator.new()
+		atmosphere_data = atmosphere_generator.generate_gas_giant_atmosphere(seed_value, gas_giant_type)
+		atmosphere_texture = atmosphere_generator.generate_gas_giant_atmosphere_texture(seed_value, gas_giant_type)
+		
+		pixel_size = 512  # Gas giants are larger
 	else:
-		# TERRAN PLANET TEXTURE GENERATION
-		# Standard texture generation for terran planets
-		if use_texture_cache and PlanetSpawner.texture_cache != null:
-			# Try to get planet texture from cache
-			var cache_key = str(seed_value) + "_terran_" + str(theme_id)
-			
-			if PlanetSpawner.texture_cache.planets.has(cache_key):
-				planet_texture = PlanetSpawner.texture_cache.planets[cache_key]
-			else:
-				# Generate and cache the texture
-				var planet_generator = PlanetGenerator.new()
-				var textures = planet_generator.create_planet_texture(seed_value, theme_id)
-				planet_texture = textures[0]
-				PlanetSpawner.texture_cache.planets[cache_key] = planet_texture
-			
-			# Try to get atmosphere texture from cache
-			if PlanetSpawner.texture_cache.atmospheres.has(cache_key):
-				atmosphere_texture = PlanetSpawner.texture_cache.atmospheres[cache_key]
-			else:
-				# Generate and cache the texture
-				var atmosphere_generator = AtmosphereGenerator.new()
-				atmosphere_data = atmosphere_generator.generate_atmosphere_data(theme_id, seed_value)
-				atmosphere_texture = atmosphere_generator.generate_atmosphere_texture(
-					theme_id, seed_value, atmosphere_data.color, atmosphere_data.thickness)
-				PlanetSpawner.texture_cache.atmospheres[cache_key] = atmosphere_texture
-			
-			pixel_size = 256  # Terran planets are smaller
-		else:
-			# Generate without caching
-			var planet_generator = PlanetGenerator.new()
-			var textures = planet_generator.create_planet_texture(seed_value, theme_id)
-			planet_texture = textures[0]
-			
-			var atmosphere_generator = AtmosphereGenerator.new()
-			atmosphere_data = atmosphere_generator.generate_atmosphere_data(theme_id, seed_value)
-			atmosphere_texture = atmosphere_generator.generate_atmosphere_texture(
-				theme_id, seed_value, atmosphere_data.color, atmosphere_data.thickness)
-			
-			pixel_size = 256  # Terran planets are smaller
-	
+		# Generate terran planet
+		var terran_generator = PlanetGeneratorTerran.new()
+		var textures = terran_generator.generate_planet_texture(seed_value, theme_id)
+		planet_texture = textures[0]
+		
+		# Generate atmosphere for terran planet
+		var atmosphere_generator = AtmosphereGenerator.new()
+		atmosphere_data = atmosphere_generator.generate_atmosphere_data(theme_id, seed_value)
+		atmosphere_texture = atmosphere_generator.generate_atmosphere_texture(theme_id, seed_value, atmosphere_data.color, atmosphere_data.thickness)
+		
+		pixel_size = 256  # Terran planets are smaller	
+
 	# ===== STEP 4: SET UP NAME AND FINISH INITIALIZATION =====
 	# Set up name component
 	name_component = get_node_or_null("NameComponent")
@@ -307,8 +236,8 @@ func _get_gas_giant_type_name(type_id: int) -> String:
 		_: return "Unknown"
 
 # Method to get theme name
-func _get_theme_name(theme_id: int) -> String:
-	match theme_id:
+func _get_theme_name(planet_theme_id: int) -> String:
+	match planet_theme_id:
 		PlanetThemes.ARID: return "Arid"
 		PlanetThemes.ICE: return "Ice"
 		PlanetThemes.LAVA: return "Lava"
