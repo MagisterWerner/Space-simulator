@@ -9,8 +9,7 @@ extends PlanetGeneratorBase
 class_name PlanetGeneratorTerran
 
 # Import planet theme enumeration from a shared location
-# Using PlanetThemeEnum to avoid conflict with the global PlanetThemes class
-const PlanetThemeEnum = preload("res://scripts/generators/planet_themes.gd").PlanetTheme
+const PlanetThemes = preload("res://scripts/generators/planet_themes.gd").PlanetTheme
 
 # Noise generation constants
 const TERRAIN_OCTAVES: int = 4
@@ -19,7 +18,7 @@ const PIXEL_RESOLUTION: int = 32
 
 # Theme-based color palettes
 var theme_colors = {
-	PlanetThemeEnum.ARID: [
+	PlanetThemes.ARID: [
 		Color(0.90, 0.70, 0.40),
 		Color(0.82, 0.58, 0.35),
 		Color(0.75, 0.47, 0.30),
@@ -28,7 +27,7 @@ var theme_colors = {
 		Color(0.53, 0.30, 0.16),
 		Color(0.40, 0.23, 0.12)
 	],
-	PlanetThemeEnum.LAVA: [
+	PlanetThemes.LAVA: [
 		Color(1.0, 0.6, 0.0),
 		Color(0.9, 0.4, 0.05),
 		Color(0.8, 0.2, 0.05),
@@ -37,7 +36,7 @@ var theme_colors = {
 		Color(0.4, 0.06, 0.03),
 		Color(0.25, 0.04, 0.02)
 	],
-	PlanetThemeEnum.LUSH: [
+	PlanetThemes.LUSH: [
 		Color(0.20, 0.70, 0.30),
 		Color(0.18, 0.65, 0.25),
 		Color(0.15, 0.60, 0.20),
@@ -47,7 +46,7 @@ var theme_colors = {
 		Color(0.30, 0.45, 0.65),
 		Color(0.25, 0.40, 0.60)
 	],
-	PlanetThemeEnum.ICE: [
+	PlanetThemes.ICE: [
 		Color(0.98, 0.99, 1.0),
 		Color(0.92, 0.97, 1.0),
 		Color(0.85, 0.92, 0.98),
@@ -56,7 +55,7 @@ var theme_colors = {
 		Color(0.45, 0.65, 0.85),
 		Color(0.30, 0.50, 0.75)
 	],
-	PlanetThemeEnum.DESERT: [
+	PlanetThemes.DESERT: [
 		Color(0.88, 0.72, 0.45),
 		Color(0.85, 0.68, 0.40),
 		Color(0.80, 0.65, 0.38),
@@ -66,7 +65,7 @@ var theme_colors = {
 		Color(0.60, 0.45, 0.25),
 		Color(0.48, 0.35, 0.20)
 	],
-	PlanetThemeEnum.ALPINE: [
+	PlanetThemes.ALPINE: [
 		Color(0.98, 0.98, 0.98),
 		Color(0.95, 0.95, 0.97),
 		Color(0.90, 0.90, 0.95),
@@ -76,7 +75,7 @@ var theme_colors = {
 		Color(0.70, 0.80, 0.70),
 		Color(0.65, 0.75, 0.65)
 	],
-	PlanetThemeEnum.OCEAN: [
+	PlanetThemes.OCEAN: [
 		Color(0.10, 0.35, 0.65),
 		Color(0.15, 0.40, 0.70),
 		Color(0.15, 0.45, 0.75),
@@ -98,7 +97,7 @@ func _init():
 func get_random_theme(seed_value: int) -> int:
 	var rng = RandomNumberGenerator.new()
 	rng.seed = seed_value
-	return rng.randi() % PlanetThemeEnum.GAS_GIANT  # 0-6, not including GAS_GIANT
+	return rng.randi() % PlanetThemes.GAS_GIANT  # 0-6, not including GAS_GIANT
 
 # Main function to generate a terran planet texture
 func generate_planet_texture(seed_value: int, theme_id: int = -1) -> Array:
@@ -107,8 +106,8 @@ func generate_planet_texture(seed_value: int, theme_id: int = -1) -> Array:
 		theme_id = get_random_theme(seed_value)
 	
 	# Ensure theme is valid for terran planets (not GAS_GIANT)
-	if theme_id >= PlanetThemeEnum.GAS_GIANT:
-		theme_id = theme_id % PlanetThemeEnum.GAS_GIANT
+	if theme_id >= PlanetThemes.GAS_GIANT:
+		theme_id = theme_id % PlanetThemes.GAS_GIANT
 	
 	# Check cache first
 	var cache_key = str(seed_value) + "_terran_" + str(theme_id)
@@ -227,21 +226,21 @@ func _generate_noise(x: float, y: float, seed_value: int, noise_cache: Dictionar
 # Generate theme-specific features
 func _generate_features(theme_id: int, sphere_uv: Vector2, seed_value: int, noise_cache: Dictionary) -> float:
 	match theme_id:
-		PlanetThemeEnum.OCEAN:
+		PlanetThemes.OCEAN:
 			# Generate island formations
 			return _generate_fbm(sphere_uv.x * 4.0, sphere_uv.y * 4.0, 3, seed_value + 999, noise_cache) * 0.2
 			
-		PlanetThemeEnum.DESERT, PlanetThemeEnum.ARID:
+		PlanetThemes.DESERT, PlanetThemes.ARID:
 			# Generate dune patterns
 			var dunes = _generate_fbm(sphere_uv.x * 10.0, sphere_uv.y * 5.0, 2, seed_value + 888, noise_cache) * 0.15
 			return dunes
 			
-		PlanetThemeEnum.ICE:
+		PlanetThemes.ICE:
 			# Generate crack patterns
 			var cracks = _generate_fbm(sphere_uv.x * 15.0, sphere_uv.y * 15.0, 2, seed_value + 777, noise_cache) * 0.1
 			return cracks
 			
-		PlanetThemeEnum.LAVA:
+		PlanetThemes.LAVA:
 			# Generate lava flow patterns
 			var flows = _generate_fbm(sphere_uv.x * 8.0, sphere_uv.y * 8.0, 3, seed_value + 666, noise_cache) * 0.25
 			return flows

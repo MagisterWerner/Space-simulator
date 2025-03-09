@@ -41,9 +41,11 @@ script = ExtResource("6_hujxm")
 
 [node name="PlanetSpawnerTerran2" type="Node2D" parent="."]
 script = ExtResource("6_hujxm")
+grid_x = 2
 
 [node name="PlanetSpawnerTerran3" type="Node2D" parent="."]
 script = ExtResource("6_hujxm")
+grid_y = 2
 
 [node name="PlanetSpawnerGaseous" type="Node2D" parent="."]
 script = ExtResource("7_yyfjg")
