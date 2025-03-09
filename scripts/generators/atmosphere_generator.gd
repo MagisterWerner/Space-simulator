@@ -32,7 +32,11 @@ const ATMOSPHERE_COLORS = {
 	PlanetThemes.DESERT: Color(0.9, 0.7, 0.4, 0.45),
 	PlanetThemes.ALPINE: Color(0.7, 0.9, 1.0, 0.35),
 	PlanetThemes.OCEAN: Color(0.4, 0.7, 0.9, 0.4),
-	PlanetThemes.GAS_GIANT: Color(0.75, 0.65, 0.45, 0.45)
+	# Updated gaseous planet atmosphere colors for each type
+	PlanetThemes.JUPITER: Color(0.75, 0.70, 0.55, 0.3),  # Beige/tan atmosphere
+	PlanetThemes.SATURN: Color(0.80, 0.78, 0.60, 0.3),   # Golden atmosphere
+	PlanetThemes.URANUS: Color(0.65, 0.85, 0.80, 0.3),   # Cyan/teal atmosphere
+	PlanetThemes.NEPTUNE: Color(0.50, 0.65, 0.75, 0.3)   # Blue atmosphere
 }
 
 # Theme-based atmosphere thickness - CHANGED: All terran planets now use ICE thickness
@@ -44,7 +48,10 @@ const ATMOSPHERE_THICKNESS = {
 	PlanetThemes.DESERT: 0.8,  # Changed to match ICE
 	PlanetThemes.ALPINE: 0.8,  # Changed to match ICE
 	PlanetThemes.OCEAN: 0.8,   # Changed to match ICE
-	PlanetThemes.GAS_GIANT: 0.8  # Same as ICE planets
+	PlanetThemes.JUPITER: 0.8, # Same thickness for all gaseous planets
+	PlanetThemes.SATURN: 0.8,
+	PlanetThemes.URANUS: 0.8,
+	PlanetThemes.NEPTUNE: 0.8
 }
 
 # Texture cache for reuse
@@ -67,20 +74,7 @@ func generate_atmosphere_data(theme: int, seed_value: int) -> Dictionary:
 	# Check planet category for specialized processing
 	var planet_category = PlanetGeneratorBase.get_planet_category(theme)
 	
-	# Special handling for gaseous planets (currently only gas giants)
-	if planet_category == PlanetCategories.GASEOUS:
-		# Match gas giant type to proper atmosphere color (using same seed modulo)
-		var gas_giant_type = seed_value % 4
-		
-		match gas_giant_type:
-			0:  # Jupiter-like (beige/tan tones)
-				base_color = Color(0.75, 0.70, 0.55, 0.3)
-			1:  # Saturn-like (golden tones)
-				base_color = Color(0.80, 0.78, 0.60, 0.3)
-			2:  # Uranus-like (cyan/teal tones)
-				base_color = Color(0.65, 0.85, 0.80, 0.3)
-			3:  # Neptune-like (blue tones)
-				base_color = Color(0.50, 0.65, 0.75, 0.3)
+	# No need for special handling since all gaseous types now have their own colors
 	
 	# Vary the color components slightly
 	var r = clamp(base_color.r + (rng.randf() - 0.5) * color_variation, 0, 1)
@@ -90,9 +84,6 @@ func generate_atmosphere_data(theme: int, seed_value: int) -> Dictionary:
 	
 	var color = Color(r, g, b, a)
 	var thickness = base_thickness * (1.0 + (rng.randf() - 0.5) * thickness_variation)
-	
-	# CHANGED: Removed special thickness adjustments for specific terran planets
-	# to maintain consistent ICE thickness level
 	
 	# For gaseous planets, ensure appropriate atmospheric characteristics
 	if planet_category == PlanetCategories.GASEOUS:
@@ -206,14 +197,34 @@ func generate_atmosphere_texture(theme: int, seed_value: int, color: Color, thic
 			# Create the final color with calculated alpha
 			var final_color = Color(color.r, color.g, color.b, alpha)
 			
-			# Apply special effects for gas giants (subtle bands)
-			if is_gaseous and theme == PlanetThemes.GAS_GIANT and alpha > 0.0:
+			# Apply special effects for gas giants based on type
+			if is_gaseous and alpha > 0.0:
 				var y_normalized = float(y) / atmosphere_size
-				var band_factor = sin(y_normalized * 8.0 * PI + seed_value) * 0.02
 				
-				final_color.r = clamp(color.r + band_factor, 0, 1)
-				final_color.g = clamp(color.g + band_factor * 0.7, 0, 1)
-				final_color.b = clamp(color.b + band_factor * 0.5, 0, 1)
+				match theme:
+					PlanetThemes.JUPITER:
+						# Subtle tan bands
+						var band_factor = sin(y_normalized * 8.0 * PI + seed_value) * 0.02
+						final_color.r = clamp(color.r + band_factor, 0, 1)
+						final_color.g = clamp(color.g + band_factor * 0.7, 0, 1)
+						final_color.b = clamp(color.b + band_factor * 0.5, 0, 1)
+						
+					PlanetThemes.SATURN:
+						# Golden bands with more orange
+						var band_factor = sin(y_normalized * 6.0 * PI + seed_value) * 0.02
+						final_color.r = clamp(color.r + band_factor * 1.2, 0, 1)
+						final_color.g = clamp(color.g + band_factor * 0.9, 0, 1)
+						
+					PlanetThemes.URANUS:
+						# Subtle cyan variations
+						var band_factor = sin(y_normalized * 4.0 * PI + seed_value) * 0.01
+						final_color.g = clamp(color.g + band_factor, 0, 1)
+						final_color.b = clamp(color.b + band_factor, 0, 1)
+						
+					PlanetThemes.NEPTUNE:
+						# Blue variations
+						var band_factor = sin(y_normalized * 5.0 * PI + seed_value) * 0.015
+						final_color.b = clamp(color.b + band_factor * 1.2, 0, 1)
 			
 			image.set_pixel(x, y, final_color)
 	

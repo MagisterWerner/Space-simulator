@@ -3,23 +3,14 @@
 extends "res://scripts/entities/planets/planet_base.gd"
 class_name PlanetGaseous
 
-# Gas giant types (same as in planet_generator_gaseous.gd for consistency)
-enum GasGiantType {
-	JUPITER = 0,  # Jupiter-like (beige/tan tones)
-	SATURN = 1,   # Saturn-like (golden tones)
-	URANUS = 2,   # Uranus-like (cyan/teal tones)
-	NEPTUNE = 3   # Neptune-like (blue tones)
-}
-
-# Gas giant specific properties
-var gas_giant_type: int = GasGiantType.JUPITER
+# Gas giant specific properties - no need for a separate enum since we now use PlanetTheme
 
 func _init() -> void:
-	# CHANGED: Increased number of moons and adjusted orbit distances
+	# Fixed number of moons for all gaseous planets
 	max_moons = 7  # Always use 7 moons
 	moon_chance = 100  # Always have moons
-	min_moon_distance_factor = 2.5  # Increased from 2.0 - Moons orbit farther out
-	max_moon_distance_factor = 3.5  # Increased from 2.8 - Maximum distance increased
+	min_moon_distance_factor = 2.5  # Moons orbit farther out
+	max_moon_distance_factor = 3.5  # Maximum distance increased
 
 # Override specialized initialization for gaseous planets
 func _perform_specialized_initialization(params: Dictionary) -> void:
@@ -27,16 +18,22 @@ func _perform_specialized_initialization(params: Dictionary) -> void:
 	var rng = RandomNumberGenerator.new()
 	rng.seed = seed_value
 	
-	# For gaseous planets, the theme is always GAS_GIANT
-	theme_id = PlanetThemes.GAS_GIANT
+	# For gaseous planets, determine specific theme
+	var theme_override = params.get("theme_override", -1)
 	
-	# Determine gas giant type (Jupiter-like, Saturn-like, etc.)
-	var giant_type_override = params.get("gas_giant_type_override", -1)
-	if giant_type_override >= 0 and giant_type_override < 4:
-		gas_giant_type = giant_type_override
+	# Handle backwards compatibility with old gas_giant_type_override parameter
+	var gas_giant_type_override = params.get("gas_giant_type_override", -1)
+	if gas_giant_type_override >= 0 and gas_giant_type_override < 4:
+		# Map from the old style (0-3) to the new enum values
+		theme_override = PlanetThemes.JUPITER + gas_giant_type_override
+	
+	# Set the theme based on parameters or randomize
+	if theme_override >= PlanetThemes.JUPITER and theme_override <= PlanetThemes.NEPTUNE:
+		# Valid gaseous planet theme provided
+		theme_id = theme_override
 	else:
-		# Choose random type if not specified
-		gas_giant_type = rng.randi() % 4
+		# Choose a random gaseous theme
+		theme_id = PlanetThemes.JUPITER + rng.randi() % 4
 	
 	# Generate or get planet textures
 	_generate_planet_texture()
@@ -49,8 +46,8 @@ func _perform_specialized_initialization(params: Dictionary) -> void:
 
 # Generate gas giant planet texture
 func _generate_planet_texture() -> void:
-	# Create a unique identifier that includes both seed and gas giant type
-	var unique_identifier = str(seed_value) + "_gas_" + str(gas_giant_type)
+	# Create a unique identifier that includes the theme
+	var unique_identifier = str(seed_value) + "_theme_" + str(theme_id)
 	
 	if use_texture_cache and PlanetGeneratorBase.texture_cache.gaseous.has(unique_identifier):
 		# Use cached texture
@@ -59,7 +56,7 @@ func _generate_planet_texture() -> void:
 	else:
 		# Generate new texture using the specialized gaseous generator
 		var generator = PlanetGeneratorGaseous.new()
-		var textures = generator.create_planet_texture(seed_value, gas_giant_type)
+		var textures = generator.create_planet_texture(seed_value, theme_id)
 		planet_texture = textures[0]
 		
 		# Cache the texture
@@ -70,12 +67,10 @@ func _generate_planet_texture() -> void:
 func _generate_atmosphere_texture() -> void:
 	var atmosphere_generator = AtmosphereGenerator.new()
 	
-	# We need to create a seed that incorporates the gas giant type
-	var adjusted_seed = seed_value + (gas_giant_type * 10000)
+	# Pass the correct theme ID directly (no need for adjusted seed)
+	atmosphere_data = atmosphere_generator.generate_atmosphere_data(theme_id, seed_value)
 	
-	atmosphere_data = atmosphere_generator.generate_atmosphere_data(PlanetThemes.GAS_GIANT, adjusted_seed)
-	
-	var unique_identifier = str(adjusted_seed) + "_atmo_gas"
+	var unique_identifier = str(seed_value) + "_atmo_" + str(theme_id)
 	
 	if use_texture_cache and PlanetGeneratorBase.texture_cache.atmospheres.has(unique_identifier):
 		# Use cached atmosphere texture
@@ -83,7 +78,7 @@ func _generate_atmosphere_texture() -> void:
 	else:
 		# Generate new atmosphere texture
 		atmosphere_texture = atmosphere_generator.generate_atmosphere_texture(
-			PlanetThemes.GAS_GIANT, adjusted_seed, atmosphere_data.color, atmosphere_data.thickness)
+			theme_id, seed_value, atmosphere_data.color, atmosphere_data.thickness)
 			
 		# Cache the texture
 		if use_texture_cache:
@@ -91,7 +86,6 @@ func _generate_atmosphere_texture() -> void:
 
 # Override to determine appropriate moon types for gas giants
 func _get_moon_type_for_position(moon_position: int, total_moons: int, rng: RandomNumberGenerator) -> int:
-	# CHANGED: Updated distribution for better variety
 	# Distribute moon types based on position in orbit
 	if moon_position == 0:
 		return MoonType.VOLCANIC  # Innermost moon (volcanic due to tidal forces)
@@ -113,9 +107,9 @@ func _get_orbit_speed_modifier() -> float:
 
 # Override to return appropriate planet type name
 func _get_planet_type_name() -> String:
-	return "Gas Giant"
+	return PlanetGeneratorBase.get_theme_name(theme_id)
 
-# CHANGED: Override _generate_orbital_parameters for better moon spacing
+# Generate evenly distributed orbital parameters for moons
 func _generate_orbital_parameters(moon_count: int, rng: RandomNumberGenerator) -> Array:
 	var params = []
 	
@@ -189,7 +183,7 @@ func _create_moons() -> void:
 	var rng = RandomNumberGenerator.new()
 	rng.seed = seed_value
 	
-	# CHANGED: Always use 7 moons for gaseous planets
+	# Always use 7 moons for gaseous planets
 	var num_moons = 7
 	
 	# Generate orbital parameters for all moons to prevent collisions
@@ -198,7 +192,7 @@ func _create_moons() -> void:
 	# Track created moons
 	moons.clear()
 	
-	# CHANGED: First 3 moons are guaranteed to be one of each type
+	# First 3 moons are guaranteed to be one of each type
 	var guaranteed_types = [MoonType.ROCKY, MoonType.ICY, MoonType.VOLCANIC]
 	for i in range(3):
 		var moon_seed = seed_value + i * 100 + rng.randi() % 1000
@@ -233,7 +227,7 @@ func _create_moons() -> void:
 			"parent_name": planet_name,
 			"use_texture_cache": use_texture_cache,
 			"moon_type": moon_type,
-			"is_gaseous": true  # CHANGED: Mark that this moon belongs to a gaseous planet
+			"is_gaseous": true  # Mark that this moon belongs to a gaseous planet
 		}
 		
 		add_child(moon_instance)
@@ -276,7 +270,7 @@ func _create_moons() -> void:
 			"parent_name": planet_name,
 			"use_texture_cache": use_texture_cache,
 			"moon_type": moon_type,
-			"is_gaseous": true  # CHANGED: Mark that this moon belongs to a gaseous planet
+			"is_gaseous": true  # Mark that this moon belongs to a gaseous planet
 		}
 		
 		add_child(moon_instance)
@@ -285,15 +279,6 @@ func _create_moons() -> void:
 	
 	# Emit signal that the planet has been loaded (after moons are created)
 	emit_signal("planet_loaded", self)
-
-# Get gas giant type name for UI and debugging
-func get_gas_giant_type_name() -> String:
-	match gas_giant_type:
-		GasGiantType.JUPITER: return "Jupiter-like"
-		GasGiantType.SATURN: return "Saturn-like"
-		GasGiantType.URANUS: return "Uranus-like"
-		GasGiantType.NEPTUNE: return "Neptune-like"
-		_: return "Unknown"
 
 # Return planet category
 func get_category() -> int:

@@ -27,8 +27,11 @@ enum PlanetTheme {
 	ALPINE,
 	OCEAN,
 	
-	# Gaseous planets
-	GAS_GIANT  # Currently the only gaseous type
+	# Gaseous planets - UPDATED: Now individual types instead of just GAS_GIANT
+	JUPITER,  # Jupiter-like (beige/tan tones)
+	SATURN,   # Saturn-like (golden tones)
+	URANUS,   # Uranus-like (cyan/teal tones)
+	NEPTUNE   # Neptune-like (blue tones)
 }
 
 # Size constants (accessible to all derived classes)
@@ -63,8 +66,8 @@ func _init() -> void:
 
 # Get the category for a planet theme - kept as static method for compatibility
 static func get_planet_category(theme: int) -> int:
-	# Currently only GAS_GIANT is GASEOUS, everything else is TERRAN
-	if theme == PlanetTheme.GAS_GIANT:
+	# Check if it's a gaseous planet theme
+	if theme >= PlanetTheme.JUPITER:
 		return PlanetCategory.GASEOUS
 	return PlanetCategory.TERRAN
 
@@ -170,6 +173,22 @@ func get_planet_theme(seed_value: int) -> int:
 	var rng = RandomNumberGenerator.new()
 	rng.seed = seed_value
 	return rng.randi() % PlanetTheme.size()
+
+# Get theme name based on theme ID
+static func get_theme_name(theme_id: int) -> String:
+	match theme_id:
+		PlanetTheme.ARID: return "Arid"
+		PlanetTheme.ICE: return "Ice"
+		PlanetTheme.LAVA: return "Lava"
+		PlanetTheme.LUSH: return "Lush"
+		PlanetTheme.DESERT: return "Desert"
+		PlanetTheme.ALPINE: return "Alpine"
+		PlanetTheme.OCEAN: return "Ocean"
+		PlanetTheme.JUPITER: return "Jupiter-like"
+		PlanetTheme.SATURN: return "Saturn-like"
+		PlanetTheme.URANUS: return "Uranus-like"
+		PlanetTheme.NEPTUNE: return "Neptune-like"
+		_: return "Unknown"
 
 # Compatibility method for older code that might call this directly
 static func get_planet_texture(seed_value: int) -> Array:
