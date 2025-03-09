@@ -16,7 +16,7 @@ var gas_giant_type: int = GasGiantType.JUPITER
 
 func _init() -> void:
 	# CHANGED: Increased number of moons and adjusted orbit distances
-	max_moons = 7  # Increased from 5 to 6-7 moons
+	max_moons = 7  # Always use 7 moons
 	moon_chance = 100  # Always have moons
 	min_moon_distance_factor = 2.5  # Increased from 2.0 - Moons orbit farther out
 	max_moon_distance_factor = 3.5  # Increased from 2.8 - Maximum distance increased
@@ -179,7 +179,7 @@ func _generate_orbital_parameters(moon_count: int, rng: RandomNumberGenerator) -
 	
 	return params
 
-# Override moon creation to use correct sizing for gaseous planet moons
+# Override moon creation to guarantee one of each type and use correct sizing
 func _create_moons() -> void:
 	if _moon_scenes.is_empty():
 		push_error("Planet: Moon scenes not available for moon creation")
@@ -189,23 +189,59 @@ func _create_moons() -> void:
 	var rng = RandomNumberGenerator.new()
 	rng.seed = seed_value
 	
-	# Determine if this planet has moons based on chance
-	var has_moons = (rng.randi() % 100 < moon_chance)
-	var num_moons = 0
-	
-	if has_moons:
-		# Calculate how many moons (1 to max_moons)
-		num_moons = rng.randi_range(6, max_moons)  # CHANGED: Minimum 6 moons for gas giants
-	
-	# If no moons, exit early
-	if num_moons <= 0:
-		emit_signal("planet_loaded", self)
-		return
+	# CHANGED: Always use 7 moons for gaseous planets
+	var num_moons = 7
 	
 	# Generate orbital parameters for all moons to prevent collisions
 	var orbital_params = _generate_orbital_parameters(num_moons, rng)
 	
-	for m in range(num_moons):
+	# Track created moons
+	moons.clear()
+	
+	# CHANGED: First 3 moons are guaranteed to be one of each type
+	var guaranteed_types = [MoonType.ROCKY, MoonType.ICY, MoonType.VOLCANIC]
+	for i in range(3):
+		var moon_seed = seed_value + i * 100 + rng.randi() % 1000
+		var moon_type = guaranteed_types[i]
+		
+		# Get the correct moon scene for this type
+		if not _moon_scenes.has(moon_type):
+			push_warning("Planet: Moon type not available: " + str(moon_type) + ", using ROCKY")
+			moon_type = MoonType.ROCKY
+			
+		if not _moon_scenes.has(moon_type):
+			push_error("Planet: No moon scenes available")
+			continue
+			
+		var moon_scene = _moon_scenes[moon_type]
+		if not moon_scene:
+			continue
+			
+		var moon_instance = moon_scene.instantiate()
+		if not moon_instance:
+			continue
+		
+		# Use the pre-calculated orbital parameters
+		var moon_params = {
+			"seed_value": moon_seed,
+			"parent_planet": self,
+			"distance": orbital_params[i].distance,
+			"base_angle": orbital_params[i].base_angle,
+			"orbit_speed": orbital_params[i].orbit_speed,
+			"orbit_deviation": orbital_params[i].orbit_deviation,
+			"phase_offset": orbital_params[i].phase_offset,
+			"parent_name": planet_name,
+			"use_texture_cache": use_texture_cache,
+			"moon_type": moon_type,
+			"is_gaseous": true  # CHANGED: Mark that this moon belongs to a gaseous planet
+		}
+		
+		add_child(moon_instance)
+		moon_instance.initialize(moon_params)
+		moons.append(moon_instance)
+	
+	# Remaining moons have random types (up to total of 7)
+	for m in range(3, num_moons):
 		var moon_seed = seed_value + m * 100 + rng.randi() % 1000
 		
 		# Determine moon type based on position
