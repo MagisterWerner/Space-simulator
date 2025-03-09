@@ -7,8 +7,8 @@ func _init() -> void:
 	# Fixed number of moons for all gaseous planets
 	max_moons = 7  # Always use 7 moons
 	moon_chance = 100  # Always have moons
-	min_moon_distance_factor = 2.5  # Moons orbit farther out
-	max_moon_distance_factor = 3.5  # Maximum distance increased
+	min_moon_distance_factor = 1.3  # Reduced: Moons orbit much closer (was 2.5)
+	max_moon_distance_factor = 1.8  # Reduced: Maximum distance decreased (was 3.5)
 
 # Override specialized initialization for gaseous planets
 func _perform_specialized_initialization(params: Dictionary) -> void:
@@ -127,38 +127,32 @@ func _generate_orbital_parameters(moon_count: int, rng: RandomNumberGenerator) -
 	
 	# For multiple moons, use intelligent parameter distribution
 	if moon_count > 1:
-		# Step 1: Improved distance spacing formula for gaseous planets
-		# Distribute distances with increasing gaps to avoid crowding
+		# Improved spacing formula with REDUCED gaps between moons for gaseous planets
 		for i in range(moon_count):
-			# Use a quadratic distribution to space moons farther as they get farther out
+			# Use a LESS quadratic distribution to space moons closer together
 			var t = float(i) / float(moon_count - 1)
 			
-			# Quadratic spacing gives more room between outer moons
-			var distance_factor = min_distance + (max_distance - min_distance) * (t * t * 0.7 + t * 0.3)
+			# More linear spacing to keep moons visibly grouped
+			var distance_factor = min_distance + (max_distance - min_distance) * (t * 0.6 + t * t * 0.4)
 			
-			# Add some randomness to prevent perfect spacing
-			var jitter_range = 0.05  # 5% jitter maximum 
+			# Reduce the jitter to keep moons in more consistent orbits
+			var jitter_range = 0.03  # Reduced jitter (was 0.05)
 			var jitter = distance_factor * jitter_range * rng.randf_range(-1.0, 1.0)
 			var distance = clamp(distance_factor + jitter, min_distance, max_distance)
 			
-			# Step 2: Calculate orbital speed based on distance (approximating Kepler's law)
-			# Closer moons orbit faster (sqrt relationship)
+			# Calculate orbital speed based on distance
 			var speed_factor = 1.0 / sqrt(distance / min_distance)
-			
-			# Adjust for planet mass
 			var orbit_speed = rng.randf_range(0.15, 0.3) * moon_orbit_factor * speed_factor * _get_orbit_speed_modifier()
 			
-			# Step 3: Distribute phase offsets evenly around orbit
-			# This ensures moons start at different positions
+			# Distribute phase offsets evenly around orbit
 			var phase_offset = (i * TAU / float(moon_count)) + rng.randf_range(-0.1, 0.1)
 			
-			# Step 4: Set orbit deviation (for elliptical orbits)
-			# Larger deviation for farther moons
+			# Set orbit deviation (for elliptical orbits)
 			var orbit_deviation = rng.randf_range(0.05, max_orbit_deviation) * (distance / max_distance)
 			
 			params.append({
 				"distance": distance,
-				"base_angle": 0.0, # Start at same position, but phase_offset will separate them
+				"base_angle": 0.0,
 				"orbit_speed": orbit_speed,
 				"orbit_deviation": orbit_deviation,
 				"phase_offset": phase_offset

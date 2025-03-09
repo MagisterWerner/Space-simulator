@@ -47,19 +47,16 @@ func initialize(params: Dictionary) -> void:
 	if "use_texture_cache" in params:
 		use_texture_cache = params.use_texture_cache
 	
-	# Apply size scale if provided
-	if "size_scale" in params:
-		size_scale = params.size_scale
-	
 	# Store if this moon belongs to a gaseous planet
 	if "is_gaseous" in params:
 		is_gaseous = params.is_gaseous
 	
-	# Generate moon texture
-	_generate_moon_texture()
+	# Apply size scale if provided (but only after we get the correct size)
+	if "size_scale" in params:
+		size_scale = params.size_scale
 	
-	# Apply size scaling after generating texture
-	pixel_size = int(pixel_size * size_scale)
+	# Generate moon texture - will set pixel_size correctly based on is_gaseous
+	_generate_moon_texture()
 	
 	# Set up name component
 	_setup_name_component(params)
