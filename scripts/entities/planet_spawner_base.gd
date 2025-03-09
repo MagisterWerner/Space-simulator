@@ -4,8 +4,8 @@ class_name PlanetSpawnerBase
 extends Node2D
 
 # Import classification constants
-const PlanetThemes = preload("res://scripts/generators/planet_generator.gd").PlanetTheme
-const PlanetCategories = preload("res://scripts/generators/planet_generator.gd").PlanetCategory
+const PlanetThemes = preload("res://scripts/generators/planet_generator_base.gd").PlanetTheme
+const PlanetCategories = preload("res://scripts/generators/planet_generator_base.gd").PlanetCategory
 
 @warning_ignore("unused_signal")
 signal planet_spawned(planet_instance)
@@ -42,8 +42,8 @@ var _initialized: bool = false
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var game_settings: GameSettings = null
 
-# Hardcoded planet scene reference
-var planet_scene: PackedScene = preload("res://scenes/world/planet.tscn")
+# Modified: Using load instead of preload to avoid missing file errors
+var planet_scene = null
 
 # IMPORTANT: Shared texture cache that will be used by all planet spawner types
 # This replaces the original PlanetSpawner.texture_cache
