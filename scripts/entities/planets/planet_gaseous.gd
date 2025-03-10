@@ -3,7 +3,20 @@
 extends PlanetBase
 class_name PlanetGaseous
 
-# Debug options are inherited from PlanetBase
+# Gas giant type constants
+enum GasGiantType {
+	JUPITER = 0,  # Jupiter-like (beige/tan tones)
+	SATURN = 1,   # Saturn-like (golden tones)
+	URANUS = 2,   # Uranus-like (cyan/teal tones)
+	NEPTUNE = 3   # Neptune-like (blue tones)
+}
+
+# Gaseous Planet Type
+@export_enum("Random", "Jupiter-like", "Saturn-like", "Uranus-like", "Neptune-like") 
+var gaseous_theme: int = 0  # 0=Random, 1-4=Specific Gaseous theme
+
+# Note: We don't re-export debug options since they're already in the parent class
+# Instead, we just access them directly when needed
 
 func _init() -> void:
 	# Fixed number of moons for all gaseous planets
@@ -13,15 +26,16 @@ func _init() -> void:
 	# Setup for non-intersecting orbits
 	is_gaseous_planet = true
 	
-	# Redefine distance ranges for better visual separation
-	volcanic_distance_range = Vector2(1.3, 1.6)  # Closest to planet
-	rocky_distance_range = Vector2(1.9, 2.2)     # Middle distance
-	icy_distance_range = Vector2(2.5, 3.0)       # Furthest from planet
+	# Update moon parameters for gas giants
+	# These were moved to _moon_params in the base class, but we can customize them
+	_moon_params.distance_ranges[MoonType.VOLCANIC] = Vector2(1.3, 1.6)  # Closest to planet
+	_moon_params.distance_ranges[MoonType.ROCKY] = Vector2(1.9, 2.2)     # Middle distance
+	_moon_params.distance_ranges[MoonType.ICY] = Vector2(2.5, 3.0)       # Furthest from planet
 	
 	# Adjust speed modifiers for more noticeable differences
-	volcanic_speed_modifier = 1.5   # Faster for close moons
-	rocky_speed_modifier = 1.0      # Normal speed
-	icy_speed_modifier = 0.6        # Slower for distant moons
+	_moon_params.speed_modifiers[MoonType.VOLCANIC] = 1.5   # Faster for close moons
+	_moon_params.speed_modifiers[MoonType.ROCKY] = 1.0      # Normal speed
+	_moon_params.speed_modifiers[MoonType.ICY] = 0.6        # Slower for distant moons
 
 # Override specialized initialization for gaseous planets
 func _perform_specialized_initialization(params: Dictionary) -> void:
@@ -55,14 +69,7 @@ func _perform_specialized_initialization(params: Dictionary) -> void:
 	# Set the pixel size for gaseous planets (larger)
 	pixel_size = 512
 	
-	# IMPORTANT: Make sure debug options are properly set
-	# These values come from params and are already set in the base class
-	# But we need to explicitly check them here as well
-	if params.has("debug_draw_orbits"):
-		debug_draw_orbits = params.debug_draw_orbits
-	
-	if params.has("debug_orbit_line_width"):
-		debug_orbit_line_width = params.debug_orbit_line_width
+	# Note: debug options are already set in the parent class's initialization
 
 # Generate gas giant planet texture
 func _generate_planet_texture() -> void:
@@ -109,19 +116,15 @@ func _generate_atmosphere_texture() -> void:
 			PlanetGeneratorBase.texture_cache.atmospheres[unique_identifier] = atmosphere_texture
 
 # Override to determine appropriate moon types for gas giants with improved distribution
-func _get_moon_type_for_position(moon_position: int, total_moons: int, rng: RandomNumberGenerator) -> int:
-	# Distribute moon types consistently for better visual distinction:
-	# Volcanic moons orbit closest to the planet
-	# Icy moons orbit furthest from the planet
-	# Rocky moons orbit in the middle regions
-	
+# Matches the function signature in the parent class
+func _get_moon_type_for_position(position: int) -> int:
 	# For gaseous planets, we want a clear hierarchy:
-	var volcanic_threshold = int(total_moons * 0.3)  # 30% volcanic (closest)
-	var rocky_threshold = int(total_moons * 0.7)     # 40% rocky (middle)
+	var volcanic_threshold = int(max_moons * 0.3)  # 30% volcanic (closest)
+	var rocky_threshold = int(max_moons * 0.7)     # 40% rocky (middle)
 	
-	if moon_position < volcanic_threshold:
+	if position < volcanic_threshold:
 		return MoonType.VOLCANIC  # Innermost moons (closest to planet)
-	elif moon_position < rocky_threshold:
+	elif position < rocky_threshold:
 		return MoonType.ROCKY     # Middle region moons
 	else:
 		return MoonType.ICY       # Outermost moons (furthest from planet)

@@ -6,16 +6,13 @@ class_name PlanetTerran
 # Additional terran-specific properties
 var terran_subtype: String = ""  # Descriptive subtype (lush, desert, etc)
 
-# Debug options are inherited from PlanetBase
-
 func _init() -> void:
 	# Default max_moons value for terran planets is lower
 	max_moons = 2
 	moon_chance = 40  # 40% chance to have moons
 	
-	# Setup for equatorial orbits
+	# Setup for non-gaseous planets
 	is_gaseous_planet = false
-	orbit_inclination_range = Vector2(0.0, 0.15)  # Slight variation in orbit inclination
 
 # Override specialized initialization for terran planets
 func _perform_specialized_initialization(params: Dictionary) -> void:
@@ -44,15 +41,6 @@ func _perform_specialized_initialization(params: Dictionary) -> void:
 	
 	# Set the pixel size for terran planets
 	pixel_size = 256
-	
-	# IMPORTANT: Make sure debug options are properly set
-	# These values come from params and are already set in the base class
-	# But we need to explicitly check them here as well
-	if params.has("debug_draw_orbits"):
-		debug_draw_orbits = params.debug_draw_orbits
-	
-	if params.has("debug_orbit_line_width"):
-		debug_orbit_line_width = params.debug_orbit_line_width
 
 # Determine theme based on seed - returns a valid terran theme
 func _determine_theme(seed_val: int) -> int:
@@ -104,11 +92,12 @@ func _generate_atmosphere_texture() -> void:
 			PlanetGeneratorBase.texture_cache.atmospheres[unique_identifier] = atmosphere_texture
 
 # Override to determine appropriate moon types for terran planets
-func _get_moon_type_for_position(_moon_position: int, _total_moons: int, _rng: RandomNumberGenerator) -> int:
+# Corrected function signature to match parent class
+func _get_moon_type_for_position(position: int) -> int:
 	# All terran planets now only spawn rocky moons as requested
 	return MoonType.ROCKY
 
-# Override for orbit speed - terran planets have faster moon orbits
+# Override for orbit speed - terran planets have standard moon orbits
 func _get_orbit_speed_modifier() -> float:
 	return 1.0  # Standard speed for terran planets
 
