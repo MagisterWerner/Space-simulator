@@ -10,8 +10,8 @@ enum MoonType {
 }
 
 # CHANGED: Separate moon sizes for terran and gaseous planets
-const TERRAN_MOON_SIZES: Array = [32, 48]   # Smaller moons for terran planets
-const GASEOUS_MOON_SIZES: Array = [192, 256]  # INCREASED: Much larger moons for gaseous planets
+const TERRAN_MOON_SIZES: Array = [32, 40, 48]   # Smaller moons for terran planets
+const GASEOUS_MOON_SIZES: Array = [64, 72, 80]  # Larger moons for gaseous planets
 const PIXEL_RESOLUTION: int = 8
 
 const CUBIC_RESOLUTION: int = 8
