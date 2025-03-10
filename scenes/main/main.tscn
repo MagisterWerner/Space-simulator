@@ -11,14 +11,8 @@ script = ExtResource("1_txjaf")
 
 [node name="GameSettings" type="Node" parent="."]
 script = ExtResource("7_yyfjg_1")
-grid_cell_size = 512
-grid_size = 5
-planet_chance_per_cell = 100
-asteroid_field_chance_per_cell = 0
-station_chance_per_cell = 0
-max_planets = 5
-max_asteroid_fields = 0
-max_stations = 0
+use_random_seed = false
+grid_cell_size = 768
 debug_mode = true
 
 [node name="SpaceBackground" parent="." instance=ExtResource("3_t8g3p")]

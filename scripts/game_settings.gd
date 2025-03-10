@@ -2,7 +2,7 @@
 # =========================
 # Purpose:
 #   Centralized configuration node for all game-wide settings
-#   Handles seed management, grid configuration, player starting position
+#   Handles seed management, grid configuration, planet generation
 #   Provides consistent access to game parameters for all systems
 
 extends Node
@@ -35,8 +35,9 @@ var seed_hash: String = ""
 
 # ---- PLAYER SETTINGS ----
 @export_category("Player Settings")
-## Starting cell coordinates for the player
-@export var player_starting_cell: Vector2i = Vector2i(5, 5)
+## Starting planet type for the player
+@export_enum("Arid", "Ice", "Lava", "Lush", "Desert", "Alpine", "Ocean") 
+var player_starting_planet_type: int = 3  # Default to Lush (index 3)
 ## Starting credits for the player
 @export var player_starting_credits: int = 1000
 ## Starting fuel for the player
@@ -44,20 +45,14 @@ var seed_hash: String = ""
 
 # ---- WORLD GENERATION ----
 @export_category("World Generation")
-## Chance (0-100) of a planet spawning in each cell
-@export var planet_chance_per_cell: int = 70
-## Minimum distance between planets (0=adjacent allowed, 1=one cell gap, etc.)
-@export var planet_proximity: int = 0
-## Chance (0-100) of an asteroid field in each cell
-@export var asteroid_field_chance_per_cell: int = 50
-## Chance (0-100) of a station in each cell
-@export var station_chance_per_cell: int = 30
-## Max planets in the game world
-@export var max_planets: int = 30
-## Max asteroid fields in the game world
-@export var max_asteroid_fields: int = 20
-## Max stations in the game world
-@export var max_stations: int = 10
+## Number of terran planets to generate
+@export var terran_planets: int = 5
+## Number of gaseous planets to generate
+@export var gaseous_planets: int = 1
+## Number of asteroid fields to generate
+@export var asteroid_fields: int = 0
+## Number of space stations to generate
+@export var space_stations: int = 0
 
 # ---- DEBUG OPTIONS ----
 @export_category("Debug Options")
@@ -78,7 +73,7 @@ func _ready() -> void:
 	if debug_mode:
 		print("GameSettings initialized with seed: ", game_seed)
 		print("Grid size: ", grid_size, "x", grid_size, " (", grid_cell_size, " pixels per cell)")
-		print("Player starting cell: ", player_starting_cell)
+		print("Player starting planet type: ", get_planet_type_name(player_starting_planet_type))
 	
 	_initialized = true
 	settings_initialized.emit()
@@ -116,7 +111,9 @@ func generate_random_seed() -> void:
 
 # Get the starting position for the player in world coordinates
 func get_player_starting_position() -> Vector2:
-	return get_cell_world_position(player_starting_cell)
+	# Player starts near the center of the grid
+	var center_cell = Vector2i(grid_size / 2, grid_size / 2)
+	return get_cell_world_position(center_cell)
 
 # Convert grid cell coordinates to world position (center of cell)
 func get_cell_world_position(cell_coords: Vector2i) -> Vector2:
@@ -144,10 +141,6 @@ func is_valid_cell(cell_coords: Vector2i) -> bool:
 		cell_coords.y >= 0 and cell_coords.y < grid_size
 	)
 
-# Get world size in pixels
-func get_world_size() -> Vector2:
-	return Vector2(grid_cell_size * grid_size, grid_cell_size * grid_size)
-
 # ---- DETERMINISTIC RANDOMIZATION ----
 
 # Get a deterministic random value for an object ID
@@ -166,6 +159,27 @@ func get_random_point_in_circle(object_id: int, radius: float, object_subid: int
 	var angle = _rng.randf() * TAU
 	var distance = sqrt(_rng.randf()) * radius  # Square root for uniform distribution
 	return Vector2(cos(angle) * distance, sin(angle) * distance)
+
+# ---- PLANET TYPE HELPERS ----
+
+# Get planet type name from index
+func get_planet_type_name(type_index: int) -> String:
+	match type_index:
+		0: return "Arid"
+		1: return "Ice"
+		2: return "Lava"
+		3: return "Lush"
+		4: return "Desert"
+		5: return "Alpine"
+		6: return "Ocean"
+		_: return "Unknown"
+
+# Convert planet type name to theme ID used in planet generators
+func get_planet_theme_id(type_index: int) -> int:
+	# In PlanetTheme enum:
+	# ARID = 0, ICE = 1, LAVA = 2, LUSH = 3, DESERT = 4, ALPINE = 5, OCEAN = 6
+	# So we can use the type_index directly
+	return type_index
 
 # ---- UTILITY FUNCTIONS ----
 

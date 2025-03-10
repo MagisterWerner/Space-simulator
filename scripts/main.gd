@@ -39,22 +39,19 @@ func _initialize_game() -> void:
 	if world_generator.has_method("generate_starter_world"):
 		var planet_data = world_generator.generate_starter_world()
 		
-		# Update player starting position to the lush planet
-		if planet_data and planet_data.has("lush_planet_cell") and planet_data.lush_planet_cell != Vector2i(-1, -1):
-			# Update settings
-			game_settings.player_starting_cell = planet_data.lush_planet_cell
-			
+		# Position player at the starting planet
+		if planet_data and planet_data.has("player_planet_cell") and planet_data.player_planet_cell != Vector2i(-1, -1):
 			# Calculate world position
-			var lush_planet_position = game_settings.get_cell_world_position(planet_data.lush_planet_cell)
+			var player_planet_position = game_settings.get_cell_world_position(planet_data.player_planet_cell)
 			
-			# Position the player ship near the lush planet
-			player_ship.position = lush_planet_position
+			# Position the player ship near the planet
+			player_ship.position = player_planet_position
 			
 			if game_settings and game_settings.debug_mode:
-				print("Main: Positioned player at lush planet: ", lush_planet_position)
+				print("Main: Positioned player at starting planet: ", player_planet_position)
 		else:
-			# Fallback to screen center if no lush planet
-			player_ship.position = screen_size / 2
+			# Fallback to grid center position if no planet was generated
+			player_ship.position = game_settings.get_player_starting_position()
 	else:
 		# Fallback if generate_starter_world doesn't exist
 		print("WorldGenerator doesn't have generate_starter_world method")
