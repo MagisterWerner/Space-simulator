@@ -26,6 +26,7 @@ max_stations = 0
 debug_mode = true
 
 [node name="SpaceBackground" parent="." instance=ExtResource("3_t8g3p")]
+star_count_far = 5000
 
 [node name="PlayerShip" parent="." instance=ExtResource("2_cayce")]
 z_index = 20
