@@ -75,7 +75,7 @@ const DEFAULT_Z_INDEX: int = -7
 
 #region Lifecycle Methods
 func _ready() -> void:
-	z_index = -10
+	z_index = -10  # Explicitly set planet z-index to -10
 	_load_moon_scenes()
 
 func _process(delta: float) -> void:
@@ -155,7 +155,7 @@ func _draw() -> void:
 					-Vector2(atmosphere_texture.get_width(), atmosphere_texture.get_height()) / 2, 
 					Color.WHITE)
 	
-	# Draw planet
+	# Draw planet - make planet's z-index -10
 	if planet_texture:
 		draw_texture(planet_texture, -Vector2(pixel_size, pixel_size) / 2, Color.WHITE)
 	
@@ -216,18 +216,33 @@ func _update_moons(_delta: float) -> void:
 		if is_gaseous_planet:
 			moon.z_index = _get_moon_property(moon, "z_index")
 		else:
-			# For terran planets, moon passes behind planet when in back half of orbit
-			moon.z_index = -12 if sin(moon_angle) < 0 else -9
+			# Use absolute z-indices, not relative to parent
+			moon.z_as_relative = false
+			
+			if sin(moon_angle) > 0:
+				# Top half of orbit - should be BEHIND planet
+				moon.z_index = 50
+			else:
+				# Bottom half of orbit - should be IN FRONT of planet
+				moon.z_index = -50
 
 func calculate_orbit_position(moon, angle: float) -> Vector2:
 	if is_gaseous_planet:
 		# Perfect circular orbit
 		return Vector2(cos(angle), sin(angle)) * moon.distance
 	else:
-		# Elliptical orbit
+		# Tilted orbit for terran planets
 		var deviation = sin(angle * 2) * moon.orbit_deviation
 		var radius = moon.distance * (1.0 + deviation * 0.3)
-		return Vector2(cos(angle), sin(angle)) * radius
+		
+		# Create a tilted orbit effect by applying a y-axis compression
+		var tilt_factor = 0.4  # Controls how "tilted" the orbit appears
+		
+		# Calculate orbital position with tilt
+		var orbit_x = cos(angle) * radius
+		var orbit_y = sin(angle) * radius * tilt_factor
+		
+		return Vector2(orbit_x, orbit_y)
 #endregion
 
 #region Moon Creation
@@ -437,6 +452,10 @@ func _create_moon(index: int, moon_type: int, params: Array, existing_orbits: Ar
 	var moon_instance = moon_scene.instantiate()
 	if not moon_instance:
 		return null
+	
+	# For terran planets, ensure moon uses absolute z-index
+	if not is_gaseous_planet and moon_instance is Node2D:
+		moon_instance.z_as_relative = false
 		
 	# Create unique moon seed
 	var moon_seed = seed_value + index * 100 + rng.randi() % 1000

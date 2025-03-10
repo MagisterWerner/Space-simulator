@@ -99,7 +99,7 @@ func _get_moon_type_for_position(position: int) -> int:
 
 # Override for orbit speed - terran planets have standard moon orbits
 func _get_orbit_speed_modifier() -> float:
-	return 1.0  # Standard speed for terran planets
+	return 0.8  # Slightly slower speed for terran planets to make tilted orbits more visible
 
 # Override to return appropriate planet type name
 func _get_planet_type_name() -> String:
