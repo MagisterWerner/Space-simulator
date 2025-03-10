@@ -87,8 +87,8 @@ func _spawn_terran_planet() -> Node2D:
 		"grid_x": grid_x,
 		"grid_y": grid_y,
 		"moon_chance": moon_chance,
-		"min_moon_distance_factor": 1.8,
-		"max_moon_distance_factor": 2.5,
+		"min_moon_distance_factor": 2.2,  # INCREASED: from 1.8 to 2.2 for longer orbit
+		"max_moon_distance_factor": 3.0,  # INCREASED: from 2.5 to 3.0 for longer orbit
 		"max_orbit_deviation": 0.15,
 		"moon_orbit_factor": 0.05,
 		"use_texture_cache": use_texture_cache,
