@@ -30,6 +30,7 @@ EntityManager="*res://autoload/entity_manager.gd"
 EventManager="*res://autoload/event_manager.gd"
 ResourceManager="*res://autoload/resource_manager.gd"
 AudioManager="*res://autoload/audio_manager.gd"
+LabelManager="*res://autoload/label_manager.gd"
 
 [category]
 
