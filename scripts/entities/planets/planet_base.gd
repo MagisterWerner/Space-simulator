@@ -533,13 +533,13 @@ func _create_moon(index: int, moon_type: int, params: Array, existing_orbits: Ar
 
 func _resolve_orbit_collision(moon_params: Dictionary, existing_orbits: Array, 
 							  moon_type: int, rng: RandomNumberGenerator) -> bool:
-	# Try several attempts to avoid collision
-	var max_attempts = 5
+	# Increase attempts to try harder to find a valid position
+	var max_attempts = 10  # Increased from 5
 	
 	for attempt in range(max_attempts):
-		# Adjust distance
+		# Adjust distance with more variability on each attempt
 		if is_gaseous_planet:
-			var adjustment = rng.randf_range(20, 40)
+			var adjustment = rng.randf_range(20, 40 + attempt * 10)  # Increase range with each attempt
 			if rng.randf() > 0.5:
 				moon_params.distance += adjustment
 			else:
@@ -549,30 +549,47 @@ func _resolve_orbit_collision(moon_params: Dictionary, existing_orbits: Array,
 			var distance_range = _moon_params.distance_ranges[moon_type]
 			moon_params.distance = clamp(moon_params.distance, 
 									   pixel_size/2 * distance_range.x, 
-									   pixel_size/2 * distance_range.y)
+									   pixel_size/2 * distance_range.y * 1.2)  # Allow 20% beyond normal maximum
 		else:
 			# For terran planets, adjust both distance and deviation
-			var adjustment = rng.randf_range(15, 30)
+			var adjustment = rng.randf_range(15, 30 + attempt * 5)
 			if rng.randf() > 0.5:
 				moon_params.distance += adjustment
 			else:
 				moon_params.distance -= adjustment
 			
-			moon_params.orbit_deviation = rng.randf_range(0.05, max_orbit_deviation)
+			# Increase deviation to find a valid spot
+			moon_params.orbit_deviation = rng.randf_range(0.05, max_orbit_deviation * (1.0 + attempt * 0.1))
 			
-			# Keep within valid range
-			var min_distance = pixel_size/2 * min_moon_distance_factor
-			var max_distance = pixel_size/2 * max_moon_distance_factor
+			# Keep within valid range with some flexibility
+			var min_distance = pixel_size/2 * min_moon_distance_factor * 0.9  # Allow 10% below minimum
+			var max_distance = pixel_size/2 * max_moon_distance_factor * 1.1  # Allow 10% above maximum
 			moon_params.distance = clamp(moon_params.distance, min_distance, max_distance)
 		
-		# Adjust phase
+		# Try different phases - more variation with each attempt
 		moon_params.phase_offset = rng.randf_range(0, TAU)
 		
 		# Check if orbit is now collision-free
 		if not _check_orbit_collision(moon_params, existing_orbits):
 			return true
 	
-	return false
+	# Last resort - try a completely random position within valid ranges
+	if is_gaseous_planet:
+		var distance_range = _moon_params.distance_ranges[moon_type]
+		moon_params.distance = rng.randf_range(
+			pixel_size/2 * distance_range.x,
+			pixel_size/2 * distance_range.y * 1.3  # Allow even more flexibility
+		)
+	else:
+		moon_params.distance = rng.randf_range(
+			pixel_size/2 * min_moon_distance_factor * 0.8,
+			pixel_size/2 * max_moon_distance_factor * 1.2
+		)
+	
+	moon_params.phase_offset = rng.randf() * TAU
+	moon_params.orbit_deviation = rng.randf_range(0, max_orbit_deviation * 1.5)
+	
+	return not _check_orbit_collision(moon_params, existing_orbits)
 #endregion
 
 #region Utility Methods

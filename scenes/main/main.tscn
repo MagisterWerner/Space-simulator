@@ -1,11 +1,9 @@
-[gd_scene load_steps=8 format=3 uid="uid://ddsnaxcqqd81s"]
+[gd_scene load_steps=6 format=3 uid="uid://ddsnaxcqqd81s"]
 
 [ext_resource type="Script" uid="uid://2lae3uvcc1c4" path="res://scripts/main.gd" id="1_txjaf"]
 [ext_resource type="PackedScene" uid="uid://rhas31gnv33u" path="res://scenes/player/player_ship.tscn" id="2_cayce"]
 [ext_resource type="PackedScene" uid="uid://8iqbtdgouxfb" path="res://scenes/backgrounds/space_background.tscn" id="3_t8g3p"]
 [ext_resource type="PackedScene" uid="uid://baujd316t5ufb" path="res://scenes/world/world_grid.tscn" id="5_84hlr"]
-[ext_resource type="Script" uid="uid://ch8pw7k3e1x31" path="res://scripts/entities/planet_spawner_terran.gd" id="6_hujxm"]
-[ext_resource type="Script" uid="uid://dydfgu706e0lc" path="res://scripts/entities/planet_spawner_gaseous.gd" id="7_yyfjg"]
 [ext_resource type="Script" uid="uid://d0faq8wvi3ac0" path="res://scripts/game_settings.gd" id="7_yyfjg_1"]
 
 [node name="Main" type="Node2D"]
@@ -37,27 +35,3 @@ position_smoothing_enabled = true
 position_smoothing_speed = 3.0
 
 [node name="WorldGrid" parent="." instance=ExtResource("5_84hlr")]
-
-[node name="PlanetSpawnerGaseous" type="Node2D" parent="."]
-script = ExtResource("7_yyfjg")
-debug_draw_orbits = true
-grid_x = 2
-grid_y = 2
-moon_orbit_speed_factor = 10.0
-
-[node name="PlanetSpawnerTerran" type="Node2D" parent="."]
-script = ExtResource("6_hujxm")
-debug_draw_orbits = true
-moon_orbit_speed_factor = 10.0
-
-[node name="PlanetSpawnerTerran2" type="Node2D" parent="."]
-script = ExtResource("6_hujxm")
-debug_draw_orbits = true
-grid_y = 2
-moon_orbit_speed_factor = 10.0
-
-[node name="PlanetSpawnerTerran3" type="Node2D" parent="."]
-script = ExtResource("6_hujxm")
-debug_draw_orbits = true
-grid_x = 2
-moon_orbit_speed_factor = 10.0

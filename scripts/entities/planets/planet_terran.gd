@@ -92,8 +92,8 @@ func _generate_atmosphere_texture() -> void:
 			PlanetGeneratorBase.texture_cache.atmospheres[unique_identifier] = atmosphere_texture
 
 # Override to determine appropriate moon types for terran planets
-# Corrected function signature to match parent class
-func _get_moon_type_for_position(position: int) -> int:
+# Fixed: Renamed parameter to moon_position to avoid shadowing
+func _get_moon_type_for_position(_moon_position: int) -> int:
 	# All terran planets now only spawn rocky moons as requested
 	return MoonType.ROCKY
 
