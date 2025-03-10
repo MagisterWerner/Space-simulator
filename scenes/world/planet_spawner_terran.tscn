@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://cc44eggsj67qd"]
+
+[ext_resource type="Script" uid="uid://ch8pw7k3e1x31" path="res://scripts/entities/planet_spawner_terran.gd" id="1_mva7w"]
+
+[node name="PlanetSpawnerTerran" type="Node2D"]
+script = ExtResource("1_mva7w")

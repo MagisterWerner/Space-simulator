@@ -9,7 +9,7 @@ extends Node2D
 @onready var game_settings = $GameSettings
 
 var screen_size: Vector2
-var world_generator: WorldGenerator
+var world_generator = null
 
 func _ready() -> void:
 	screen_size = get_viewport_rect().size
@@ -32,26 +32,32 @@ func _initialize_game() -> void:
 	add_child(world_generator)
 	
 	# Connect world generation signals
-	world_generator.world_generation_completed.connect(_on_world_generation_completed)
+	if world_generator.has_signal("world_generation_completed"):
+		world_generator.world_generation_completed.connect(_on_world_generation_completed)
 	
 	# Generate starter world
-	var planet_data = world_generator.generate_starter_world()
-	
-	# Update player starting position to the lush planet
-	if planet_data.lush_planet_cell != Vector2i(-1, -1):
-		# Update settings
-		game_settings.player_starting_cell = planet_data.lush_planet_cell
+	if world_generator.has_method("generate_starter_world"):
+		var planet_data = world_generator.generate_starter_world()
 		
-		# Calculate world position
-		var lush_planet_position = game_settings.get_cell_world_position(planet_data.lush_planet_cell)
-		
-		# Position the player ship near the lush planet
-		player_ship.position = lush_planet_position
-		
-		if game_settings and game_settings.debug_mode:
-			print("Main: Positioned player at lush planet: ", lush_planet_position)
+		# Update player starting position to the lush planet
+		if planet_data and planet_data.has("lush_planet_cell") and planet_data.lush_planet_cell != Vector2i(-1, -1):
+			# Update settings
+			game_settings.player_starting_cell = planet_data.lush_planet_cell
+			
+			# Calculate world position
+			var lush_planet_position = game_settings.get_cell_world_position(planet_data.lush_planet_cell)
+			
+			# Position the player ship near the lush planet
+			player_ship.position = lush_planet_position
+			
+			if game_settings and game_settings.debug_mode:
+				print("Main: Positioned player at lush planet: ", lush_planet_position)
+		else:
+			# Fallback to screen center if no lush planet
+			player_ship.position = screen_size / 2
 	else:
-		# Fallback to screen center if no lush planet
+		# Fallback if generate_starter_world doesn't exist
+		print("WorldGenerator doesn't have generate_starter_world method")
 		player_ship.position = screen_size / 2
 	
 	# Camera follows player
