@@ -68,7 +68,7 @@ func _create_label_container() -> void:
 	_container.add_child(_label)
 
 # Base setup method - override in subclasses
-func setup(_param1 = null, _param2 = null, _param3 = null, _param4 = null) -> void:
+func setup(param1 = null, param2 = null, param3 = null, param4 = null) -> void:
 	_timer = 0.0
 	_fading_out = false
 	modulate.a = 0.0  # Start invisible and fade in

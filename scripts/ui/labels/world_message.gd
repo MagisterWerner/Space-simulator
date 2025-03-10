@@ -65,21 +65,39 @@ var _target_position: Vector2 = Vector2.ZERO
 var _start_slide_position: Vector2 = Vector2.ZERO
 
 # Override setup with message-specific initialization
-func setup(message: String, duration: float = 3.0, type: String = "default", position: String = "center", viewport_size: Vector2 = Vector2.ZERO) -> void:
+func setup(param1 = null, param2 = null, param3 = null, param4 = null) -> void:
 	# Configure lifetime
-	lifetime = duration
+	lifetime = 3.0
 	fade_in_time = 0.3
 	fade_out_time = 0.5
+	
+	# Extract parameters
+	var message = ""
+	if param1 is String:
+		message = param1
+	
+	var duration = 3.0
+	if param2 is float or param2 is int:
+		duration = float(param2)
+		lifetime = duration
+	
+	var type = "default"
+	if param3 is String:
+		type = param3
+	
+	var position = "center"
+	if param4 is String:
+		position = param4
+	elif param4 is Vector2:
+		_viewport_size = param4
 	
 	# Store the message and type
 	_message_text = message
 	_message_type = type
 	screen_position = position
 	
-	# Store viewport size
-	if viewport_size != Vector2.ZERO:
-		_viewport_size = viewport_size
-	else:
+	# Get viewport size if not provided
+	if _viewport_size == Vector2.ZERO:
 		_viewport_size = get_viewport_rect().size
 	
 	# Create or update the visual elements
@@ -103,7 +121,7 @@ func setup(message: String, duration: float = 3.0, type: String = "default", pos
 				global_position.y += slide_distance
 	
 	# Initialize base label
-	super.setup(message, duration, type)
+	super.setup(message, duration, type, position)
 
 # Create the message visuals
 func _create_message_visuals() -> void:

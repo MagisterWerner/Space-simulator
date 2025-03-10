@@ -45,11 +45,28 @@ var _type_string: String = "default"
 var _metadata: Dictionary = {}
 
 # Override setup with value-specific initialization
-func setup(position: Vector2, value: float, type: String = "default", metadata = null) -> void:
+func setup(param1 = null, param2 = null, param3 = null, param4 = null) -> void:
 	# Configure lifetime
 	lifetime = 2.0
 	fade_in_time = 0.1
 	fade_out_time = 0.5
+	
+	# Extract parameters
+	var pos_vector = Vector2.ZERO
+	if param1 is Vector2:
+		pos_vector = param1
+	
+	var value = 0.0
+	if param2 is float or param2 is int:
+		value = float(param2)
+	
+	var type = "default"
+	if param3 is String:
+		type = param3
+	
+	var metadata = null
+	if param4 != null:
+		metadata = param4
 	
 	# Store the value and type
 	_value = value
@@ -63,7 +80,7 @@ func setup(position: Vector2, value: float, type: String = "default", metadata =
 	modulate.a = 0.0  # Start invisible
 	
 	# Store start position
-	_start_position = position
+	_start_position = pos_vector
 	
 	# Add random horizontal offset
 	var h_offset = randf_range(-random_horizontal, random_horizontal)
@@ -76,10 +93,10 @@ func setup(position: Vector2, value: float, type: String = "default", metadata =
 	_configure_appearance()
 	
 	# Set initial position
-	global_position = position
+	global_position = pos_vector
 	
 	# Initialize base label
-	super.setup(position, value, type)
+	super.setup(pos_vector, value, type, metadata)
 
 # Create the floating number visual
 func _create_floating_number() -> void:
@@ -122,10 +139,10 @@ func _configure_appearance() -> void:
 	# Apply drop shadow or outline
 	if _value >= 100:
 		# Make larger values more prominent
-		_label.add_theme_font_size_override("font_size", font_size * 1.5)
+		_label.add_theme_font_size_override("font_size", int(font_size * 1.5))
 		scale = Vector2.ONE * scale_start * 1.2
 	elif _value >= 50:
-		_label.add_theme_font_size_override("font_size", font_size * 1.2)
+		_label.add_theme_font_size_override("font_size", int(font_size * 1.2))
 		scale = Vector2.ONE * scale_start * 1.1
 
 # Get type color
@@ -169,7 +186,7 @@ func _format_value(value: float) -> String:
 	else:
 		# Show decimal point only for specific types
 		if _type_string == "healing" and abs(value) < 10 and value != int(value):
-			formatted += str(stepify(value, 0.1))
+			formatted += str(snapped(value, 0.1))
 		else:
 			formatted += str(int(value))
 	

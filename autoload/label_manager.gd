@@ -393,12 +393,12 @@ func _get_entity_name(entity: Node) -> String:
 		entity_name = entity.get_planet_name()
 	elif entity.has_method("get_station_name"):
 		entity_name = entity.get_station_name()
-	elif entity.has_property("planet_name"):
-		entity_name = entity.planet_name
-	elif entity.has_property("moon_name"):
-		entity_name = entity.moon_name
-	elif entity.has_property("station_name"):
-		entity_name = entity.station_name
+	elif entity.get("planet_name") != null:
+		entity_name = entity.get("planet_name")
+	elif entity.get("moon_name") != null:
+		entity_name = entity.get("moon_name")
+	elif entity.get("station_name") != null:
+		entity_name = entity.get("station_name")
 	else:
 		# Use node name as fallback
 		entity_name = entity.name
@@ -428,8 +428,8 @@ func _on_enemy_destroyed(enemy, _destroyer) -> void:
 		var value = 100  # Default value
 		if enemy.has_method("get_score_value"):
 			value = enemy.get_score_value()
-		elif enemy.has_property("score_value"):
-			value = enemy.score_value
+		elif enemy.get("score_value") != null:
+			value = enemy.get("score_value")
 		
 		# Show score number
 		create_floating_number(enemy.global_position, value, "score")
@@ -481,7 +481,7 @@ func create_entity_label(entity: Node, label_text: String, entity_type: String =
 		debug_print("Warning: Entity label pool exhausted")
 		return null
 	
-	# Set up the label
+	# Set up the label with compatible parameters
 	if label.has_method("setup"):
 		label.setup(entity, label_text, entity_type)
 		label.visible = true

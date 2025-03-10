@@ -96,9 +96,20 @@ func _create_entity_label_layout() -> void:
 	_container.add_child(_distance_label)
 
 # Setup the entity label
-func setup(entity: Node, label_text: String, entity_type: String = "entity") -> void:
+func setup(param1 = null, param2 = null, param3 = null, param4 = null) -> void:
 	# Call parent setup
-	super.setup(entity, label_text, entity_type)
+	super.setup(param1, param2, param3, param4)
+	
+	# Extract parameters
+	var entity = param1 as Node
+	var label_text = param2 as String
+	var entity_type = "entity"
+	if param3 != null and param3 is String:
+		entity_type = param3
+	
+	# Skip if invalid parameters
+	if not entity or not label_text:
+		return
 	
 	# Store entity reference
 	_entity = entity
@@ -118,10 +129,10 @@ func setup(entity: Node, label_text: String, entity_type: String = "entity") -> 
 			type_display = entity.get_planet_type()
 		elif entity.has_method("get_station_type"):
 			type_display = entity.get_station_type()
-		elif entity.has_property("planet_type"):
-			type_display = entity.planet_type
-		elif entity.has_property("station_type"):
-			type_display = entity.station_type
+		elif entity.get("planet_type") != null:
+			type_display = entity.get("planet_type")
+		elif entity.get("station_type") != null:
+			type_display = entity.get("station_type")
 		
 		_info_label.text = type_display
 	
