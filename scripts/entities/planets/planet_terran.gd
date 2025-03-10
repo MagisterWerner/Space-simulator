@@ -190,7 +190,8 @@ func _update_moons(delta: float) -> void:
 		var base_y = sin(moon_angle) * distance
 		
 		# Apply tilt transformation if this moon uses tilted orbits
-		if "orbit_is_tilted" in moon and moon.orbit_is_tilted:
+		# FIXED: Use get() instead of has() to check for property
+		if moon.get("orbit_is_tilted", false):
 			# Apply a 3D-like projection by modifying the y component based on tilt
 			var tilt_effect = sin(moon_angle - moon.tilt_angle) * moon.tilt_amount
 			base_y *= (1.0 - tilt_effect)
@@ -205,7 +206,8 @@ func _update_moons(delta: float) -> void:
 		# When moon is in the "back half" of its orbit and tilted down, it should appear behind the planet
 		var is_behind = false
 		
-		if moon.has("orbit_is_tilted") and moon.orbit_is_tilted:
+		# FIXED: Use get() instead of has() to check for property
+		if moon.get("orbit_is_tilted", false):
 			# Calculate if moon is behind based on angle and tilt
 			var relative_angle = fmod(moon_angle - moon.tilt_angle + TAU, TAU)
 			var y_factor = sin(moon_angle)
