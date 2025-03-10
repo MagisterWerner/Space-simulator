@@ -4,9 +4,19 @@
 #   Manages in-game labels and text indicators
 #   Handles pooling of label objects for performance
 #   Provides API for creating various label types
+#
+# Examples:
+#   Create a label for a planet or station
+#    LabelManager.create_entity_label(entity, "Planet Name", "planet")
+#
+#   Show damage or other numeric values
+#    LabelManager.create_floating_number(position, 50, "damage")
+#
+#   Display important messages
+#   LabelManager.show_world_message("Mission Complete!", 3.0, "success")
+# ========================
 
 extends Node
-class_name LabelManager
 
 # Configuration properties
 @export_category("Label Settings")
