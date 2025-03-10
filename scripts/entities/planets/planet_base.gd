@@ -70,7 +70,7 @@ var _moon_params = {
 }
 
 # Common constants
-const ORBIT_COLLISION_MARGIN: float = 20.0
+const ORBIT_COLLISION_MARGIN: float = 32.0  # Increased from 20.0 to 32.0 for more spacing
 const DEFAULT_Z_INDEX: int = -7
 
 #region Lifecycle Methods
@@ -268,9 +268,51 @@ func _create_moons() -> void:
 func _calculate_moon_distribution(num_moons: int) -> Dictionary:
 	# Distribution of moon types depends on planet type
 	if is_gaseous_planet:
-		var volcanic_count = max(1, int(float(num_moons) * 0.3))
-		var rocky_count = max(1, int(float(num_moons) * 0.3))
-		var icy_count = num_moons - volcanic_count - rocky_count
+		# New distribution that ensures 1-2 of each moon type for gaseous planets
+		var rng = RandomNumberGenerator.new()
+		rng.seed = seed_value
+		
+		# Determine how many of each type (1-2)
+		var volcanic_count = rng.randi_range(1, 2)
+		var rocky_count = rng.randi_range(1, 2)
+		var icy_count = rng.randi_range(1, 2)
+		
+		# Calculate total, but if it exceeds max_moons, we'll need to adjust
+		var total_moons = volcanic_count + rocky_count + icy_count
+		
+		# Adjust if we exceed max_moons
+		if total_moons > max_moons:
+			# Ensure we have at least 1 of each type
+			volcanic_count = 1
+			rocky_count = 1
+			icy_count = 1
+			
+			# Distribute any remaining slots
+			var remaining = max_moons - 3
+			var types_to_increase = []
+			
+			# Based on seed, prioritize different moon types
+			var priority_seed = (seed_value % 3)
+			if priority_seed == 0:
+				types_to_increase = [MoonType.VOLCANIC, MoonType.ROCKY, MoonType.ICY]
+			elif priority_seed == 1:
+				types_to_increase = [MoonType.ROCKY, MoonType.ICY, MoonType.VOLCANIC]
+			else:
+				types_to_increase = [MoonType.ICY, MoonType.VOLCANIC, MoonType.ROCKY]
+			
+			# Add remaining slots based on priority
+			for type in types_to_increase:
+				if remaining <= 0:
+					break
+				
+				if type == MoonType.VOLCANIC:
+					volcanic_count += 1
+				elif type == MoonType.ROCKY:
+					rocky_count += 1
+				elif type == MoonType.ICY:
+					icy_count += 1
+				
+				remaining -= 1
 		
 		return {
 			MoonType.VOLCANIC: volcanic_count,

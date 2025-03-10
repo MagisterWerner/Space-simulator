@@ -19,15 +19,14 @@ var gaseous_theme: int = 0  # 0=Random, 1-4=Specific Gaseous theme
 # Instead, we just access them directly when needed
 
 func _init() -> void:
-	# Fixed number of moons for all gaseous planets
-	max_moons = 7  # Always use 7 moons
+	# Fixed number of moons for all gaseous planets - must be at least 6 to fit 2 of each moon type
+	max_moons = 6  # Increased from 7 to ensure we can fit 2 of each moon type (total of 6)
 	moon_chance = 100  # Always have moons
 	
 	# Setup for non-intersecting orbits
 	is_gaseous_planet = true
 	
-	# Update moon parameters for gas giants
-	# These were moved to _moon_params in the base class, but we can customize them
+	# Update moon parameters for gas giants - make distance ranges more distinct with extra space
 	_moon_params.distance_ranges[MoonType.VOLCANIC] = Vector2(1.3, 1.6)  # Closest to planet
 	_moon_params.distance_ranges[MoonType.ROCKY] = Vector2(1.9, 2.2)     # Middle distance
 	_moon_params.distance_ranges[MoonType.ICY] = Vector2(2.5, 3.0)       # Furthest from planet
@@ -118,9 +117,9 @@ func _generate_atmosphere_texture() -> void:
 # Override to determine appropriate moon types for gas giants with improved distribution
 # Matches the function signature in the parent class
 func _get_moon_type_for_position(position: int) -> int:
-	# For gaseous planets, we want a clear hierarchy:
-	var volcanic_threshold = int(max_moons * 0.3)  # 30% volcanic (closest)
-	var rocky_threshold = int(max_moons * 0.7)     # 40% rocky (middle)
+	# For gaseous planets, we now have a guaranteed distribution
+	var volcanic_threshold = 2  # First 2 positions are volcanic
+	var rocky_threshold = 4     # Next 2 positions are rocky
 	
 	if position < volcanic_threshold:
 		return MoonType.VOLCANIC  # Innermost moons (closest to planet)
