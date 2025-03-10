@@ -96,8 +96,8 @@ func generate_starter_world() -> Dictionary:
 	_proximity_excluded_cells.clear()
 	_planet_spawners.clear()
 	
-	# Generate the player's starting planet first
-	var player_planet_cell = generate_starting_planet()
+	# Generate first terran planet randomly (this will be player's starting planet)
+	var player_planet_cell = generate_random_terran_planet(1)  # 1 is proximity value
 	
 	# Generate gaseous planets - respect count from GameSettings
 	var total_gaseous_planets = game_settings.gaseous_planets if game_settings else 1
@@ -111,12 +111,21 @@ func generate_starter_world() -> Dictionary:
 		for i in range(1, total_gaseous_planets):
 			generate_gaseous_planet(2)
 	
+	# Calculate maximum planets that could fit in the grid
+	var max_planets = calculate_max_planets()
+	
 	# Generate remaining terran planets - respect count from GameSettings
 	var total_terran_planets = game_settings.terran_planets if game_settings else 5
 	
-	# We already spawned the player's planet, so generate the remaining ones
+	# We already spawned the first terran planet, so generate the remaining ones
 	for i in range(1, total_terran_planets):
-		generate_random_terran_planet(1)
+		# Only proceed if we haven't hit the maximum
+		if _entity_counts.terran_planet + _entity_counts.gaseous_planet < max_planets:
+			generate_random_terran_planet(1)
+		else:
+			if game_settings and game_settings.debug_mode:
+				print("WorldGenerator: Maximum planet limit reached, stopping planet generation.")
+			break
 	
 	# Generate asteroid fields
 	var asteroid_count = game_settings.asteroid_fields if game_settings else 0
@@ -137,6 +146,7 @@ func generate_starter_world() -> Dictionary:
 		print("- Player planet at cell: ", player_planet_cell)
 		print("- Total terran planets: ", _entity_counts.terran_planet, "/", total_terran_planets)
 		print("- Total gaseous planets: ", _entity_counts.gaseous_planet, "/", total_gaseous_planets)
+		print("- Maximum possible planets: ", max_planets)
 		print("- Total asteroid fields: ", _entity_counts.asteroid_field)
 		print("- Total stations: ", _entity_counts.station)
 	
@@ -146,81 +156,18 @@ func generate_starter_world() -> Dictionary:
 		"gaseous_planet_cell": gaseous_planet_cell
 	}
 
-# Generate the player's starting planet
-func generate_starting_planet() -> Vector2i:
-	# Check if we have the required scene
-	if not planet_spawner_terran_scene:
-		push_error("WorldGenerator: planet_spawner_terran_scene not loaded")
-		return Vector2i(-1, -1)
+# Calculate maximum number of planets that could fit in the grid given proximity rules
+func calculate_max_planets() -> int:
+	# Start with total number of cells in the grid
+	var total_cells = game_settings.grid_size * game_settings.grid_size if game_settings else 25
+	var available_cells = total_cells
 	
-	# Choose a central grid cell for the player's starting planet
-	var center_cell = Vector2i(game_settings.grid_size / 2, game_settings.grid_size / 2)
+	# Count excluded cells
+	available_cells -= _proximity_excluded_cells.size()
 	
-	# Set up the cell seed
-	var cell_seed = 0
-	if game_settings:
-		cell_seed = game_settings.get_seed() + (center_cell.x * 1000) + (center_cell.y * 100)
-	else:
-		cell_seed = _rng.randi()
-	var seed_offset = cell_seed - (game_settings.get_seed() if game_settings else 0)
+	# Return planets already placed plus available cell count
+	return _entity_counts.terran_planet + _entity_counts.gaseous_planet + available_cells
 	
-	# Create a planet spawner for this cell
-	var planet_spawner = planet_spawner_terran_scene.instantiate()
-	
-	# Get the selected planet type from GameSettings
-	var planet_type = game_settings.player_starting_planet_type + 1  # +1 because 0 is Random
-	
-	# Configure the planet spawner
-	add_child(planet_spawner)
-	planet_spawner.terran_theme = planet_type
-	planet_spawner.set_grid_position(center_cell.x, center_cell.y)
-	planet_spawner.use_grid_position = true
-	planet_spawner.local_seed_offset = seed_offset
-	
-	# Spawn the planet
-	var planet = planet_spawner.spawn_planet()
-	
-	if not planet:
-		push_error("WorldGenerator: Failed to spawn player starting planet")
-		planet_spawner.queue_free()
-		return Vector2i(-1, -1)
-	
-	# Connect to planet spawner signals if available
-	if planet_spawner.has_signal("planet_spawned"):
-		if not planet_spawner.is_connected("planet_spawned", _on_planet_spawned):
-			planet_spawner.planet_spawned.connect(_on_planet_spawned)
-	
-	# Initialize cell tracking if needed
-	var cell_key = get_cell_key(center_cell)
-	if not _generated_cells.has(cell_key):
-		_generated_cells[cell_key] = {
-			"planets": [],
-			"asteroid_fields": [],
-			"stations": []
-		}
-	
-	# Store the spawner
-	_planet_spawners[cell_key] = planet_spawner
-	
-	# Track this planet
-	_generated_cells[cell_key].planets.append(planet_spawner)
-	_entity_counts.terran_planet += 1
-	
-	# Mark proximity cells as excluded
-	mark_proximity_cells(center_cell, 1, _proximity_excluded_cells)
-	
-	# Mark this cell as having a planet
-	_planet_cells.append(center_cell)
-	
-	# Emit signal
-	entity_generated.emit(planet, "terran_planet", center_cell)
-	
-	if game_settings and game_settings.debug_mode:
-		print("WorldGenerator: Generated player starting planet at cell ", center_cell)
-		print("  Planet type: ", game_settings.get_planet_type_name(game_settings.player_starting_planet_type))
-	
-	return center_cell
-
 # Generate a gaseous planet in a random grid cell
 func generate_gaseous_planet(proximity: int = 2) -> Vector2i:
 	# Check if we have the required scene
@@ -357,7 +304,8 @@ func generate_random_terran_planet(proximity: int = 1) -> Vector2i:
 					continue
 				candidate_cells.append(cell)
 	
-	# Shuffle the cells for random distribution
+	# Shuffle the cells based on seed to ensure deterministic but random placement
+	_rng.seed = game_settings.get_seed() if game_settings else 0
 	candidate_cells.shuffle()
 	
 	# Try to place a terran planet in one of the shuffled cells
@@ -377,11 +325,17 @@ func generate_random_terran_planet(proximity: int = 1) -> Vector2i:
 		# Create a planet spawner for this cell
 		var planet_spawner = planet_spawner_terran_scene.instantiate()
 		
-		# Random planet type (ensure we don't duplicate the starting planet type)
-		_rng.seed = cell_seed
-		var terran_type = _rng.randi_range(0, 6)  # 0-6 are the terran types
-		if game_settings and terran_type == game_settings.player_starting_planet_type:
-			terran_type = (terran_type + 1) % 7  # Skip to next type
+		# Get the appropriate planet type
+		var terran_type = 0
+		if _entity_counts.terran_planet == 0 and game_settings:
+			# First terran planet (player's starting planet)
+			terran_type = game_settings.player_starting_planet_type
+		else:
+			# Random planet type
+			_rng.seed = cell_seed
+			terran_type = _rng.randi_range(0, 6)  # 0-6 are the terran types
+			if game_settings and terran_type == game_settings.player_starting_planet_type:
+				terran_type = (terran_type + 1) % 7  # Skip to next type
 		
 		# Add to scene and configure
 		add_child(planet_spawner)
@@ -432,6 +386,8 @@ func generate_random_terran_planet(proximity: int = 1) -> Vector2i:
 		
 		if game_settings and game_settings.debug_mode:
 			print("WorldGenerator: Generated terran planet at cell ", cell)
+			if _entity_counts.terran_planet == 1:
+				print("WorldGenerator: This is the player's starting planet (", game_settings.get_planet_type_name(terran_type), ")")
 		
 		return cell
 	

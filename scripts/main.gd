@@ -44,7 +44,7 @@ func _initialize_game() -> void:
 			# Calculate world position
 			var player_planet_position = game_settings.get_cell_world_position(planet_data.player_planet_cell)
 			
-			# Position the player ship near the planet
+			# Position the player ship at the planet
 			player_ship.position = player_planet_position
 			
 			if game_settings and game_settings.debug_mode:
