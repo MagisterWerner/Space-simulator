@@ -47,14 +47,17 @@ moon_orbit_speed_factor = 10.0
 
 [node name="PlanetSpawnerTerran" type="Node2D" parent="."]
 script = ExtResource("6_hujxm")
+debug_draw_orbits = true
 moon_orbit_speed_factor = 10.0
 
 [node name="PlanetSpawnerTerran2" type="Node2D" parent="."]
 script = ExtResource("6_hujxm")
+debug_draw_orbits = true
 grid_y = 2
 moon_orbit_speed_factor = 10.0
 
 [node name="PlanetSpawnerTerran3" type="Node2D" parent="."]
 script = ExtResource("6_hujxm")
+debug_draw_orbits = true
 grid_x = 2
 moon_orbit_speed_factor = 10.0

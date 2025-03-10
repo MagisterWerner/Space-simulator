@@ -6,6 +6,8 @@ class_name PlanetTerran
 # Additional terran-specific properties
 var terran_subtype: String = ""  # Descriptive subtype (lush, desert, etc)
 
+# Debug options are inherited from PlanetBase
+
 func _init() -> void:
 	# Default max_moons value for terran planets is lower
 	max_moons = 2
@@ -42,6 +44,15 @@ func _perform_specialized_initialization(params: Dictionary) -> void:
 	
 	# Set the pixel size for terran planets
 	pixel_size = 256
+	
+	# IMPORTANT: Make sure debug options are properly set
+	# These values come from params and are already set in the base class
+	# But we need to explicitly check them here as well
+	if params.has("debug_draw_orbits"):
+		debug_draw_orbits = params.debug_draw_orbits
+	
+	if params.has("debug_orbit_line_width"):
+		debug_orbit_line_width = params.debug_orbit_line_width
 
 # Determine theme based on seed - returns a valid terran theme
 func _determine_theme(seed_val: int) -> int:

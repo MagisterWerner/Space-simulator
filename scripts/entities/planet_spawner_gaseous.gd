@@ -15,7 +15,7 @@ enum GasGiantType {
 @export_enum("Random", "Jupiter-like", "Saturn-like", "Uranus-like", "Neptune-like") 
 var gaseous_theme: int = 0  # 0=Random, 1-4=Specific Gaseous theme
 
-# Debug Options
+# Debug Options - Already defined here, just reorganizing for consistency
 @export_category("Debug Options")
 @export var debug_draw_orbits: bool = false
 @export var debug_orbit_line_width: float = 1.0
@@ -93,13 +93,16 @@ func _spawn_gaseous_planet() -> Node2D:
 		"moon_orbit_factor": 0.05,
 		"use_texture_cache": use_texture_cache,
 		"theme_override": PlanetThemes.JUPITER,  # Force gas giant theme
-		"category_override": PlanetGeneratorBase.PlanetCategory.GASEOUS,  # Force gaseous category
+		"category_override": PlanetCategories.GASEOUS,  # Force gaseous category
 		"moon_orbit_speed_factor": moon_orbit_speed_factor,  # Pass the moon orbit speed factor
 		"gas_giant_type_override": gas_giant_type,  # Pass our gas giant type override
 		"is_random_gaseous": gaseous_theme == 0,  # Flag indicating if we want a random gas giant
-		"debug_planet_generation": debug_planet_generation,
-		"debug_draw_orbits": debug_draw_orbits,  # Pass debug orbit drawing flag
-		"debug_orbit_line_width": debug_orbit_line_width  # Pass orbit line width
+		
+		# IMPORTANT: Pass debug options
+		"debug_draw_orbits": debug_draw_orbits,
+		"debug_orbit_line_width": debug_orbit_line_width,
+		
+		"debug_planet_generation": debug_planet_generation
 	}
 	
 	# If debug is enabled, add additional debug info to the parameters
@@ -169,6 +172,14 @@ func get_gas_giant_type_name() -> String:
 func toggle_orbit_debug(enabled: bool = true) -> void:
 	debug_draw_orbits = enabled
 	
-	# Update on existing planet instance if available
+	# Update the existing planet if it's already spawned
 	if _planet_instance and is_instance_valid(_planet_instance) and _planet_instance.has_method("toggle_orbit_debug"):
 		_planet_instance.toggle_orbit_debug(enabled)
+
+# Set orbit line width
+func set_orbit_line_width(width: float) -> void:
+	debug_orbit_line_width = width
+	
+	# Update the existing planet if it's already spawned
+	if _planet_instance and is_instance_valid(_planet_instance) and _planet_instance.has_method("set_orbit_line_width"):
+		_planet_instance.set_orbit_line_width(width)

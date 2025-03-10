@@ -3,6 +3,8 @@
 extends PlanetBase
 class_name PlanetGaseous
 
+# Debug options are inherited from PlanetBase
+
 func _init() -> void:
 	# Fixed number of moons for all gaseous planets
 	max_moons = 7  # Always use 7 moons
@@ -53,11 +55,12 @@ func _perform_specialized_initialization(params: Dictionary) -> void:
 	# Set the pixel size for gaseous planets (larger)
 	pixel_size = 512
 	
-	# Enable debug orbit visualization if requested in params
-	if params.get("debug_draw_orbits", false):
-		debug_draw_orbits = true
+	# IMPORTANT: Make sure debug options are properly set
+	# These values come from params and are already set in the base class
+	# But we need to explicitly check them here as well
+	if params.has("debug_draw_orbits"):
+		debug_draw_orbits = params.debug_draw_orbits
 	
-	# Set debug orbit line width if specified
 	if params.has("debug_orbit_line_width"):
 		debug_orbit_line_width = params.debug_orbit_line_width
 
