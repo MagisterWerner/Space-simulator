@@ -88,10 +88,139 @@ func _generate_atmosphere_texture() -> void:
 				PlanetGeneratorBase.texture_cache["atmospheres"] = {}
 			PlanetGeneratorBase.texture_cache.atmospheres[unique_identifier] = atmosphere_texture
 
-# Override to determine appropriate moon types for terran planets
-func _get_moon_type_for_position(_moon_position: int, _total_moons: int, _rng: RandomNumberGenerator) -> int:
-	# All terran planets now only spawn rocky moons as requested
-	return MoonType.ROCKY
+# TERRAN MOON CREATION: Moons orbit on a tilted equator
+func _create_moons() -> void:
+	if _moon_scenes.is_empty():
+		push_error("Planet: Moon scenes not available for moon creation")
+		emit_signal("planet_loaded", self)
+		return
+	
+	var rng = RandomNumberGenerator.new()
+	rng.seed = seed_value
+	
+	# Determine if this planet has moons based on chance
+	var has_moons = (rng.randi() % 100 < moon_chance)
+	var num_moons = 0
+	
+	if has_moons:
+		# Calculate how many moons (1 to max_moons)
+		num_moons = rng.randi_range(1, max_moons)
+	
+	# If no moons, exit early
+	if num_moons <= 0:
+		emit_signal("planet_loaded", self)
+		return
+	
+	# Generate orbital parameters for all moons to prevent collisions
+	var orbital_params = _generate_orbital_parameters(num_moons, rng)
+	
+	for m in range(num_moons):
+		var moon_seed = seed_value + m * 100 + rng.randi() % 1000
+		
+		# Determine moon type - for terran planets, mostly rocky moons, but allow variation
+		var moon_type_roll = rng.randi() % 100
+		var moon_type
+		
+		if moon_type_roll < 70:  # 70% chance for rocky moons
+			moon_type = MoonType.ROCKY
+		elif moon_type_roll < 85:  # 15% chance for icy moons
+			moon_type = MoonType.ICY
+		else:  # 15% chance for volcanic moons
+			moon_type = MoonType.VOLCANIC
+		
+		# Get the correct moon scene for this type
+		if not _moon_scenes.has(moon_type):
+			push_warning("Planet: Moon type not available: " + str(moon_type) + ", using ROCKY")
+			moon_type = MoonType.ROCKY
+			
+		if not _moon_scenes.has(moon_type):
+			push_error("Planet: No moon scenes available")
+			continue
+			
+		var moon_scene = _moon_scenes[moon_type]
+		if not moon_scene:
+			continue
+			
+		var moon_instance = moon_scene.instantiate()
+		if not moon_instance:
+			continue
+		
+		# Use the pre-calculated orbital parameters
+		var moon_params = {
+			"seed_value": moon_seed,
+			"parent_planet": self,
+			"distance": orbital_params[m].distance,
+			"base_angle": orbital_params[m].base_angle,
+			"orbit_speed": orbital_params[m].orbit_speed,
+			"orbit_deviation": orbital_params[m].orbit_deviation,
+			"phase_offset": orbital_params[m].phase_offset,
+			"parent_name": planet_name,
+			"use_texture_cache": use_texture_cache,
+			"moon_type": moon_type,
+			"is_gaseous": false,  # Mark as terran planet moon
+			"orbit_is_tilted": true,  # Mark as using tilted orbit
+			"tilt_angle": orbital_params[m].tilt_angle,
+			"tilt_amount": orbital_params[m].tilt_amount
+		}
+		
+		add_child(moon_instance)
+		moon_instance.initialize(moon_params)
+		moons.append(moon_instance)
+	
+	# Emit signal that the planet has been loaded (after moons are created)
+	emit_signal("planet_loaded", self)
+
+# TERRAN MOON ORBITS: Update moon positions using tilted orbit model
+func _update_moons(delta: float) -> void:
+	var time = Time.get_ticks_msec() / 1000.0
+	
+	for moon in moons:
+		if not is_instance_valid(moon):
+			continue
+		
+		# Calculate the orbit angle based on time, speed and initial offset
+		var moon_angle = moon.base_angle + time * moon.orbit_speed + moon.phase_offset
+		
+		# Calculate deviation for elliptical orbits using sine function
+		var deviation_factor = sin(moon_angle * 2) * moon.orbit_deviation
+		
+		# Calculate untilted position
+		var distance = moon.distance * (1.0 + deviation_factor * 0.3)
+		var base_x = cos(moon_angle) * distance
+		var base_y = sin(moon_angle) * distance
+		
+		# Apply tilt transformation if this moon uses tilted orbits
+		if "orbit_is_tilted" in moon and moon.orbit_is_tilted:
+			# Apply a 3D-like projection by modifying the y component based on tilt
+			var tilt_effect = sin(moon_angle - moon.tilt_angle) * moon.tilt_amount
+			base_y *= (1.0 - tilt_effect)
+			
+			# Add a slight x-adjustment for more realistic orbital appearance
+			base_x *= (1.0 + abs(tilt_effect) * 0.1)
+		
+		# Set final position
+		moon.global_position = global_position + Vector2(base_x, base_y)
+		
+		# Determine if moon is behind or in front of planet
+		# When moon is in the "back half" of its orbit and tilted down, it should appear behind the planet
+		var is_behind = false
+		
+		if moon.has("orbit_is_tilted") and moon.orbit_is_tilted:
+			# Calculate if moon is behind based on angle and tilt
+			var relative_angle = fmod(moon_angle - moon.tilt_angle + TAU, TAU)
+			var y_factor = sin(moon_angle)
+			var tilt_factor = sin(moon_angle - moon.tilt_angle)
+			
+			# Moon is behind if (moving down in the back half of orbit) OR (moving up in front half of orbit with negative tilt)
+			is_behind = (y_factor > 0 and tilt_factor < 0) or (y_factor < 0 and tilt_factor > 0)
+		else:
+			# Simpler calculation if no tilt (just back half of orbit)
+			var relative_y = sin(moon_angle)
+			is_behind = relative_y > 0
+		
+		# Set z-index dynamically based on position relative to planet
+		# This creates the visual effect of moon passing behind the planet and atmosphere
+		moon.z_index = -12 if is_behind else -9
 
 # Override for orbit speed - terran planets have faster moon orbits
 func _get_orbit_speed_modifier() -> float:

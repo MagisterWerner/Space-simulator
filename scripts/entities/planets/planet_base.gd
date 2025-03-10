@@ -83,30 +83,10 @@ func _draw() -> void:
 	if planet_texture:
 		draw_texture(planet_texture, -Vector2(pixel_size, pixel_size) / 2, Color.WHITE)
 
+# Base moon update method - override in subclasses for specific behavior
 func _update_moons(_delta: float) -> void:
-	var time = Time.get_ticks_msec() / 1000.0
-	
-	for moon in moons:
-		if is_instance_valid(moon):
-			# Calculate the orbit angle based on time, speed and initial offset
-			var moon_angle = moon.base_angle + time * moon.orbit_speed + moon.phase_offset
-			
-			# Calculate deviation for elliptical orbits using sine function
-			var deviation_factor = sin(moon_angle * 2) * moon.orbit_deviation
-			
-			# Calculate moon position using parametric equation of ellipse
-			moon.global_position = global_position + Vector2(
-				cos(moon_angle) * moon.distance * (1.0 + deviation_factor * 0.3),
-				sin(moon_angle) * moon.distance
-			)
-			
-			# Determine if moon is behind or in front of planet
-			# When sin(moon_angle) is negative, the moon is in the "back half" of its orbit
-			var relative_y = sin(moon_angle)
-			
-			# Set z-index dynamically based on position relative to planet
-			# This creates the visual effect of moon passing behind the planet and atmosphere
-			moon.z_index = -12 if relative_y < 0 else -9
+	# This should be overridden in subclasses
+	pass
 
 # Base initialization function - handles common setup
 func initialize(params: Dictionary) -> void:
@@ -147,77 +127,10 @@ func _perform_specialized_initialization(_params: Dictionary) -> void:
 func _get_moon_size_scale() -> float:
 	return 1.0  # Default no scaling
 
-# Moon creation - common for all planet types
+# Create moons - this is a placeholder that subclasses should override
 func _create_moons() -> void:
-	if _moon_scenes.is_empty():
-		push_error("Planet: Moon scenes not available for moon creation")
-		emit_signal("planet_loaded", self)
-		return
-	
-	var rng = RandomNumberGenerator.new()
-	rng.seed = seed_value
-	
-	# Determine if this planet has moons based on chance
-	var has_moons = (rng.randi() % 100 < moon_chance)
-	var num_moons = 0
-	
-	if has_moons:
-		# Calculate how many moons (1 to max_moons)
-		num_moons = rng.randi_range(1, max_moons)
-	
-	# If no moons, exit early
-	if num_moons <= 0:
-		emit_signal("planet_loaded", self)
-		return
-	
-	# Generate orbital parameters for all moons to prevent collisions
-	var orbital_params = _generate_orbital_parameters(num_moons, rng)
-	
-	for m in range(num_moons):
-		var moon_seed = seed_value + m * 100 + rng.randi() % 1000
-		
-		# Determine moon type based on planet category
-		var moon_type = _get_moon_type_for_position(m, num_moons, rng)
-		
-		# Get the correct moon scene for this type
-		if not _moon_scenes.has(moon_type):
-			push_warning("Planet: Moon type not available: " + str(moon_type) + ", using ROCKY")
-			moon_type = MoonType.ROCKY
-			
-		if not _moon_scenes.has(moon_type):
-			push_error("Planet: No moon scenes available")
-			continue
-			
-		var moon_scene = _moon_scenes[moon_type]
-		if not moon_scene:
-			continue
-			
-		var moon_instance = moon_scene.instantiate()
-		if not moon_instance:
-			continue
-		
-		# Use the pre-calculated orbital parameters
-		var moon_params = {
-			"seed_value": moon_seed,
-			"parent_planet": self,
-			"distance": orbital_params[m].distance,
-			"base_angle": orbital_params[m].base_angle,
-			"orbit_speed": orbital_params[m].orbit_speed,
-			"orbit_deviation": orbital_params[m].orbit_deviation,
-			"phase_offset": orbital_params[m].phase_offset,
-			"parent_name": planet_name,
-			"use_texture_cache": use_texture_cache,
-			"moon_type": moon_type,
-			"size_scale": _get_moon_size_scale(),  # Add size scaling parameter
-			"is_gaseous": false  # Explicitly mark as not a gaseous planet moon
-		}
-		
-		add_child(moon_instance)
-		moon_instance.initialize(moon_params)
-		moons.append(moon_instance)
-	
-	# Emit signal that the planet has been loaded (after moons are created)
-	emit_signal("planet_loaded", self)
+	# To be overridden in subclasses
+	pass
 
 # Virtual method to determine appropriate moon types
 func _get_moon_type_for_position(_position: int, _total_moons: int, _rng: RandomNumberGenerator) -> int:
@@ -238,6 +151,7 @@ func _setup_name_component(_params: Dictionary) -> void:
 		planet_name = _get_planet_type_name() + "-" + str(seed_value % 1000)
 
 # Generate well-distributed orbital parameters to prevent moon collisions
+# This is used for terran planets - gaseous planets override this
 func _generate_orbital_parameters(moon_count: int, rng: RandomNumberGenerator) -> Array:
 	var params = []
 	
@@ -278,12 +192,18 @@ func _generate_orbital_parameters(moon_count: int, rng: RandomNumberGenerator) -
 			# Larger deviation for farther moons
 			var orbit_deviation = rng.randf_range(0.05, max_orbit_deviation) * (distance / max_distance)
 			
+			# Create random orbit tilt (only for terran moons)
+			var tilt_angle = rng.randf_range(0, TAU)
+			var tilt_amount = rng.randf_range(0.1, 0.4)  # Maximum 40% tilt
+			
 			params.append({
 				"distance": distance,
 				"base_angle": 0.0, # Start at same position, but phase_offset will separate them
 				"orbit_speed": orbit_speed,
 				"orbit_deviation": orbit_deviation,
-				"phase_offset": phase_offset
+				"phase_offset": phase_offset,
+				"tilt_angle": tilt_angle,
+				"tilt_amount": tilt_amount
 			})
 	else:
 		# For a single moon, use simpler parameters
@@ -292,7 +212,9 @@ func _generate_orbital_parameters(moon_count: int, rng: RandomNumberGenerator) -
 			"base_angle": 0.0,
 			"orbit_speed": rng.randf_range(0.2, 0.5) * moon_orbit_factor * _get_orbit_speed_modifier(),
 			"orbit_deviation": rng.randf_range(0.05, max_orbit_deviation),
-			"phase_offset": rng.randf_range(0, TAU) # Random starting position
+			"phase_offset": rng.randf_range(0, TAU), # Random starting position
+			"tilt_angle": rng.randf_range(0, TAU),
+			"tilt_amount": rng.randf_range(0.1, 0.4)
 		})
 	
 	return params

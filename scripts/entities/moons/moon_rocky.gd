@@ -3,9 +3,10 @@
 extends "res://scripts/entities/moons/moon_base.gd"
 class_name MoonRocky
 
-func _generate_moon_texture() -> void:
+func _generate_moon_texture(params: Dictionary) -> void:
 	# Create a unique cache key
-	var cache_key = seed_value * 10  # No additional type needed for rocky
+	var moon_type = params.get("moon_type", 0)  # Default to ROCKY
+	var cache_key = seed_value * 100 + moon_type * 10 + (1 if is_gaseous else 0)
 	
 	# Get texture - either from cache or generate new
 	if use_texture_cache and PlanetSpawnerBase.texture_cache != null:

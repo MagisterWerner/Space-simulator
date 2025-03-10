@@ -17,14 +17,23 @@ var moon_name: String
 var use_texture_cache: bool = true
 var is_gaseous: bool = false  # Flag to indicate if moon belongs to a gaseous planet
 
+# Terran planet moon orbit properties
+var orbit_is_tilted: bool = false
+var tilt_angle: float = 0.0
+var tilt_amount: float = 0.0
+
+# Gaseous planet moon properties
+var ring_name: String = ""
+
 # Components
 var name_component
 
 func _ready():
 	name_component = get_node_or_null("NameComponent")
+	
 	# Set appropriate z-index to be behind player but may be in front or behind planet
-	# The actual z-index will be dynamically adjusted by parent planet based on orbit position
-	# Default to -9, will be set to -12 when behind planet (and atmosphere)
+	# Z-index will be dynamically adjusted by parent planet based on orbit position
+	# Default to -9 (in front of planet), will be set to -12 when behind planet (and atmosphere)
 	z_index = -9
 
 func _process(_delta):
@@ -43,6 +52,7 @@ func initialize(params: Dictionary) -> void:
 	orbit_deviation = params.orbit_deviation
 	phase_offset = params.phase_offset
 	
+	# Optional parameters
 	if "use_texture_cache" in params:
 		use_texture_cache = params.use_texture_cache
 	
@@ -50,15 +60,52 @@ func initialize(params: Dictionary) -> void:
 	if "is_gaseous" in params:
 		is_gaseous = params.is_gaseous
 	
+	# Store ring name if provided (for gaseous planet moons)
+	if "ring_name" in params:
+		ring_name = params.ring_name
+	
+	# Store orbit tilt properties if provided (for terran planet moons)
+	if "orbit_is_tilted" in params:
+		orbit_is_tilted = params.orbit_is_tilted
+		
+		if "tilt_angle" in params:
+			tilt_angle = params.tilt_angle
+		
+		if "tilt_amount" in params:
+			tilt_amount = params.tilt_amount
+	
 	# Generate moon texture - will set pixel_size correctly based on is_gaseous
-	_generate_moon_texture()
+	_generate_moon_texture(params)
 	
 	# Set up name component
 	_setup_name_component(params)
 
-# Virtual method to be implemented by subclasses
-func _generate_moon_texture() -> void:
-	push_error("MoonBase: _generate_moon_texture is a virtual method that should be overridden")
+# Generate moon texture
+func _generate_moon_texture(params: Dictionary) -> void:
+	# Get moon type from params
+	var moon_type = params.get("moon_type", 0)  # Default to ROCKY
+	
+	# Create a unique cache key that includes both seed and type
+	var cache_key = seed_value * 100 + moon_type * 10 + (1 if is_gaseous else 0)
+	
+	# Get texture - either from cache or generate new
+	if use_texture_cache and PlanetSpawnerBase.texture_cache != null:
+		if PlanetSpawnerBase.texture_cache.moons.has(cache_key):
+			# Use cached texture
+			moon_texture = PlanetSpawnerBase.texture_cache.moons[cache_key]
+			var moon_generator = MoonGenerator.new()
+			pixel_size = moon_generator.get_moon_size(seed_value, is_gaseous)
+		else:
+			# Generate and cache texture
+			var moon_generator = MoonGenerator.new()
+			moon_texture = moon_generator.create_moon_texture(seed_value, moon_type, is_gaseous)
+			pixel_size = moon_generator.get_moon_size(seed_value, is_gaseous)
+			PlanetSpawnerBase.texture_cache.moons[cache_key] = moon_texture
+	else:
+		# Generate without caching
+		var moon_generator = MoonGenerator.new()
+		moon_texture = moon_generator.create_moon_texture(seed_value, moon_type, is_gaseous)
+		pixel_size = moon_generator.get_moon_size(seed_value, is_gaseous)
 
 # Setup name component
 func _setup_name_component(params: Dictionary) -> void:
@@ -67,6 +114,10 @@ func _setup_name_component(params: Dictionary) -> void:
 		# Add moon type to name through NameComponent
 		var type_prefix = _get_moon_type_prefix()
 		var parent_name = params.get("parent_name", "")
+		
+		# Add ring designation if this is a gaseous planet moon
+		if is_gaseous and ring_name != "":
+			type_prefix = ring_name + " " + type_prefix
 		
 		# Call initialize on the name component
 		if name_component.has_method("initialize"):
@@ -77,7 +128,11 @@ func _setup_name_component(params: Dictionary) -> void:
 			moon_name = type_prefix + " Moon-" + str(seed_value % 1000)
 	else:
 		# Create a basic name using the moon type and seed
-		moon_name = _get_moon_type_prefix() + " Moon-" + str(seed_value % 1000)
+		var type_prefix = _get_moon_type_prefix()
+		if is_gaseous and ring_name != "":
+			type_prefix = ring_name + " " + type_prefix
+		
+		moon_name = type_prefix + " Moon-" + str(seed_value % 1000)
 
 # Virtual method to get moon type prefix
 func _get_moon_type_prefix() -> String:
