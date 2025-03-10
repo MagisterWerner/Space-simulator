@@ -100,6 +100,24 @@ func _process(delta: float) -> void:
 	queue_redraw()
 	_update_moons(delta)
 
+# Key function for calculating moon orbit positions
+# This centralized function is used by both visual debug orbits and actual moon positioning
+func calculate_moon_orbit_position(moon, angle: float) -> Vector2:
+	if is_gaseous_planet:
+		# Perfect circular orbit for gaseous planets
+		return Vector2(
+			cos(angle) * moon.distance,
+			sin(angle) * moon.distance
+		)
+	else:
+		# Elliptical orbit for terran planets
+		var deviation = sin(angle * 2) * moon.orbit_deviation
+		var radius = moon.distance * (1.0 + deviation * 0.3)
+		return Vector2(
+			cos(angle) * radius,
+			sin(angle) * radius
+		)
+
 func _draw() -> void:
 	if atmosphere_texture:
 		# Draw atmosphere first so it's behind the planet
@@ -115,47 +133,31 @@ func _draw() -> void:
 				# Get appropriate orbit color based on moon type
 				var orbit_color = get_moon_orbit_color(moon)
 				
-				if is_gaseous_planet:
-					# For gaseous planets, draw circular orbit path
-					var segments = 64  # Higher number = smoother circle
-					draw_arc(Vector2.ZERO, moon.distance, 0, TAU, segments, orbit_color, debug_orbit_line_width, true)
-				else:
-					# For terran planets, draw elliptical orbit path
-					var segments = 64
-					var center = Vector2.ZERO
-					var deviation_factor = moon.orbit_deviation
-					var prev_point = Vector2.ZERO
-					var first_point = Vector2.ZERO
+				# Use a sufficient number of segments for smooth orbit visualization
+				var segments = 64
+				
+				# Draw orbit path using the same calculation function used for moon positioning
+				var prev_point = Vector2.ZERO
+				var first_point = Vector2.ZERO
 					
-					for i in range(segments + 1):
-						var angle = i * TAU / segments
-						# Calculate position using parametric equation of ellipse with deviation
-						var deviation = sin(angle * 2) * deviation_factor
-						var radius = moon.distance * (1.0 + deviation * 0.3)
-						var point = center + Vector2(cos(angle) * radius, sin(angle) * radius)
+				for i in range(segments + 1):
+					var angle = i * TAU / segments
+					# Use the centralized function to calculate orbit position
+					var point = calculate_moon_orbit_position(moon, angle)
 						
-						if i == 0:
-							first_point = point
-						elif i > 0:
-							draw_line(prev_point, point, orbit_color, debug_orbit_line_width)
+					if i == 0:
+						first_point = point
+					elif i > 0:
+						draw_line(prev_point, point, orbit_color, debug_orbit_line_width)
 						
-						prev_point = point
+					prev_point = point
 					
-					# Connect the last point to the first to close the ellipse
-					draw_line(prev_point, first_point, orbit_color, debug_orbit_line_width)
+				# Connect the last point to the first to close the orbit
+				draw_line(prev_point, first_point, orbit_color, debug_orbit_line_width)
 				
 				# Draw a small dot representing current moon position
 				var current_angle = moon.base_angle + (Time.get_ticks_msec() / 1000.0) * moon.orbit_speed + moon.phase_offset
-				var current_pos
-				
-				# Calculate position differently based on planet type
-				if is_gaseous_planet:
-					current_pos = Vector2(cos(current_angle), sin(current_angle)) * moon.distance
-				else:
-					var deviation = sin(current_angle * 2) * moon.orbit_deviation
-					var radius = moon.distance * (1.0 + deviation * 0.3)
-					current_pos = Vector2(cos(current_angle) * radius, sin(current_angle) * radius)
-					
+				var current_pos = calculate_moon_orbit_position(moon, current_angle)
 				draw_circle(current_pos, 3.0, orbit_color)
 
 func _update_moons(delta: float) -> void:
@@ -163,59 +165,27 @@ func _update_moons(delta: float) -> void:
 	
 	for moon in moons:
 		if is_instance_valid(moon):
+			# Calculate the orbit angle based on time, speed and initial offset
+			var moon_angle = moon.base_angle + time * moon.orbit_speed + moon.phase_offset
+			
+			# Use the centralized function to calculate orbit position
+			var orbit_position = calculate_moon_orbit_position(moon, moon_angle)
+			
+			# Set the moon's position correctly
+			moon.position = orbit_position
+			
+			# Determine if moon is behind or in front of planet based on type
 			if is_gaseous_planet:
-				_update_gaseous_moon_orbit(moon, time)
+				# For gaseous planets, set z-index based on moon type for visual layering
+				moon.z_index = get_moon_z_index(moon)
 			else:
-				_update_terran_moon_orbit(moon, time)
-
-# Updated method specifically for terran moon orbits
-func _update_terran_moon_orbit(moon, time: float) -> void:
-	# Calculate the orbit angle based on time, speed and initial offset
-	var moon_angle = moon.base_angle + time * moon.orbit_speed + moon.phase_offset
-	
-	# Calculate deviation for elliptical orbits using sine function
-	var deviation_factor = sin(moon_angle * 2) * moon.orbit_deviation
-	
-	# Calculate moon position using parametric equation of ellipse
-	# This creates an equatorial orbit that passes in front of and behind the planet
-	var orbit_position = Vector2(
-		cos(moon_angle) * moon.distance * (1.0 + deviation_factor * 0.3),
-		sin(moon_angle) * moon.distance
-	)
-	
-	# Set the moon's position correctly
-	moon.position = orbit_position
-	
-	# Determine if moon is behind or in front of planet
-	# When sin(moon_angle) is negative, the moon is in the "back half" of its orbit
-	var relative_y = sin(moon_angle)
-	
-	# Set z-index dynamically based on position relative to planet
-	# This creates the visual effect of moon passing behind the planet and atmosphere
-	moon.z_index = -12 if relative_y < 0 else -9
-
-# Improved method for perfectly circular gaseous moon orbits
-func _update_gaseous_moon_orbit(moon, time: float) -> void:
-	# Calculate the orbit angle based on time, speed and initial offset
-	var moon_angle = moon.base_angle + time * moon.orbit_speed + moon.phase_offset
-	
-	# For perfect circular orbits, we use consistent distance
-	# Calculate the position directly in local coordinates
-	var orbit_position = Vector2(
-		cos(moon_angle) * moon.distance,
-		sin(moon_angle) * moon.distance
-	)
-	
-	# IMPORTANT: Set the moon's local position directly
-	# This ensures the moon is positioned exactly on the orbit line
-	moon.position = orbit_position
-	
-	# Set z-index based on moon type for visual layering
-	# This ensures consistent visual hierarchy:
-	# - Volcanic moons (closest) always render in front
-	# - Icy moons (furthest) always render behind other moons
-	# - Rocky moons (middle) render between volcanic and icy
-	moon.z_index = get_moon_z_index(moon)
+				# For terran planets, determine if moon is behind or in front of planet
+				# When sin(moon_angle) is negative, the moon is in the "back half" of its orbit
+				var relative_y = sin(moon_angle)
+				
+				# Set z-index dynamically based on position relative to planet
+				# This creates the visual effect of moon passing behind the planet and atmosphere
+				moon.z_index = -12 if relative_y < 0 else -9
 
 # Helper function to get appropriate z-index based on moon type
 func get_moon_z_index(moon) -> int:
@@ -513,19 +483,7 @@ func _create_moons() -> void:
 		
 		# Initialize with starting position directly
 		var start_angle = moon_params.base_angle + moon_params.phase_offset
-		var start_position
-		
-		if is_gaseous_planet:
-			start_position = Vector2(
-				cos(start_angle) * moon_params.distance,
-				sin(start_angle) * moon_params.distance
-			)
-		else:
-			var deviation = sin(start_angle * 2) * moon_params.orbit_deviation
-			start_position = Vector2(
-				cos(start_angle) * moon_params.distance * (1.0 + deviation * 0.3),
-				sin(start_angle) * moon_params.distance
-			)
+		var start_position = calculate_moon_orbit_position(moon_params, start_angle)
 		
 		moon_instance.position = start_position
 		moons.append(moon_instance)
