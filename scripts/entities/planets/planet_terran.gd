@@ -9,7 +9,7 @@ var terran_subtype: String = ""  # Descriptive subtype (lush, desert, etc)
 func _init() -> void:
 	# Default max_moons value for terran planets is lower
 	max_moons = 2
-	moon_chance = 40  # 40% chance to have moons
+	moon_chance = 80  # 80% chance to have at least one moon (increased from 40%)
 	
 	# Setup for non-gaseous planets
 	is_gaseous_planet = false

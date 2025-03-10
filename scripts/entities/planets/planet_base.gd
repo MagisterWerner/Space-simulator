@@ -264,11 +264,25 @@ func _create_moons() -> void:
 			return
 	
 	# Determine number of moons
-	var num_moons = rng.randi_range(1, max_moons)
+	var num_moons = 1  # Start with one moon for terran planets
 	
-	# For gaseous planets, ensure at least 3 moons (one of each type)
+	# For gaseous planets, always start with 3 basic moons (1 of each type)
 	if is_gaseous_planet:
-		num_moons = max(3, num_moons)
+		num_moons = 3  # Start with one volcanic, one rocky, and one icy moon
+		
+		# Then check for additional moons of each type (40% chance each)
+		if rng.randi() % 100 < 40:  # 40% chance for second volcanic moon
+			num_moons += 1
+		if rng.randi() % 100 < 40:  # 40% chance for second rocky moon
+			num_moons += 1
+		if rng.randi() % 100 < 40:  # 40% chance for second icy moon
+			num_moons += 1
+	else:
+		# Dynamic moon system for terran planets:
+		# We already know we have at least 1 moon (from the has_moons check above)
+		# Now check for a second moon with 40% chance
+		if max_moons > 1 and rng.randi() % 100 < 40:
+			num_moons = 2
 	
 	# Generate and distribute moons
 	var moon_distribution = _calculate_moon_distribution(num_moons)

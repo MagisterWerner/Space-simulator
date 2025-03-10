@@ -121,9 +121,9 @@ func _get_moon_type_for_position(_position: int) -> int:
 	var volcanic_threshold = 2  # First 2 positions are volcanic
 	var rocky_threshold = 4     # Next 2 positions are rocky
 	
-	if position < volcanic_threshold:
+	if _position < volcanic_threshold:
 		return MoonType.VOLCANIC  # Innermost moons (closest to planet)
-	elif position < rocky_threshold:
+	elif _position < rocky_threshold:
 		return MoonType.ROCKY     # Middle region moons
 	else:
 		return MoonType.ICY       # Outermost moons (furthest from planet)
