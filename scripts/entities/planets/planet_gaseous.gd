@@ -27,14 +27,14 @@ func _init() -> void:
 	is_gaseous_planet = true
 	
 	# Update moon parameters for gas giants - make distance ranges more distinct with extra space
-	_moon_params.distance_ranges[MoonType.VOLCANIC] = Vector2(1.3, 1.6)  # Closest to planet
-	_moon_params.distance_ranges[MoonType.ROCKY] = Vector2(1.9, 2.2)     # Middle distance
-	_moon_params.distance_ranges[MoonType.ICY] = Vector2(2.5, 3.0)       # Furthest from planet
+	_moon_params.distance_ranges[MoonType.VOLCANIC] = Vector2(1.6, 1.9)  # Closest to planet
+	_moon_params.distance_ranges[MoonType.ROCKY] = Vector2(2.2, 2.5)     # Middle distance
+	_moon_params.distance_ranges[MoonType.ICY] = Vector2(2.8, 3.3)       # Furthest from planet
 	
 	# Adjust speed modifiers for more noticeable differences
-	_moon_params.speed_modifiers[MoonType.VOLCANIC] = 1.5   # Faster for close moons
+	_moon_params.speed_modifiers[MoonType.VOLCANIC] = 1.2   # Faster for close moons
 	_moon_params.speed_modifiers[MoonType.ROCKY] = 1.0      # Normal speed
-	_moon_params.speed_modifiers[MoonType.ICY] = 0.6        # Slower for distant moons
+	_moon_params.speed_modifiers[MoonType.ICY] = 0.8        # Slower for distant moons
 
 # Override specialized initialization for gaseous planets
 func _perform_specialized_initialization(params: Dictionary) -> void:
@@ -116,7 +116,7 @@ func _generate_atmosphere_texture() -> void:
 
 # Override to determine appropriate moon types for gas giants with improved distribution
 # Matches the function signature in the parent class
-func _get_moon_type_for_position(position: int) -> int:
+func _get_moon_type_for_position(_position: int) -> int:
 	# For gaseous planets, we now have a guaranteed distribution
 	var volcanic_threshold = 2  # First 2 positions are volcanic
 	var rocky_threshold = 4     # Next 2 positions are rocky
@@ -135,6 +135,10 @@ func _get_orbit_speed_modifier() -> float:
 # Override to return appropriate planet type name
 func _get_planet_type_name() -> String:
 	return PlanetGeneratorBase.get_theme_name(theme_id)
+
+# Override to return larger moon size scale for gas giants
+func _get_moon_size_scale() -> float:
+	return 1.2  # Gas giants have larger moons than terran planets
 
 # Return planet category
 func get_category() -> int:

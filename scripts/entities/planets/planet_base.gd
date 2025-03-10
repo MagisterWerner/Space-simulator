@@ -48,9 +48,9 @@ var _initialized: bool = false
 # Moon Type Parameters (configurable through subclasses)
 var _moon_params = {
 	"distance_ranges": {
-		MoonType.VOLCANIC: Vector2(1.3, 1.5),  # Closest to planet
-		MoonType.ROCKY: Vector2(1.8, 2.1),     # Middle distance
-		MoonType.ICY: Vector2(2.4, 2.8)        # Furthest from planet
+		MoonType.VOLCANIC: Vector2(1.3, 1.6),  # Closest to planet
+		MoonType.ROCKY: Vector2(1.9, 2.2),     # Middle distance
+		MoonType.ICY: Vector2(2.5, 3.0)        # Furthest from planet
 	},
 	"speed_modifiers": {
 		MoonType.VOLCANIC: 1.4,  # Faster for close moons
@@ -69,8 +69,8 @@ var _moon_params = {
 	}
 }
 
-# Common constants
-const ORBIT_COLLISION_MARGIN: float = 32.0  # Increased from 20.0 to 32.0 for more spacing
+# Common constants - changed ORBIT_COLLISION_MARGIN to 16.0 as requested
+const ORBIT_COLLISION_MARGIN: float = 16.0  # Fixed margin between moons
 const DEFAULT_Z_INDEX: int = -7
 
 #region Lifecycle Methods
@@ -198,7 +198,7 @@ func _draw_debug_orbits() -> void:
 #endregion
 
 #region Moon Positioning and Updates
-func _update_moons(delta: float) -> void:
+func _update_moons(_delta: float) -> void:
 	var time = Time.get_ticks_msec() / 1000.0
 	
 	for moon in moons:
@@ -334,7 +334,7 @@ func _generate_orbital_parameters(num_moons: int, rng: RandomNumberGenerator,
 	# Calculate specific parameters based on planet type
 	if is_gaseous_planet:
 		# Generate each type of moon separately to ensure proper distribution
-		var index = 0
+		var _index = 0
 		
 		for type in [MoonType.VOLCANIC, MoonType.ROCKY, MoonType.ICY]:
 			if distribution.has(type):
@@ -348,7 +348,7 @@ func _generate_orbital_parameters(num_moons: int, rng: RandomNumberGenerator,
 					params.append(_generate_single_moon_params(
 						i, count, type, rng, speed_mod, distance_range
 					))
-					index += 1
+					_index += 1
 	else:
 		# For terran planets, simpler evenly spaced orbits
 		var planet_radius = pixel_size / 2.0
@@ -384,7 +384,7 @@ func _generate_orbital_parameters(num_moons: int, rng: RandomNumberGenerator,
 	
 	return params
 
-func _generate_single_moon_params(index: int, count: int, type: int, rng: RandomNumberGenerator,
+func _generate_single_moon_params(index: int, count: int, _type: int, rng: RandomNumberGenerator,
 								speed_mod: float, distance_range: Vector2) -> Dictionary:
 	var planet_radius = pixel_size / 2.0
 	
@@ -444,6 +444,13 @@ func _create_moon(index: int, moon_type: int, params: Array, existing_orbits: Ar
 	# Get orbital parameters
 	var param_index = min(index, params.size() - 1)
 	var moon_params = params[param_index].duplicate()
+	
+	# Get moon size from MoonGenerator (create an instance first)
+	var moon_generator = MoonGenerator.new()
+	var moon_size = moon_generator.get_moon_size(moon_seed, is_gaseous_planet)
+	
+	# Add moon size to params for collision detection
+	moon_params["moon_size"] = moon_size
 	
 	# Resolve orbit collisions if needed
 	if _check_orbit_collision(moon_params, existing_orbits):
@@ -540,11 +547,16 @@ func _check_orbit_collision(new_orbit: Dictionary, existing_orbits: Array) -> bo
 	if existing_orbits.is_empty():
 		return false
 	
-	# Approximate moon size
-	var moon_size = 32
-	var safe_distance = moon_size + ORBIT_COLLISION_MARGIN
+	# Get moon size from params or use reasonable default
+	var new_moon_size = new_orbit.get("moon_size", 32)
 	
 	for orbit in existing_orbits:
+		# Get existing moon size from params
+		var existing_moon_size = orbit.get("moon_size", 32)
+		
+		# Calculate safe distance based on both moons' sizes plus margin
+		var safe_distance = (new_moon_size + existing_moon_size) / 2.0 + ORBIT_COLLISION_MARGIN
+		
 		if is_gaseous_planet:
 			# Simple radii difference check for circular orbits
 			var radii_difference = abs(new_orbit.distance - orbit.distance)
@@ -615,7 +627,7 @@ func get_theme_name() -> String:
 func _perform_specialized_initialization(_params: Dictionary) -> void:
 	push_error("PlanetBase: _perform_specialized_initialization must be overridden")
 
-func _get_moon_type_for_position(position: int) -> int:
+func _get_moon_type_for_position(_position: int) -> int:
 	return MoonType.ROCKY
 
 func _get_orbit_speed_modifier() -> float:
