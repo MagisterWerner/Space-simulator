@@ -14,7 +14,13 @@ var player_start_cell: Vector2i = Vector2i(-1, -1)
 
 func _ready() -> void:
 	screen_size = get_viewport_rect().size
-	
+	# In your main game scene or initialization code
+	AudioManager.preload_sfx("laser", "res://assets/audio/laser.sfxr", 20)  # Pool size of 20
+	AudioManager.preload_sfx("explosion_debris", "res://assets/audio/explosion_debris.wav", 10)
+	AudioManager.preload_sfx("explosion_fire", "res://assets/audio/explosion_fire.wav", 10)
+	AudioManager.preload_sfx("missile", "res://assets/audio/missile.sfxr", 5)
+	AudioManager.preload_sfx("thruster", "res://assets/audio/thruster.wav", 5)
+
 	# Wait for game settings to initialize if needed
 	if game_settings and not game_settings.is_connected("settings_initialized", _on_game_settings_initialized):
 		if not game_settings._initialized:

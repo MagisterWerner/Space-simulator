@@ -22,6 +22,7 @@
 #     - preload_sfx(sfx_name, file_path, pool_size)
 #     - preload_sfx_directory(directory_path, recursive)
 #     - play_sfx(sfx_name, position, pitch_scale, volume_db)
+#     - play_sfx_with_culling(sfx_name, position, max_distance, pitch_scale)
 #     - stop_sfx(sfx_name)
 #     - stop_all_sfx()
 #     - resize_sfx_pool(sfx_name, new_size)
@@ -490,6 +491,29 @@ func play_sfx(sfx_name: String, position = null, pitch_scale: float = 1.0, volum
 	
 	oldest_player.play()
 	return oldest_player
+
+# Play sound with distance-based culling
+func play_sfx_with_culling(sfx_name: String, position: Vector2, max_distance: float = 2000.0, pitch_scale: float = 1.0) -> Node:
+	# Find player position
+	var player_pos = Vector2.ZERO
+	
+	# Find player position from EntityManager or player group
+	var player_ships = get_tree().get_nodes_in_group("player")
+	if not player_ships.is_empty() and is_instance_valid(player_ships[0]):
+		player_pos = player_ships[0].global_position
+	
+	var distance = position.distance_to(player_pos)
+	
+	# Don't play sounds beyond the maximum distance
+	if distance > max_distance:
+		return null
+		
+	# Adjust volume based on distance
+	var audible_distance = max_distance * 0.8
+	var distance_factor = clamp(1.0 - (distance / audible_distance), 0.0, 1.0)
+	var volume_db = _linear_to_db(distance_factor) * 0.5  # Scale to reasonable dB range
+	
+	return play_sfx(sfx_name, position, pitch_scale, volume_db)
 
 # Find an available sound effect player from pool
 func _find_available_sfx_player(sfx_name: String) -> Node:
