@@ -7,11 +7,19 @@ func _init() -> void:
 	# Fixed number of moons for all gaseous planets
 	max_moons = 7  # Always use 7 moons
 	moon_chance = 100  # Always have moons
-	min_moon_distance_factor = 1.3  # Reduced: Moons orbit much closer (was 2.5)
-	max_moon_distance_factor = 1.8  # Reduced: Maximum distance decreased (was 3.5)
 	
 	# Setup for non-intersecting orbits
 	is_gaseous_planet = true
+	
+	# Redefine distance ranges for better visual separation
+	volcanic_distance_range = Vector2(1.3, 1.6)  # Closest to planet
+	rocky_distance_range = Vector2(1.9, 2.2)     # Middle distance
+	icy_distance_range = Vector2(2.5, 3.0)       # Furthest from planet
+	
+	# Adjust speed modifiers for more noticeable differences
+	volcanic_speed_modifier = 1.5   # Faster for close moons
+	rocky_speed_modifier = 1.0      # Normal speed
+	icy_speed_modifier = 0.6        # Slower for distant moons
 
 # Override specialized initialization for gaseous planets
 func _perform_specialized_initialization(params: Dictionary) -> void:
@@ -44,6 +52,14 @@ func _perform_specialized_initialization(params: Dictionary) -> void:
 	
 	# Set the pixel size for gaseous planets (larger)
 	pixel_size = 512
+	
+	# Enable debug orbit visualization if requested in params
+	if params.get("debug_draw_orbits", false):
+		debug_draw_orbits = true
+	
+	# Set debug orbit line width if specified
+	if params.has("debug_orbit_line_width"):
+		debug_orbit_line_width = params.debug_orbit_line_width
 
 # Generate gas giant planet texture
 func _generate_planet_texture() -> void:
@@ -89,22 +105,23 @@ func _generate_atmosphere_texture() -> void:
 				PlanetGeneratorBase.texture_cache["atmospheres"] = {}
 			PlanetGeneratorBase.texture_cache.atmospheres[unique_identifier] = atmosphere_texture
 
-# Override to determine appropriate moon types for gas giants
+# Override to determine appropriate moon types for gas giants with improved distribution
 func _get_moon_type_for_position(moon_position: int, total_moons: int, rng: RandomNumberGenerator) -> int:
-	# Distribute moon types based on position in orbit
-	if moon_position == 0:
-		return MoonType.VOLCANIC  # Innermost moon (volcanic due to tidal forces)
-	elif moon_position < int(float(total_moons) / 3.0):
-		return MoonType.ROCKY  # Inner moons are rocky
-	elif moon_position < int(2.0 * float(total_moons) / 3.0):
-		# Mix of rocky and ice in the middle region
-		return MoonType.ROCKY if rng.randf() < 0.5 else MoonType.ICY
+	# Distribute moon types consistently for better visual distinction:
+	# Volcanic moons orbit closest to the planet
+	# Icy moons orbit furthest from the planet
+	# Rocky moons orbit in the middle regions
+	
+	# For gaseous planets, we want a clear hierarchy:
+	var volcanic_threshold = int(total_moons * 0.3)  # 30% volcanic (closest)
+	var rocky_threshold = int(total_moons * 0.7)     # 40% rocky (middle)
+	
+	if moon_position < volcanic_threshold:
+		return MoonType.VOLCANIC  # Innermost moons (closest to planet)
+	elif moon_position < rocky_threshold:
+		return MoonType.ROCKY     # Middle region moons
 	else:
-		return MoonType.ICY  # Outer moons are icy (colder as they're further away)
-
-# Override for moon size scale - use new system with fixed sizes instead
-func _get_moon_size_scale() -> float:
-	return 1.0  # We now use properly sized moon textures directly
+		return MoonType.ICY       # Outermost moons (furthest from planet)
 
 # Override for orbit speed - gas giants have slower orbiting moons due to mass
 func _get_orbit_speed_modifier() -> float:
@@ -121,3 +138,12 @@ func get_category() -> int:
 # Return category name as string (for debugging/UI)
 func get_category_name() -> String:
 	return "Gaseous"
+
+# Get gas giant type name - for debugging
+func get_gas_giant_type_name() -> String:
+	match theme_id:
+		PlanetThemes.JUPITER: return "Jupiter-like"
+		PlanetThemes.SATURN: return "Saturn-like"
+		PlanetThemes.URANUS: return "Uranus-like"
+		PlanetThemes.NEPTUNE: return "Neptune-like"
+		_: return "Unknown Gas Giant Type"

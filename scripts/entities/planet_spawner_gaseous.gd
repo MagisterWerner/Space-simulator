@@ -15,6 +15,11 @@ enum GasGiantType {
 @export_enum("Random", "Jupiter-like", "Saturn-like", "Uranus-like", "Neptune-like") 
 var gaseous_theme: int = 0  # 0=Random, 1-4=Specific Gaseous theme
 
+# Debug Options
+@export_category("Debug Options")
+@export var debug_draw_orbits: bool = false
+@export var debug_orbit_line_width: float = 1.0
+
 func _init() -> void:
 	# Override the base class properties with gaseous-specific defaults
 	moon_chance = 100  # Gas giants always have moons
@@ -84,7 +89,7 @@ func _spawn_gaseous_planet() -> Node2D:
 		"moon_chance": moon_chance,
 		"min_moon_distance_factor": 1.8,
 		"max_moon_distance_factor": 2.5,
-		"max_orbit_deviation": 0.15,
+		"max_orbit_deviation": 0.0,  # No deviation for perfect circles
 		"moon_orbit_factor": 0.05,
 		"use_texture_cache": use_texture_cache,
 		"theme_override": PlanetThemes.JUPITER,  # Force gas giant theme
@@ -92,7 +97,9 @@ func _spawn_gaseous_planet() -> Node2D:
 		"moon_orbit_speed_factor": moon_orbit_speed_factor,  # Pass the moon orbit speed factor
 		"gas_giant_type_override": gas_giant_type,  # Pass our gas giant type override
 		"is_random_gaseous": gaseous_theme == 0,  # Flag indicating if we want a random gas giant
-		"debug_planet_generation": debug_planet_generation
+		"debug_planet_generation": debug_planet_generation,
+		"debug_draw_orbits": debug_draw_orbits,  # Pass debug orbit drawing flag
+		"debug_orbit_line_width": debug_orbit_line_width  # Pass orbit line width
 	}
 	
 	# If debug is enabled, add additional debug info to the parameters
@@ -157,3 +164,11 @@ func get_gas_giant_type_name() -> String:
 		return "Neptune-like"
 	else:
 		return "Unknown"
+
+# Toggle debug orbit visualization
+func toggle_orbit_debug(enabled: bool = true) -> void:
+	debug_draw_orbits = enabled
+	
+	# Update on existing planet instance if available
+	if _planet_instance and is_instance_valid(_planet_instance) and _planet_instance.has_method("toggle_orbit_debug"):
+		_planet_instance.toggle_orbit_debug(enabled)

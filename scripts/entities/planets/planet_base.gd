@@ -1,5 +1,5 @@
 # scripts/entities/planets/planet_base.gd
-# Base planet class with shared functionality across planet types
+# Base planet class with improved moon orbit system and debug visualization
 extends Node2D
 class_name PlanetBase
 
@@ -16,6 +16,10 @@ signal planet_loaded(planet)
 @export var max_moon_distance_factor: float = 2.5
 @export var max_orbit_deviation: float = 0.15
 @export var moon_orbit_factor: float = 0.05
+
+# Debug visualization options
+@export var debug_draw_orbits: bool = false
+@export var debug_orbit_line_width: float = 1.0
 
 # Shared properties
 var seed_value: int = 0
@@ -44,6 +48,21 @@ var _initialized: bool = false
 # New properties for orbit type differentiation
 var is_gaseous_planet: bool = false
 var orbit_inclination_range: Vector2 = Vector2(0.0, 0.1) # For terran planets, how much moons can deviate from equatorial plane
+
+# Orbital distance ranges for different moon types (gaseous planets)
+var volcanic_distance_range: Vector2 = Vector2(1.3, 1.5)  # Closest to planet
+var rocky_distance_range: Vector2 = Vector2(1.8, 2.1)     # Middle distance
+var icy_distance_range: Vector2 = Vector2(2.4, 2.8)       # Furthest from planet
+
+# Orbit speed modifiers for different moon types
+var volcanic_speed_modifier: float = 1.4   # Faster for close moons
+var rocky_speed_modifier: float = 1.0      # Normal speed
+var icy_speed_modifier: float = 0.7        # Slower for distant moons
+
+# Color definitions for debug visualization
+var volcanic_orbit_color: Color = Color(1.0, 0.3, 0.0, 0.4)  # Orange-red for volcanic
+var rocky_orbit_color: Color = Color(0.7, 0.7, 0.7, 0.4)     # Gray for rocky
+var icy_orbit_color: Color = Color(0.5, 0.8, 1.0, 0.4)       # Light blue for icy
 
 func _ready() -> void:
 	# Set appropriate z-index to render behind player but in front of atmosphere
@@ -84,8 +103,24 @@ func _draw() -> void:
 	
 	if planet_texture:
 		draw_texture(planet_texture, -Vector2(pixel_size, pixel_size) / 2, Color.WHITE)
+	
+	# Draw debug orbit visualizations if enabled
+	if debug_draw_orbits:
+		for moon in moons:
+			if is_instance_valid(moon):
+				# Get appropriate orbit color based on moon type
+				var orbit_color = get_moon_orbit_color(moon)
+				
+				# Draw the circular orbit path with appropriate segments
+				var segments = 64  # Higher number = smoother circle
+				draw_arc(Vector2.ZERO, moon.distance, 0, TAU, segments, orbit_color, debug_orbit_line_width, true)
+				
+				# Draw a small dot representing current moon position
+				var current_angle = moon.base_angle + (Time.get_ticks_msec() / 1000.0) * moon.orbit_speed + moon.phase_offset
+				var current_pos = Vector2(cos(current_angle), sin(current_angle)) * moon.distance
+				draw_circle(current_pos, 3.0, orbit_color)
 
-func _update_moons(_delta: float) -> void:
+func _update_moons(delta: float) -> void:
 	var time = Time.get_ticks_msec() / 1000.0
 	
 	for moon in moons:
@@ -95,7 +130,7 @@ func _update_moons(_delta: float) -> void:
 			else:
 				_update_terran_moon_orbit(moon, time)
 
-# New method specifically for terran moon orbits
+# Updated method specifically for terran moon orbits
 func _update_terran_moon_orbit(moon, time: float) -> void:
 	# Calculate the orbit angle based on time, speed and initial offset
 	var moon_angle = moon.base_angle + time * moon.orbit_speed + moon.phase_offset
@@ -105,10 +140,13 @@ func _update_terran_moon_orbit(moon, time: float) -> void:
 	
 	# Calculate moon position using parametric equation of ellipse
 	# This creates an equatorial orbit that passes in front of and behind the planet
-	moon.global_position = global_position + Vector2(
+	var orbit_position = Vector2(
 		cos(moon_angle) * moon.distance * (1.0 + deviation_factor * 0.3),
 		sin(moon_angle) * moon.distance
 	)
+	
+	# Set the moon's position correctly
+	moon.position = orbit_position
 	
 	# Determine if moon is behind or in front of planet
 	# When sin(moon_angle) is negative, the moon is in the "back half" of its orbit
@@ -118,29 +156,52 @@ func _update_terran_moon_orbit(moon, time: float) -> void:
 	# This creates the visual effect of moon passing behind the planet and atmosphere
 	moon.z_index = -12 if relative_y < 0 else -9
 
-# New method specifically for gaseous moon orbits
+# Improved method for perfectly circular gaseous moon orbits - FIXED
 func _update_gaseous_moon_orbit(moon, time: float) -> void:
 	# Calculate the orbit angle based on time, speed and initial offset
 	var moon_angle = moon.base_angle + time * moon.orbit_speed + moon.phase_offset
 	
-	# Get moon's individual inclination and offset
-	var inclination = moon.orbital_inclination 
-	var orbit_offset = moon.orbit_vertical_offset
-	
-	# Calculate position using 3D orbit projection to 2D
-	# This creates an orbit that never visually intersects with the planet
-	var horizontal_scale = moon.distance
-	var vertical_scale = moon.distance * inclination
-	
-	# Calculate position using modified ellipse that's offset from planet center
-	moon.global_position = global_position + Vector2(
-		cos(moon_angle) * horizontal_scale,
-		sin(moon_angle) * vertical_scale + orbit_offset
+	# For perfect circular orbits, we use consistent distance
+	# Calculate the position directly in local coordinates
+	var orbit_position = Vector2(
+		cos(moon_angle) * moon.distance,
+		sin(moon_angle) * moon.distance
 	)
 	
-	# Always set z-index to be in front of the planet
-	# For gaseous planets, moons are always visible
-	moon.z_index = -8
+	# IMPORTANT: Set the moon's local position directly
+	# This ensures the moon is positioned exactly on the orbit line
+	moon.position = orbit_position
+	
+	# Set z-index based on moon type for visual layering
+	# This ensures consistent visual hierarchy:
+	# - Volcanic moons (closest) always render in front
+	# - Icy moons (furthest) always render behind other moons
+	# - Rocky moons (middle) render between volcanic and icy
+	moon.z_index = get_moon_z_index(moon)
+
+# Helper function to get appropriate z-index based on moon type
+func get_moon_z_index(moon) -> int:
+	if moon is MoonBase:
+		match moon._get_moon_type_prefix():
+			"Volcanic":
+				return -6  # Closest moons always in front
+			"Rocky":
+				return -7  # Middle distance moons
+			"Icy":
+				return -8  # Furthest moons always behind
+	return -7  # Default z-index
+
+# Helper function to get moon orbit color for debug visualization
+func get_moon_orbit_color(moon) -> Color:
+	if moon is MoonBase:
+		match moon._get_moon_type_prefix():
+			"Volcanic":
+				return volcanic_orbit_color
+			"Rocky":
+				return rocky_orbit_color
+			"Icy":
+				return icy_orbit_color
+	return Color(1, 1, 1, 0.4)  # Default white color
 
 # Base initialization function - handles common setup
 func initialize(params: Dictionary) -> void:
@@ -165,6 +226,7 @@ func initialize(params: Dictionary) -> void:
 	if "moon_orbit_speed_factor" in params and params.moon_orbit_speed_factor != 1.0:
 		moon_orbit_factor *= params.moon_orbit_speed_factor
 	if "is_gaseous_planet" in params: is_gaseous_planet = params.is_gaseous_planet
+	if "debug_draw_orbits" in params: debug_draw_orbits = params.debug_draw_orbits
 
 	# Each subclass will implement its own custom initialization
 	_perform_specialized_initialization(params)
@@ -185,7 +247,7 @@ func _perform_specialized_initialization(_params: Dictionary) -> void:
 func _get_moon_size_scale() -> float:
 	return 1.0  # Default no scaling
 
-# Moon creation - common for all planet types
+# Moon creation - enhanced for improved orbit distribution
 func _create_moons() -> void:
 	if _moon_scenes.is_empty():
 		push_error("Planet: Moon scenes not available for moon creation")
@@ -208,14 +270,35 @@ func _create_moons() -> void:
 		emit_signal("planet_loaded", self)
 		return
 	
-	# Generate orbital parameters for all moons to prevent collisions
-	var orbital_params = _generate_orbital_parameters(num_moons, rng)
+	# For gaseous planets, calculate distribution of moon types
+	var volcanic_count = 0
+	var rocky_count = 0
+	var icy_count = 0
 	
+	if is_gaseous_planet:
+		# For gaseous planets, distribute moon types more systematically
+		volcanic_count = max(1, int(float(num_moons) * 0.3))
+		rocky_count = max(1, int(float(num_moons) * 0.3))
+		icy_count = num_moons - volcanic_count - rocky_count
+	
+	# Generate orbital parameters with improved spacing
+	var orbital_params = _generate_orbital_parameters_for_gaseous(num_moons, rng, volcanic_count, rocky_count, icy_count) if is_gaseous_planet else _generate_orbital_parameters(num_moons, rng)
+	
+	# Create each moon
 	for m in range(num_moons):
 		var moon_seed = seed_value + m * 100 + rng.randi() % 1000
 		
-		# Determine moon type based on planet category
-		var moon_type = _get_moon_type_for_position(m, num_moons, rng)
+		# Determine moon type based on planet category and position
+		var moon_type
+		if is_gaseous_planet:
+			if m < volcanic_count:
+				moon_type = MoonType.VOLCANIC
+			elif m < volcanic_count + rocky_count:
+				moon_type = MoonType.ROCKY
+			else:
+				moon_type = MoonType.ICY
+		else:
+			moon_type = _get_moon_type_for_position(m, num_moons, rng)
 		
 		# Get the correct moon scene for this type
 		if not _moon_scenes.has(moon_type):
@@ -237,81 +320,115 @@ func _create_moons() -> void:
 		# Generate a simple moon name
 		var moon_name = _get_moon_type_prefix(moon_type) + " Moon-" + str(moon_seed % 1000)
 		
-		# Generate orbital parameters specific to planet type
-		var orbit_params = _get_orbit_params_for_planet_type(m, num_moons, rng)
-		
 		# Use the pre-calculated orbital parameters
+		var param_index = min(m, orbital_params.size() - 1)
 		var moon_params = {
 			"seed_value": moon_seed,
 			"parent_planet": self,
-			"distance": orbital_params[m].distance,
-			"base_angle": orbital_params[m].base_angle,
-			"orbit_speed": orbital_params[m].orbit_speed,
-			"orbit_deviation": orbital_params[m].orbit_deviation,
-			"phase_offset": orbital_params[m].phase_offset,
+			"distance": orbital_params[param_index].distance,
+			"base_angle": orbital_params[param_index].base_angle,
+			"orbit_speed": orbital_params[param_index].orbit_speed,
+			"orbit_deviation": orbital_params[param_index].orbit_deviation,
+			"phase_offset": orbital_params[param_index].phase_offset,
 			"parent_name": planet_name,
 			"use_texture_cache": use_texture_cache,
 			"moon_type": moon_type,
 			"size_scale": _get_moon_size_scale(),
 			"is_gaseous": is_gaseous_planet,
 			"moon_name": moon_name,
-			# New orbit parameters for different planet types
-			"orbital_inclination": orbit_params.inclination,
-			"orbit_vertical_offset": orbit_params.vertical_offset
+			# Orbital parameters always zero for gaseous moons
+			"orbital_inclination": 1.0,  # Perfect circle
+			"orbit_vertical_offset": 0.0  # No vertical offset
 		}
 		
 		add_child(moon_instance)
+		
+		# Important: We need to initialize first, and then set position
 		moon_instance.initialize(moon_params)
+		
+		# Initialize with starting position directly
+		var start_angle = orbital_params[param_index].base_angle + orbital_params[param_index].phase_offset
+		moon_instance.position = Vector2(
+			cos(start_angle) * orbital_params[param_index].distance,
+			sin(start_angle) * orbital_params[param_index].distance
+		)
+		
 		moons.append(moon_instance)
 	
 	# Emit signal that the planet has been loaded (after moons are created)
 	emit_signal("planet_loaded", self)
 
-# Generate orbit parameters specific to planet type
-func _get_orbit_params_for_planet_type(moon_index: int, total_moons: int, rng: RandomNumberGenerator) -> Dictionary:
-	if is_gaseous_planet:
-		# For gaseous planets, create orbits that never visually intersect with the planet
-		# by giving them significant inclination and vertical offset
+# Specialized orbital parameter generation for gaseous planets with distinct moon types
+func _generate_orbital_parameters_for_gaseous(moon_count: int, rng: RandomNumberGenerator, volcanic_count: int, rocky_count: int, icy_count: int) -> Array:
+	var params = []
+	
+	if moon_count <= 0:
+		return params
+	
+	# Calculate planet radius for reference
+	var planet_radius = pixel_size / 2.0
+	
+	# Process volcanic moons (closest to planet)
+	for i in range(volcanic_count):
+		var distance_percent = float(i) / max(1, volcanic_count)
+		var distance = planet_radius * lerp(volcanic_distance_range.x, volcanic_distance_range.y, distance_percent)
 		
-		# Distribute moons evenly through vertical space
-		var vertical_position = (float(moon_index) / total_moons) - 0.5  # Range from -0.5 to 0.5
+		# Volcanic moons orbit faster
+		var base_speed = rng.randf_range(0.3, 0.4) * moon_orbit_factor * _get_orbit_speed_modifier()
+		var orbit_speed = base_speed * volcanic_speed_modifier
 		
-		# Add randomization to make it look natural
-		var random_offset = rng.randf_range(-0.1, 0.1)
-		vertical_position += random_offset
+		# Distribute evenly around the orbit with slight random variation
+		var phase_offset = (i * TAU / volcanic_count) + rng.randf_range(-0.1, 0.1)
 		
-		# Calculate vertical offset and inclination
-		var orbit_offset = vertical_position * pixel_size * 1.5  # Scale by planet size
-		var inclination = rng.randf_range(0.2, 0.4)  # Flattened ellipses
+		params.append({
+			"distance": distance,
+			"base_angle": 0.0,
+			"orbit_speed": orbit_speed,
+			"orbit_deviation": 0.0,  # No deviation for perfect circle
+			"phase_offset": phase_offset
+		})
+	
+	# Process rocky moons (middle distance)
+	for i in range(rocky_count):
+		var distance_percent = float(i) / max(1, rocky_count)
+		var distance = planet_radius * lerp(rocky_distance_range.x, rocky_distance_range.y, distance_percent)
 		
-		return {
-			"inclination": inclination,
-			"vertical_offset": orbit_offset
-		}
-	else:
-		# For terran planets, create orbits near the equatorial plane
-		# Slight inclination so not all moons are perfectly flat
-		var inclination = rng.randf_range(orbit_inclination_range.x, orbit_inclination_range.y)
+		# Rocky moons orbit at standard speed
+		var orbit_speed = rng.randf_range(0.25, 0.35) * moon_orbit_factor * _get_orbit_speed_modifier() * rocky_speed_modifier
 		
-		return {
-			"inclination": 1.0 + inclination,  # Near 1.0 for nearly circular, equatorial orbits
-			"vertical_offset": 0.0  # No vertical offset for terran planets
-		}
+		# Distribute evenly with slight variation
+		var phase_offset = (i * TAU / rocky_count) + rng.randf_range(-0.1, 0.1)
+		
+		params.append({
+			"distance": distance,
+			"base_angle": 0.0,
+			"orbit_speed": orbit_speed,
+			"orbit_deviation": 0.0,  # No deviation for perfect circle
+			"phase_offset": phase_offset
+		})
+	
+	# Process icy moons (furthest from planet)
+	for i in range(icy_count):
+		var distance_percent = float(i) / max(1, icy_count)
+		var distance = planet_radius * lerp(icy_distance_range.x, icy_distance_range.y, distance_percent)
+		
+		# Icy moons orbit slower
+		var orbit_speed = rng.randf_range(0.2, 0.3) * moon_orbit_factor * _get_orbit_speed_modifier() * icy_speed_modifier
+		
+		# Distribute evenly with slight variation
+		var phase_offset = (i * TAU / icy_count) + rng.randf_range(-0.1, 0.1)
+		
+		params.append({
+			"distance": distance,
+			"base_angle": 0.0,
+			"orbit_speed": orbit_speed,
+			"orbit_deviation": 0.0,  # No deviation for perfect circle
+			"phase_offset": phase_offset
+		})
+	
+	return params
 
-# Helper to get moon type prefix
-func _get_moon_type_prefix(moon_type: int) -> String:
-	match moon_type:
-		MoonType.ROCKY: return "Rocky"
-		MoonType.ICY: return "Icy"
-		MoonType.VOLCANIC: return "Volcanic"
-		_: return "Moon"
-
-# Virtual method to determine appropriate moon types
-func _get_moon_type_for_position(_position: int, _total_moons: int, _rng: RandomNumberGenerator) -> int:
-	# Default implementation - return a rocky moon
-	return MoonType.ROCKY
-
-# Generate well-distributed orbital parameters to prevent moon collisions
+# Legacy orbital parameter generation for terran planets
 func _generate_orbital_parameters(moon_count: int, rng: RandomNumberGenerator) -> Array:
 	var params = []
 	
@@ -377,6 +494,19 @@ func _generate_orbital_parameters(moon_count: int, rng: RandomNumberGenerator) -
 	
 	return params
 
+# Helper to get moon type prefix
+func _get_moon_type_prefix(moon_type: int) -> String:
+	match moon_type:
+		MoonType.ROCKY: return "Rocky"
+		MoonType.ICY: return "Icy"
+		MoonType.VOLCANIC: return "Volcanic"
+		_: return "Moon"
+
+# Virtual method to determine appropriate moon types
+func _get_moon_type_for_position(_position: int, _total_moons: int, _rng: RandomNumberGenerator) -> int:
+	# Default implementation - return a rocky moon
+	return MoonType.ROCKY
+
 # Virtual method for orbit speed modifier
 func _get_orbit_speed_modifier() -> float:
 	return 1.0
@@ -400,3 +530,13 @@ func get_theme_name() -> String:
 		PlanetThemes.URANUS: return "Uranus-like"
 		PlanetThemes.NEPTUNE: return "Neptune-like"
 		_: return "Unknown"
+
+# Toggle debug orbit visualization
+func toggle_orbit_debug(enabled: bool = true) -> void:
+	debug_draw_orbits = enabled
+	queue_redraw()
+
+# Public method to modify orbit line width
+func set_orbit_line_width(width: float) -> void:
+	debug_orbit_line_width = width
+	queue_redraw()
