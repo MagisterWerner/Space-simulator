@@ -5,8 +5,8 @@ class_name MoonGenerator
 # Moon type enum (must match moon.gd and planet.gd)
 enum MoonType {
 	ROCKY,
-	ICE,
-	LAVA
+	ICY,
+	VOLCANIC
 }
 
 # CHANGED: Separate moon sizes for terran and gaseous planets
@@ -59,7 +59,7 @@ func get_moon_colors(moon_type: int) -> PackedColorArray:
 				Color(0.35, 0.33, 0.31),
 				Color(0.25, 0.23, 0.21)
 			])
-		MoonType.ICE:
+		MoonType.ICY:
 			return PackedColorArray([
 				Color(0.98, 0.99, 1.0),   # Almost white
 				Color(0.92, 0.97, 1.0),   # Very light blue
@@ -69,7 +69,7 @@ func get_moon_colors(moon_type: int) -> PackedColorArray:
 				Color(0.45, 0.65, 0.85),  # Deeper blue
 				Color(0.30, 0.50, 0.75)   # Dark blue
 			])
-		MoonType.LAVA:
+		MoonType.VOLCANIC:
 			return PackedColorArray([
 				Color(1.0, 0.6, 0.0),     # Bright orange
 				Color(0.9, 0.4, 0.05),    # Orange
@@ -101,7 +101,7 @@ func get_moon_params(moon_type: int) -> Dictionary:
 				"ambient_light": 0.65,
 				"light_intensity": 0.35
 			}
-		MoonType.ICE:
+		MoonType.ICY:
 			return {
 				"crater_count_min": 1,
 				"crater_count_max": 3,
@@ -110,7 +110,7 @@ func get_moon_params(moon_type: int) -> Dictionary:
 				"ambient_light": 0.75,     # Brighter ambient light
 				"light_intensity": 0.25    # Less harsh shadows
 			}
-		MoonType.LAVA:
+		MoonType.VOLCANIC:
 			return {
 				"crater_count_min": 3,
 				"crater_count_max": 6,
@@ -300,11 +300,11 @@ func generate_craters(seed_value: int, moon_type: int) -> void:
 		
 		# Apply moon type specific modifications to craters
 		match moon_type:
-			MoonType.ICE:
+			MoonType.ICY:
 				# Ice moons have smoother, more circular craters
 				new_crater.noise_amp *= 0.7
 				new_crater.elongation *= 0.6
-			MoonType.LAVA:
+			MoonType.VOLCANIC:
 				# Lava moons have more irregular, jagged craters
 				new_crater.noise_amp *= 1.3
 				new_crater.elongation *= 1.2
@@ -473,13 +473,13 @@ func create_moon_texture(seed_value: int, moon_type: int = MoonType.ROCKY, is_ga
 			
 			# Apply moon type specific noise adjustments
 			match moon_type:
-				MoonType.ICE:
+				MoonType.ICY:
 					# Ice moons have smoother surfaces
 					base_noise = pow(base_noise, 0.7)  # Favor brighter values
 					# Add slight shimmer to ice
 					base_noise += noise(sphere_uv.x * 20, sphere_uv.y * 20, seed_value + 123) * 0.05
 					
-				MoonType.LAVA:
+				MoonType.VOLCANIC:
 					# Lava moons have more contrast and "hotspots"
 					base_noise = pow(base_noise, 1.3)  # Increase contrast
 					
@@ -494,10 +494,10 @@ func create_moon_texture(seed_value: int, moon_type: int = MoonType.ROCKY, is_ga
 				match moon_type:
 					MoonType.ROCKY:
 						base_noise = max(0.0, base_noise - abs(crater_depth) * 0.5)
-					MoonType.ICE:
+					MoonType.ICY:
 						# Ice crater floors are brighter (exposed ice)
 						base_noise = max(0.2, base_noise - abs(crater_depth) * 0.3)
-					MoonType.LAVA:
+					MoonType.VOLCANIC:
 						# Lava crater floors are darker (cooling areas)
 						base_noise = max(0.0, base_noise - abs(crater_depth) * 0.7)
 			
@@ -507,12 +507,12 @@ func create_moon_texture(seed_value: int, moon_type: int = MoonType.ROCKY, is_ga
 			
 			# Apply special effects based on moon type
 			match moon_type:
-				MoonType.ICE:
+				MoonType.ICY:
 					# Add subtle blue glow to edges
 					if d_circle > 0.8:
 						base_color.b = min(1.0, base_color.b + 0.1)
 				
-				MoonType.LAVA:
+				MoonType.VOLCANIC:
 					# Add orange/red glow to some areas
 					var heat_noise = noise(sphere_uv.x * 12, sphere_uv.y * 12, seed_value + 456)
 					if heat_noise > 0.7 and not in_crater:
