@@ -37,13 +37,11 @@ enum MoonType {
 }
 
 # Base class properties
-var name_component
 var use_texture_cache: bool = true
 var _moon_scenes: Dictionary = {}
 var _initialized: bool = false
 
 func _ready() -> void:
-	name_component = get_node_or_null("NameComponent")
 	# Set appropriate z-index to render behind player but in front of atmosphere
 	z_index = -10
 	
@@ -131,8 +129,8 @@ func initialize(params: Dictionary) -> void:
 	# Each subclass will implement its own custom initialization
 	_perform_specialized_initialization(params)
 	
-	# All planets need a name
-	_setup_name_component(params)
+	# Generate a simple name based on type and seed
+	planet_name = _get_planet_type_name() + "-" + str(seed_value % 1000)
 	
 	# Defer moon creation to avoid stuttering
 	call_deferred("_create_moons")
@@ -196,6 +194,9 @@ func _create_moons() -> void:
 		if not moon_instance:
 			continue
 		
+		# Generate a simple moon name
+		var moon_name = _get_moon_type_prefix(moon_type) + " Moon-" + str(moon_seed % 1000)
+		
 		# Use the pre-calculated orbital parameters
 		var moon_params = {
 			"seed_value": moon_seed,
@@ -209,7 +210,8 @@ func _create_moons() -> void:
 			"use_texture_cache": use_texture_cache,
 			"moon_type": moon_type,
 			"size_scale": _get_moon_size_scale(),  # Add size scaling parameter
-			"is_gaseous": false  # Explicitly mark as not a gaseous planet moon
+			"is_gaseous": false,  # Explicitly mark as not a gaseous planet moon
+			"moon_name": moon_name  # Add the generated name
 		}
 		
 		add_child(moon_instance)
@@ -219,23 +221,18 @@ func _create_moons() -> void:
 	# Emit signal that the planet has been loaded (after moons are created)
 	emit_signal("planet_loaded", self)
 
+# Helper to get moon type prefix
+func _get_moon_type_prefix(moon_type: int) -> String:
+	match moon_type:
+		MoonType.ROCKY: return "Rocky"
+		MoonType.ICY: return "Icy"
+		MoonType.VOLCANIC: return "Volcanic"
+		_: return "Moon"
+
 # Virtual method to determine appropriate moon types
 func _get_moon_type_for_position(_position: int, _total_moons: int, _rng: RandomNumberGenerator) -> int:
 	# Default implementation - return a rocky moon
 	return MoonType.ROCKY
-
-# Name setup for all planets
-func _setup_name_component(_params: Dictionary) -> void:
-	name_component = get_node_or_null("NameComponent")
-	if name_component:
-		# The name component initialization depends on the planet type
-		# This will be customized in the subclasses
-		var type_prefix = _get_planet_type_name()
-		name_component.initialize(seed_value, grid_x, grid_y, "", type_prefix)
-		planet_name = name_component.get_entity_name()
-	else:
-		# Fallback naming if no name component
-		planet_name = _get_planet_type_name() + "-" + str(seed_value % 1000)
 
 # Generate well-distributed orbital parameters to prevent moon collisions
 func _generate_orbital_parameters(moon_count: int, rng: RandomNumberGenerator) -> Array:

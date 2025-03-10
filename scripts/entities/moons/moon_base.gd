@@ -17,11 +17,7 @@ var moon_name: String
 var use_texture_cache: bool = true
 var is_gaseous: bool = false  # Flag to indicate if moon belongs to a gaseous planet
 
-# Components
-var name_component
-
 func _ready():
-	name_component = get_node_or_null("NameComponent")
 	# Set appropriate z-index to be behind player but may be in front or behind planet
 	# The actual z-index will be dynamically adjusted by parent planet based on orbit position
 	# Default to -9, will be set to -12 when behind planet (and atmosphere)
@@ -49,35 +45,20 @@ func initialize(params: Dictionary) -> void:
 	# Store if this moon belongs to a gaseous planet
 	if "is_gaseous" in params:
 		is_gaseous = params.is_gaseous
+		
+	# Use moon_name from params if provided
+	if "moon_name" in params:
+		moon_name = params.moon_name
+	else:
+		# Generate a simple name based on type and seed
+		moon_name = _get_moon_type_prefix() + " Moon-" + str(seed_value % 1000)
 	
 	# Generate moon texture - will set pixel_size correctly based on is_gaseous
 	_generate_moon_texture()
-	
-	# Set up name component
-	_setup_name_component(params)
 
 # Virtual method to be implemented by subclasses
 func _generate_moon_texture() -> void:
 	push_error("MoonBase: _generate_moon_texture is a virtual method that should be overridden")
-
-# Setup name component
-func _setup_name_component(params: Dictionary) -> void:
-	name_component = get_node_or_null("NameComponent")
-	if name_component:
-		# Add moon type to name through NameComponent
-		var type_prefix = _get_moon_type_prefix()
-		var parent_name = params.get("parent_name", "")
-		
-		# Call initialize on the name component
-		if name_component.has_method("initialize"):
-			name_component.initialize(seed_value, 0, 0, parent_name, type_prefix)
-			moon_name = name_component.get_entity_name()
-		else:
-			# Fallback if no initialize method
-			moon_name = type_prefix + " Moon-" + str(seed_value % 1000)
-	else:
-		# Create a basic name using the moon type and seed
-		moon_name = _get_moon_type_prefix() + " Moon-" + str(seed_value % 1000)
 
 # Virtual method to get moon type prefix
 func _get_moon_type_prefix() -> String:
