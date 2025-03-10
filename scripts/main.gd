@@ -1,15 +1,16 @@
 # scripts/main.gd
 # Main scene controller that integrates all game systems
-# Updated to use GameSettings for configuration and generate a starter world
+# Updated to let GameManager handle player creation and positioning
 extends Node2D
 
-@onready var player_ship = $PlayerShip
 @onready var camera = $Camera2D
 @onready var space_background = $SpaceBackground
 @onready var game_settings = $GameSettings
 
 var screen_size: Vector2
 var world_generator = null
+var player_start_position: Vector2 = Vector2.ZERO
+var player_start_cell: Vector2i = Vector2i(-1, -1)
 
 func _ready() -> void:
 	screen_size = get_viewport_rect().size
@@ -39,26 +40,24 @@ func _initialize_game() -> void:
 	if world_generator.has_method("generate_starter_world"):
 		var planet_data = world_generator.generate_starter_world()
 		
-		# Position player at the starting planet
+		# Store the starting planet information for GameManager
 		if planet_data and planet_data.has("player_planet_cell") and planet_data.player_planet_cell != Vector2i(-1, -1):
 			# Calculate world position
-			var player_planet_position = game_settings.get_cell_world_position(planet_data.player_planet_cell)
-			
-			# Position the player ship at the planet
-			player_ship.position = player_planet_position
+			player_start_cell = planet_data.player_planet_cell
+			player_start_position = game_settings.get_cell_world_position(player_start_cell)
 			
 			if game_settings and game_settings.debug_mode:
-				print("Main: Positioned player at starting planet: ", player_planet_position)
+				print("Main: Determined player start position at: ", player_start_position)
 		else:
 			# Fallback to grid center position if no planet was generated
-			player_ship.position = game_settings.get_player_starting_position()
+			player_start_position = game_settings.get_player_starting_position()
 	else:
 		# Fallback if generate_starter_world doesn't exist
 		print("WorldGenerator doesn't have generate_starter_world method")
-		player_ship.position = screen_size / 2
+		player_start_position = screen_size / 2
 	
-	# Camera follows player
-	camera.position = player_ship.position
+	# Initially position camera at the player start position
+	camera.position = player_start_position
 	
 	# Register camera in group for background to find
 	camera.add_to_group("camera")
@@ -67,7 +66,7 @@ func _initialize_game() -> void:
 	if space_background and not space_background.initialized:
 		space_background.setup_background()
 	
-	# Start the game using GameManager if available
+	# Start the game using GameManager
 	_start_game_manager()
 
 func _on_world_generation_completed() -> void:
@@ -82,6 +81,10 @@ func _start_game_manager() -> void:
 			# Configure game manager with our settings
 			if game_settings and game_manager.has_method("configure_with_settings"):
 				game_manager.configure_with_settings(game_settings)
+			
+			# Pass the player start position to GameManager
+			if game_manager.has_method("set_player_start_position"):
+				game_manager.set_player_start_position(player_start_position, player_start_cell)
 			
 			# Start the game
 			game_manager.start_game()
@@ -107,12 +110,14 @@ func _process(_delta: float) -> void:
 			space_background.update_viewport_size()
 
 func _update_camera_position() -> void:
-	# Follow player from GameManager if available, otherwise use local reference
+	# Get player from GameManager
 	if has_node("/root/GameManager"):
 		var game_manager = get_node("/root/GameManager")
 		if game_manager.player_ship and is_instance_valid(game_manager.player_ship):
 			camera.position = game_manager.player_ship.position
-		else:
-			camera.position = player_ship.position
-	else:
-		camera.position = player_ship.position
+		elif player_start_position != Vector2.ZERO:
+			# Fallback to start position if no player exists yet
+			camera.position = player_start_position
+	elif player_start_position != Vector2.ZERO:
+		# Fallback to start position if GameManager not found
+		camera.position = player_start_position

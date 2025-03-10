@@ -1,7 +1,6 @@
-[gd_scene load_steps=6 format=3 uid="uid://ddsnaxcqqd81s"]
+[gd_scene load_steps=5 format=3 uid="uid://ddsnaxcqqd81s"]
 
 [ext_resource type="Script" uid="uid://2lae3uvcc1c4" path="res://scripts/main.gd" id="1_txjaf"]
-[ext_resource type="PackedScene" uid="uid://rhas31gnv33u" path="res://scenes/player/player_ship.tscn" id="2_cayce"]
 [ext_resource type="PackedScene" uid="uid://8iqbtdgouxfb" path="res://scenes/backgrounds/space_background.tscn" id="3_t8g3p"]
 [ext_resource type="PackedScene" uid="uid://baujd316t5ufb" path="res://scenes/world/world_grid.tscn" id="5_84hlr"]
 [ext_resource type="Script" uid="uid://d0faq8wvi3ac0" path="res://scripts/game_settings.gd" id="7_yyfjg_1"]
@@ -13,13 +12,14 @@ script = ExtResource("1_txjaf")
 script = ExtResource("7_yyfjg_1")
 use_random_seed = false
 grid_cell_size = 768
+grid_size = 6
+grid_line_width = 1.0
+grid_opacity = 0.3
+player_starting_planet_type = 2
 debug_mode = true
 
 [node name="SpaceBackground" parent="." instance=ExtResource("3_t8g3p")]
 star_count_far = 5000
-
-[node name="PlayerShip" parent="." instance=ExtResource("2_cayce")]
-z_index = 20
 
 [node name="Camera2D" type="Camera2D" parent="."]
 zoom = Vector2(0.8, 0.8)

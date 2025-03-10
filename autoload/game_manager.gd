@@ -46,6 +46,11 @@ var current_level: String = ""
 var player_ship = null
 var game_settings: GameSettings = null
 
+# Start position override from Main.gd
+var player_start_position: Vector2 = Vector2.ZERO
+var player_start_cell: Vector2i = Vector2i(-1, -1)
+var use_custom_start_position: bool = false
+
 # Upgrade system
 var available_upgrades: Array = []
 var player_upgrades: Array = []
@@ -153,6 +158,15 @@ func _on_settings_seed_changed(new_seed: int) -> void:
 	if _seed_ready:
 		SeedManager.set_seed(new_seed)
 
+# Set the player's start position from Main.gd
+func set_player_start_position(position: Vector2, cell: Vector2i = Vector2i(-1, -1)) -> void:
+	player_start_position = position
+	player_start_cell = cell
+	use_custom_start_position = true
+	
+	if game_settings and game_settings.debug_mode:
+		print("GameManager: Player start position set to ", position, " (cell: ", cell, ")")
+
 # Game lifecycle methods
 func start_game() -> void:
 	if game_running:
@@ -167,17 +181,25 @@ func start_game() -> void:
 	is_game_paused = false
 	player_upgrades.clear()
 	
-	# Spawn the player at the position from GameSettings if available
+	# Determine spawn position
 	var spawn_position = Vector2.ZERO
 	
-	if game_settings:
+	# First priority: Use custom start position from Main.gd if available
+	if use_custom_start_position and player_start_position != Vector2.ZERO:
+		spawn_position = player_start_position
+	# Second priority: Use GameSettings
+	elif game_settings:
 		spawn_position = game_settings.get_player_starting_position()
+	# Last resort: Use viewport center
 	else:
 		var viewport_size = get_viewport().get_visible_rect().size
 		spawn_position = viewport_size / 2
-		
+	
+	# Spawn the player at the determined position
 	if _entities_ready:
 		player_ship = EntityManager.spawn_player(spawn_position)
+		if game_settings and game_settings.debug_mode:
+			print("GameManager: Spawned player at position: ", spawn_position)
 	else:
 		push_error("GameManager: Cannot spawn player - EntityManager autoload not found")
 		return
@@ -279,7 +301,9 @@ func _on_player_died() -> void:
 		# Respawn the player
 		var respawn_position
 		
-		if game_settings:
+		if use_custom_start_position and player_start_position != Vector2.ZERO:
+			respawn_position = player_start_position
+		elif game_settings:
 			respawn_position = game_settings.get_player_starting_position()
 		else:
 			var viewport_size = get_viewport().get_visible_rect().size

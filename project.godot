@@ -35,10 +35,6 @@ AudioManager="*res://autoload/audio_manager.gd"
 
 property_name=1
 
-[debug]
-
-settings/stdout/print_fps=true
-
 [display]
 
 window/size/viewport_width=640
