@@ -18,10 +18,8 @@ signal spawner_ready
 @export var grid_y: int = 0
 @export var local_seed_offset: int = 0  # Add to global seed for variation
 
-# Planet properties
-@export_category("Planet Properties")
-@export var moon_chance: int = 50  # Percentage chance for planets to spawn moons
-@export var planet_scale: float = 1.0
+# Moon properties
+@export_category("Moon Properties")
 @export var moon_orbit_speed_factor: float = 1.0  # Multiplier for moon orbit speed
 
 @export_category("Performance Options")

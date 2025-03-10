@@ -12,11 +12,6 @@ var terran_theme: int = 0  # 0=Random, 1-7=Specific Terran theme
 @export var debug_draw_orbits: bool = false
 @export var debug_orbit_line_width: float = 1.0
 
-func _init() -> void:
-	# Override the base class properties with terran-specific defaults
-	moon_chance = 40  # Lower chance of moons for terran planets
-	planet_scale = 1.0  # Standard scale for terran planets
-
 # Override the spawner type method for debugging
 func get_spawner_type() -> String:
 	return "PlanetSpawnerTerran"
@@ -58,9 +53,6 @@ func _spawn_terran_planet() -> Node2D:
 	var spawn_position = _calculate_spawn_position()
 	_planet_instance.global_position = spawn_position
 	
-	# Apply scale
-	_planet_instance.scale = Vector2(planet_scale, planet_scale)
-	
 	# Determine terran theme (don't generate it here, let planet.gd decide if it's random)
 	var theme_to_use: int = -1
 	
@@ -86,7 +78,7 @@ func _spawn_terran_planet() -> Node2D:
 		"random_terran_seed": random_terran_seed,
 		"grid_x": grid_x,
 		"grid_y": grid_y,
-		"moon_chance": moon_chance,
+		"moon_chance": 40,  # Fixed moon chance for terran planets
 		"min_moon_distance_factor": 2.2,  # INCREASED: from 1.8 to 2.2 for longer orbit
 		"max_moon_distance_factor": 3.0,  # INCREASED: from 2.5 to 3.0 for longer orbit
 		"max_orbit_deviation": 0.15,
@@ -124,8 +116,10 @@ func _spawn_terran_planet() -> Node2D:
 	
 	# Debug output
 	if game_settings and game_settings.debug_mode or debug_planet_generation:
+		var planet_size = PlanetGeneratorBase.get_planet_size(_seed_value, false)  # false = terran
 		print("PlanetSpawnerTerran: Spawned terran planet at position ", _planet_instance.global_position)
 		print("PlanetSpawnerTerran: Selected terran_theme=", terran_theme, " (0=Random, 1-7=specific)")
+		print("PlanetSpawnerTerran: Planet size: ", planet_size, " pixels")
 		if _planet_instance.has_method("get_theme_name"):
 			print("PlanetSpawnerTerran: Actual theme used: ", _planet_instance.get_theme_name())
 	

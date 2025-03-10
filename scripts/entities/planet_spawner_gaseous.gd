@@ -20,11 +20,6 @@ var gaseous_theme: int = 0  # 0=Random, 1-4=Specific Gaseous theme
 @export var debug_draw_orbits: bool = false
 @export var debug_orbit_line_width: float = 1.0
 
-func _init() -> void:
-	# Override the base class properties with gaseous-specific defaults
-	moon_chance = 100  # Gas giants always have moons
-	planet_scale = 1.25  # Larger scale for gas giants
-
 # Override the spawner type method for debugging
 func get_spawner_type() -> String:
 	return "PlanetSpawnerGaseous"
@@ -64,9 +59,6 @@ func _spawn_gaseous_planet() -> Node2D:
 	var spawn_position = _calculate_spawn_position()
 	_planet_instance.global_position = spawn_position
 	
-	# Apply scale
-	_planet_instance.scale = Vector2(planet_scale, planet_scale)
-	
 	# Determine gas giant type
 	var gas_giant_type: int = -1  # -1 means let planet.gd decide
 	
@@ -86,7 +78,7 @@ func _spawn_gaseous_planet() -> Node2D:
 		"random_gas_seed": random_gas_seed,
 		"grid_x": grid_x,
 		"grid_y": grid_y,
-		"moon_chance": moon_chance,
+		"moon_chance": 100,  # Fixed moon chance for gaseous planets
 		"min_moon_distance_factor": 1.8,
 		"max_moon_distance_factor": 2.5,
 		"max_orbit_deviation": 0.0,  # No deviation for perfect circles
@@ -125,8 +117,10 @@ func _spawn_gaseous_planet() -> Node2D:
 	
 	# Debug output
 	if game_settings and game_settings.debug_mode or debug_planet_generation:
+		var planet_size = PlanetGeneratorBase.get_planet_size(_seed_value, true)  # true = gaseous
 		print("PlanetSpawnerGaseous: Spawned gaseous planet at position ", _planet_instance.global_position)
 		print("PlanetSpawnerGaseous: Selected gaseous_theme=", gaseous_theme, " (0=Random, 1-4=specific)")
+		print("PlanetSpawnerGaseous: Planet size: ", planet_size, " pixels")
 		if _planet_instance.has_method("get_gas_giant_type_name"):
 			print("PlanetSpawnerGaseous: Actual gas giant type: ", _planet_instance.get_gas_giant_type_name())
 	
