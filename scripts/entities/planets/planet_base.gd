@@ -240,14 +240,20 @@ func _create_moons() -> void:
 	var rng = RandomNumberGenerator.new()
 	rng.seed = seed_value
 	
-	# Check if planet has moons based on chance
-	var has_moons = rng.randi() % 100 < moon_chance
-	if not has_moons:
-		emit_signal("planet_loaded", self)
-		return
+	# For gaseous planets, ALWAYS create moons (bypass chance check completely)
+	if not is_gaseous_planet:
+		# Only do chance check for terran planets
+		var has_moons = rng.randi() % 100 < moon_chance
+		if not has_moons:
+			emit_signal("planet_loaded", self)
+			return
 	
 	# Determine number of moons
 	var num_moons = rng.randi_range(1, max_moons)
+	
+	# For gaseous planets, ensure at least 3 moons (one of each type)
+	if is_gaseous_planet:
+		num_moons = max(3, num_moons)
 	
 	# Generate and distribute moons
 	var moon_distribution = _calculate_moon_distribution(num_moons)
@@ -268,31 +274,22 @@ func _create_moons() -> void:
 func _calculate_moon_distribution(num_moons: int) -> Dictionary:
 	# Distribution of moon types depends on planet type
 	if is_gaseous_planet:
-		# New distribution that ensures 1-2 of each moon type for gaseous planets
-		var rng = RandomNumberGenerator.new()
-		rng.seed = seed_value
+		# For gaseous planets, ALWAYS start with exactly 1 of each type
+		var volcanic_count = 1
+		var rocky_count = 1
+		var icy_count = 1
 		
-		# Determine how many of each type (1-2)
-		var volcanic_count = rng.randi_range(1, 2)
-		var rocky_count = rng.randi_range(1, 2)
-		var icy_count = rng.randi_range(1, 2)
+		# Calculate remaining moons to distribute
+		var remaining = num_moons - 3
 		
-		# Calculate total, but if it exceeds max_moons, we'll need to adjust
-		var total_moons = volcanic_count + rocky_count + icy_count
-		
-		# Adjust if we exceed max_moons
-		if total_moons > max_moons:
-			# Ensure we have at least 1 of each type
-			volcanic_count = 1
-			rocky_count = 1
-			icy_count = 1
+		if remaining > 0:
+			var rng = RandomNumberGenerator.new()
+			rng.seed = seed_value
 			
-			# Distribute any remaining slots
-			var remaining = max_moons - 3
+			# Distribute remaining moons based on seed priority
 			var types_to_increase = []
-			
-			# Based on seed, prioritize different moon types
 			var priority_seed = (seed_value % 3)
+			
 			if priority_seed == 0:
 				types_to_increase = [MoonType.VOLCANIC, MoonType.ROCKY, MoonType.ICY]
 			elif priority_seed == 1:
@@ -301,18 +298,23 @@ func _calculate_moon_distribution(num_moons: int) -> Dictionary:
 				types_to_increase = [MoonType.ICY, MoonType.VOLCANIC, MoonType.ROCKY]
 			
 			# Add remaining slots based on priority
-			for type in types_to_increase:
-				if remaining <= 0:
-					break
+			for i in range(remaining):
+				var type = types_to_increase[i % 3]
 				
-				if type == MoonType.VOLCANIC:
+				if type == MoonType.VOLCANIC and volcanic_count < 2:
 					volcanic_count += 1
-				elif type == MoonType.ROCKY:
+				elif type == MoonType.ROCKY and rocky_count < 2:
 					rocky_count += 1
-				elif type == MoonType.ICY:
+				elif type == MoonType.ICY and icy_count < 2:
 					icy_count += 1
-				
-				remaining -= 1
+				else:
+					# If this type already has 2 moons, find another type with less than 2
+					if volcanic_count < 2:
+						volcanic_count += 1
+					elif rocky_count < 2:
+						rocky_count += 1
+					elif icy_count < 2:
+						icy_count += 1
 		
 		return {
 			MoonType.VOLCANIC: volcanic_count,
