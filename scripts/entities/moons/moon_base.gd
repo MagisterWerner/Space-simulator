@@ -17,6 +17,10 @@ var moon_name: String
 var use_texture_cache: bool = true
 var is_gaseous: bool = false  # Flag to indicate if moon belongs to a gaseous planet
 
+# New orbital parameters for different planet types
+var orbital_inclination: float = 1.0  # For 3D orbit projection (1.0 = circular)
+var orbit_vertical_offset: float = 0.0  # Offset from the equatorial plane
+
 func _ready():
 	# Set appropriate z-index to be behind player but may be in front or behind planet
 	# The actual z-index will be dynamically adjusted by parent planet based on orbit position
@@ -45,6 +49,12 @@ func initialize(params: Dictionary) -> void:
 	# Store if this moon belongs to a gaseous planet
 	if "is_gaseous" in params:
 		is_gaseous = params.is_gaseous
+		
+	# Initialize new orbital parameters
+	if "orbital_inclination" in params:
+		orbital_inclination = params.orbital_inclination
+	if "orbit_vertical_offset" in params:
+		orbit_vertical_offset = params.orbit_vertical_offset
 		
 	# Use moon_name from params if provided
 	if "moon_name" in params:

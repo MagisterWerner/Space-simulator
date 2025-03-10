@@ -10,6 +10,10 @@ func _init() -> void:
 	# Default max_moons value for terran planets is lower
 	max_moons = 2
 	moon_chance = 40  # 40% chance to have moons
+	
+	# Setup for equatorial orbits
+	is_gaseous_planet = false
+	orbit_inclination_range = Vector2(0.0, 0.15)  # Slight variation in orbit inclination
 
 # Override specialized initialization for terran planets
 func _perform_specialized_initialization(params: Dictionary) -> void:

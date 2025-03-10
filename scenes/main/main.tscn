@@ -43,14 +43,18 @@ script = ExtResource("7_yyfjg")
 gaseous_theme = 4
 grid_x = 2
 grid_y = 2
+moon_orbit_speed_factor = 10.0
 
 [node name="PlanetSpawnerTerran" type="Node2D" parent="."]
 script = ExtResource("6_hujxm")
+moon_orbit_speed_factor = 10.0
 
 [node name="PlanetSpawnerTerran2" type="Node2D" parent="."]
 script = ExtResource("6_hujxm")
 grid_y = 2
+moon_orbit_speed_factor = 10.0
 
 [node name="PlanetSpawnerTerran3" type="Node2D" parent="."]
 script = ExtResource("6_hujxm")
 grid_x = 2
+moon_orbit_speed_factor = 10.0

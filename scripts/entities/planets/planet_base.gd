@@ -41,6 +41,10 @@ var use_texture_cache: bool = true
 var _moon_scenes: Dictionary = {}
 var _initialized: bool = false
 
+# New properties for orbit type differentiation
+var is_gaseous_planet: bool = false
+var orbit_inclination_range: Vector2 = Vector2(0.0, 0.1) # For terran planets, how much moons can deviate from equatorial plane
+
 func _ready() -> void:
 	# Set appropriate z-index to render behind player but in front of atmosphere
 	z_index = -10
@@ -86,25 +90,57 @@ func _update_moons(_delta: float) -> void:
 	
 	for moon in moons:
 		if is_instance_valid(moon):
-			# Calculate the orbit angle based on time, speed and initial offset
-			var moon_angle = moon.base_angle + time * moon.orbit_speed + moon.phase_offset
-			
-			# Calculate deviation for elliptical orbits using sine function
-			var deviation_factor = sin(moon_angle * 2) * moon.orbit_deviation
-			
-			# Calculate moon position using parametric equation of ellipse
-			moon.global_position = global_position + Vector2(
-				cos(moon_angle) * moon.distance * (1.0 + deviation_factor * 0.3),
-				sin(moon_angle) * moon.distance
-			)
-			
-			# Determine if moon is behind or in front of planet
-			# When sin(moon_angle) is negative, the moon is in the "back half" of its orbit
-			var relative_y = sin(moon_angle)
-			
-			# Set z-index dynamically based on position relative to planet
-			# This creates the visual effect of moon passing behind the planet and atmosphere
-			moon.z_index = -12 if relative_y < 0 else -9
+			if is_gaseous_planet:
+				_update_gaseous_moon_orbit(moon, time)
+			else:
+				_update_terran_moon_orbit(moon, time)
+
+# New method specifically for terran moon orbits
+func _update_terran_moon_orbit(moon, time: float) -> void:
+	# Calculate the orbit angle based on time, speed and initial offset
+	var moon_angle = moon.base_angle + time * moon.orbit_speed + moon.phase_offset
+	
+	# Calculate deviation for elliptical orbits using sine function
+	var deviation_factor = sin(moon_angle * 2) * moon.orbit_deviation
+	
+	# Calculate moon position using parametric equation of ellipse
+	# This creates an equatorial orbit that passes in front of and behind the planet
+	moon.global_position = global_position + Vector2(
+		cos(moon_angle) * moon.distance * (1.0 + deviation_factor * 0.3),
+		sin(moon_angle) * moon.distance
+	)
+	
+	# Determine if moon is behind or in front of planet
+	# When sin(moon_angle) is negative, the moon is in the "back half" of its orbit
+	var relative_y = sin(moon_angle)
+	
+	# Set z-index dynamically based on position relative to planet
+	# This creates the visual effect of moon passing behind the planet and atmosphere
+	moon.z_index = -12 if relative_y < 0 else -9
+
+# New method specifically for gaseous moon orbits
+func _update_gaseous_moon_orbit(moon, time: float) -> void:
+	# Calculate the orbit angle based on time, speed and initial offset
+	var moon_angle = moon.base_angle + time * moon.orbit_speed + moon.phase_offset
+	
+	# Get moon's individual inclination and offset
+	var inclination = moon.orbital_inclination 
+	var orbit_offset = moon.orbit_vertical_offset
+	
+	# Calculate position using 3D orbit projection to 2D
+	# This creates an orbit that never visually intersects with the planet
+	var horizontal_scale = moon.distance
+	var vertical_scale = moon.distance * inclination
+	
+	# Calculate position using modified ellipse that's offset from planet center
+	moon.global_position = global_position + Vector2(
+		cos(moon_angle) * horizontal_scale,
+		sin(moon_angle) * vertical_scale + orbit_offset
+	)
+	
+	# Always set z-index to be in front of the planet
+	# For gaseous planets, moons are always visible
+	moon.z_index = -8
 
 # Base initialization function - handles common setup
 func initialize(params: Dictionary) -> void:
@@ -114,6 +150,9 @@ func initialize(params: Dictionary) -> void:
 	seed_value = params.seed_value
 	grid_x = params.get("grid_x", 0)
 	grid_y = params.get("grid_y", 0)
+	
+	# Detect if this is a gaseous planet (can be overridden by subclasses)
+	is_gaseous_planet = params.get("category_override", PlanetCategories.TERRAN) == PlanetCategories.GASEOUS
 	
 	# Apply customizations if provided
 	if "max_moons" in params: max_moons = params.max_moons
@@ -125,6 +164,7 @@ func initialize(params: Dictionary) -> void:
 	if "use_texture_cache" in params: use_texture_cache = params.use_texture_cache
 	if "moon_orbit_speed_factor" in params and params.moon_orbit_speed_factor != 1.0:
 		moon_orbit_factor *= params.moon_orbit_speed_factor
+	if "is_gaseous_planet" in params: is_gaseous_planet = params.is_gaseous_planet
 
 	# Each subclass will implement its own custom initialization
 	_perform_specialized_initialization(params)
@@ -197,6 +237,9 @@ func _create_moons() -> void:
 		# Generate a simple moon name
 		var moon_name = _get_moon_type_prefix(moon_type) + " Moon-" + str(moon_seed % 1000)
 		
+		# Generate orbital parameters specific to planet type
+		var orbit_params = _get_orbit_params_for_planet_type(m, num_moons, rng)
+		
 		# Use the pre-calculated orbital parameters
 		var moon_params = {
 			"seed_value": moon_seed,
@@ -209,9 +252,12 @@ func _create_moons() -> void:
 			"parent_name": planet_name,
 			"use_texture_cache": use_texture_cache,
 			"moon_type": moon_type,
-			"size_scale": _get_moon_size_scale(),  # Add size scaling parameter
-			"is_gaseous": false,  # Explicitly mark as not a gaseous planet moon
-			"moon_name": moon_name  # Add the generated name
+			"size_scale": _get_moon_size_scale(),
+			"is_gaseous": is_gaseous_planet,
+			"moon_name": moon_name,
+			# New orbit parameters for different planet types
+			"orbital_inclination": orbit_params.inclination,
+			"orbit_vertical_offset": orbit_params.vertical_offset
 		}
 		
 		add_child(moon_instance)
@@ -220,6 +266,37 @@ func _create_moons() -> void:
 	
 	# Emit signal that the planet has been loaded (after moons are created)
 	emit_signal("planet_loaded", self)
+
+# Generate orbit parameters specific to planet type
+func _get_orbit_params_for_planet_type(moon_index: int, total_moons: int, rng: RandomNumberGenerator) -> Dictionary:
+	if is_gaseous_planet:
+		# For gaseous planets, create orbits that never visually intersect with the planet
+		# by giving them significant inclination and vertical offset
+		
+		# Distribute moons evenly through vertical space
+		var vertical_position = (float(moon_index) / total_moons) - 0.5  # Range from -0.5 to 0.5
+		
+		# Add randomization to make it look natural
+		var random_offset = rng.randf_range(-0.1, 0.1)
+		vertical_position += random_offset
+		
+		# Calculate vertical offset and inclination
+		var orbit_offset = vertical_position * pixel_size * 1.5  # Scale by planet size
+		var inclination = rng.randf_range(0.2, 0.4)  # Flattened ellipses
+		
+		return {
+			"inclination": inclination,
+			"vertical_offset": orbit_offset
+		}
+	else:
+		# For terran planets, create orbits near the equatorial plane
+		# Slight inclination so not all moons are perfectly flat
+		var inclination = rng.randf_range(orbit_inclination_range.x, orbit_inclination_range.y)
+		
+		return {
+			"inclination": 1.0 + inclination,  # Near 1.0 for nearly circular, equatorial orbits
+			"vertical_offset": 0.0  # No vertical offset for terran planets
+		}
 
 # Helper to get moon type prefix
 func _get_moon_type_prefix(moon_type: int) -> String:
@@ -247,6 +324,12 @@ func _generate_orbital_parameters(moon_count: int, rng: RandomNumberGenerator) -
 	# Define distance range based on planet size
 	var min_distance = planet_radius * min_moon_distance_factor
 	var max_distance = planet_radius * max_moon_distance_factor
+	
+	# Adjust distance range for gaseous planets
+	if is_gaseous_planet:
+		# Spread moons further from gaseous planets
+		min_distance *= 1.2
+		max_distance *= 1.3
 	
 	# For multiple moons, use intelligent parameter distribution
 	if moon_count > 1:
