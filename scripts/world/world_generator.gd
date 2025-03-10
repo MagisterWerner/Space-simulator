@@ -75,6 +75,242 @@ func _initialize_scenes() -> void:
 		if ResourceLoader.exists(station_path):
 			station_scene = load(station_path)
 
+# Generate a starter world with exactly one gaseous planet and one lush planet
+func generate_starter_world() -> Dictionary:
+	# Clear any existing world
+	clear_world()
+	
+	# Emit signal that generation has started
+	world_generation_started.emit()
+	
+	# Initialize RNG with game seed
+	_rng.seed = game_settings.get_seed()
+	
+	# Reset tracking
+	_planet_cells.clear()
+	_proximity_excluded_cells.clear()
+	_planet_spawners.clear()
+	
+	# Generate gaseous planet with proximity constraint of 2
+	var gaseous_planet_cell = generate_gaseous_planet(2)
+	
+	# Generate lush planet with proximity constraint of 1
+	var lush_planet_cell = generate_lush_planet(1)
+	
+	# Generate remaining cells (asteroids, stations, etc.)
+	for x in range(game_settings.grid_size):
+		for y in range(game_settings.grid_size):
+			var cell = Vector2i(x, y)
+			var cell_key = get_cell_key(cell)
+			
+			# Skip cells that already have planets
+			if _generated_cells.has(cell_key) and not _generated_cells[cell_key].planets.is_empty():
+				continue
+			
+			# Generate other content in this cell
+			generate_cell_content_except_planets(cell)
+	
+	# Emit signal that generation is complete
+	world_generation_completed.emit()
+	
+	# Debug output
+	if game_settings and game_settings.debug_mode:
+		print("WorldGenerator: Starter world generation complete")
+		print("- Gaseous planet at cell: ", gaseous_planet_cell)
+		print("- Lush planet at cell: ", lush_planet_cell)
+	
+	# Return the cells where the planets were generated
+	return {
+		"gaseous_planet_cell": gaseous_planet_cell,
+		"lush_planet_cell": lush_planet_cell
+	}
+
+# Generate a gaseous planet in a random grid cell
+func generate_gaseous_planet(proximity: int = 2) -> Vector2i:
+	# Start with a list of all possible cells
+	var candidate_cells = []
+	for x in range(game_settings.grid_size):
+		for y in range(game_settings.grid_size):
+			var cell = Vector2i(x, y)
+			# Skip player starting cell
+			if cell == game_settings.player_starting_cell:
+				continue
+			candidate_cells.append(cell)
+	
+	# Shuffle the cells for random distribution
+	candidate_cells.shuffle_with_seed(game_settings.get_seed())
+	
+	# Try to place a gaseous planet in one of the shuffled cells
+	for cell in candidate_cells:
+		# Skip if this cell already has content
+		if is_cell_generated(cell):
+			continue
+			
+		# Skip if this cell is excluded due to proximity
+		var cell_key = get_cell_key(cell)
+		if _proximity_excluded_cells.has(cell_key):
+			continue
+		
+		# Set up the cell seed
+		var cell_seed = game_settings.get_seed() + (cell.x * 1000) + (cell.y * 100)
+		var seed_offset = cell_seed - game_settings.get_seed()
+		
+		# Create a planet spawner for this cell
+		var planet_spawner
+		
+		if planet_spawner_gaseous_scene:
+			planet_spawner = planet_spawner_gaseous_scene.instantiate()
+		else:
+			planet_spawner = PlanetSpawnerGaseous.new()
+			
+		# Randomize the gas giant type
+		_rng.seed = cell_seed
+		var gas_giant_type = _rng.randi_range(0, 3)  # 0-3 are the gas giant types
+		
+		# Add to scene and configure
+		add_child(planet_spawner)
+		planet_spawner.gaseous_theme = gas_giant_type + 1  # +1 because 0 is Random
+		
+		# Configure the spawner using its API
+		planet_spawner.set_grid_position(cell.x, cell.y)
+		planet_spawner.use_grid_position = true
+		planet_spawner.local_seed_offset = seed_offset
+		
+		# Spawn the planet
+		var planet = planet_spawner.spawn_planet()
+		
+		if not planet:
+			push_error("WorldGenerator: Failed to spawn gaseous planet at ", cell)
+			planet_spawner.queue_free()
+			continue
+		
+		# Connect to planet spawner signals if available
+		if planet_spawner.has_signal("planet_spawned"):
+			if not planet_spawner.is_connected("planet_spawned", _on_planet_spawned):
+				planet_spawner.planet_spawned.connect(_on_planet_spawned)
+		
+		# Initialize cell tracking if needed
+		if not _generated_cells.has(cell_key):
+			_generated_cells[cell_key] = {
+				"planets": [],
+				"asteroid_fields": [],
+				"stations": []
+			}
+		
+		# Store the spawner
+		_planet_spawners[cell_key] = planet_spawner
+		
+		# Track this planet
+		_generated_cells[cell_key].planets.append(planet_spawner)
+		_entity_counts.planet += 1
+		
+		# Mark proximity cells as excluded
+		mark_proximity_cells(cell, proximity, _proximity_excluded_cells)
+		
+		# Mark this cell as having a planet
+		_planet_cells.append(cell)
+		
+		# Emit signal
+		entity_generated.emit(planet, "planet", cell)
+		
+		if game_settings and game_settings.debug_mode:
+			print("WorldGenerator: Generated gaseous planet at cell ", cell)
+		
+		return cell
+	
+	# If we reach here, we couldn't place a gaseous planet
+	push_error("WorldGenerator: Failed to generate gaseous planet")
+	return Vector2i(-1, -1)
+
+# Generate a lush planet in a random grid cell
+func generate_lush_planet(proximity: int = 1) -> Vector2i:
+	# Start with a list of all possible cells
+	var candidate_cells = []
+	for x in range(game_settings.grid_size):
+		for y in range(game_settings.grid_size):
+			var cell = Vector2i(x, y)
+			# Skip cells that are excluded due to proximity with other planets
+			var cell_key = get_cell_key(cell)
+			if _proximity_excluded_cells.has(cell_key):
+				continue
+			# Skip cells that already have content
+			if is_cell_generated(cell):
+				continue
+			candidate_cells.append(cell)
+	
+	# Shuffle the cells for random distribution
+	candidate_cells.shuffle_with_seed(game_settings.get_seed() + 123) # Different seed than gaseous planet
+	
+	# Try to place a lush planet in one of the shuffled cells
+	for cell in candidate_cells:
+		# Set up the cell seed
+		var cell_seed = game_settings.get_seed() + (cell.x * 1000) + (cell.y * 100)
+		var seed_offset = cell_seed - game_settings.get_seed()
+		
+		# Create a planet spawner for this cell
+		var planet_spawner
+		
+		if planet_spawner_terran_scene:
+			planet_spawner = planet_spawner_terran_scene.instantiate()
+		else:
+			planet_spawner = PlanetSpawnerTerran.new()
+			
+		# Force the planet to be Lush (theme index 3)
+		add_child(planet_spawner)
+		planet_spawner.terran_theme = 4  # 4 = Lush (index 3 + 1 because 0 is Random)
+		
+		# Configure the spawner
+		planet_spawner.set_grid_position(cell.x, cell.y)
+		planet_spawner.use_grid_position = true
+		planet_spawner.local_seed_offset = seed_offset
+		
+		# Spawn the planet
+		var planet = planet_spawner.spawn_planet()
+		
+		if not planet:
+			push_error("WorldGenerator: Failed to spawn lush planet at ", cell)
+			planet_spawner.queue_free()
+			continue
+		
+		# Connect to planet spawner signals if available
+		if planet_spawner.has_signal("planet_spawned"):
+			if not planet_spawner.is_connected("planet_spawned", _on_planet_spawned):
+				planet_spawner.planet_spawned.connect(_on_planet_spawned)
+		
+		# Initialize cell tracking if needed
+		var cell_key = get_cell_key(cell)
+		if not _generated_cells.has(cell_key):
+			_generated_cells[cell_key] = {
+				"planets": [],
+				"asteroid_fields": [],
+				"stations": []
+			}
+		
+		# Store the spawner
+		_planet_spawners[cell_key] = planet_spawner
+		
+		# Track this planet
+		_generated_cells[cell_key].planets.append(planet_spawner)
+		_entity_counts.planet += 1
+		
+		# Mark proximity cells as excluded
+		mark_proximity_cells(cell, proximity, _proximity_excluded_cells)
+		
+		# Mark this cell as having a planet
+		_planet_cells.append(cell)
+		
+		# Emit signal
+		entity_generated.emit(planet, "planet", cell)
+		
+		if game_settings and game_settings.debug_mode:
+			print("WorldGenerator: Generated lush planet at cell ", cell)
+		
+		return cell
+	
+	# If we reach here, we couldn't place a lush planet
+	push_error("WorldGenerator: Failed to generate lush planet")
+	return Vector2i(-1, -1)
+
 # Generate the entire world based on game settings
 func generate_world() -> void:
 	if not game_settings:

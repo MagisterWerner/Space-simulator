@@ -12,9 +12,7 @@ script = ExtResource("1_txjaf")
 [node name="GameSettings" type="Node" parent="."]
 script = ExtResource("7_yyfjg_1")
 grid_cell_size = 512
-grid_size = 3
-grid_line_width = 0.0
-player_starting_cell = Vector2i(1, 1)
+grid_size = 5
 planet_chance_per_cell = 100
 asteroid_field_chance_per_cell = 0
 station_chance_per_cell = 0
