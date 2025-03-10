@@ -6,11 +6,7 @@ class_name AtmosphereGenerator
 const PlanetThemes = preload("res://scripts/generators/planet_generator_base.gd").PlanetTheme
 const PlanetCategories = preload("res://scripts/generators/planet_generator_base.gd").PlanetCategory
 
-# Constants for atmosphere generation
-const BASE_ATMOSPHERE_SIZE_TERRAN: int = 384
-const BASE_ATMOSPHERE_SIZE_GASEOUS: int = 768
-
-# Atmosphere thickness as a percentage beyond planet radius
+# Constants for atmosphere generation - base values
 const ATMOSPHERE_EXTEND_FACTOR_TERRAN: float = 0.30
 const ATMOSPHERE_EXTEND_FACTOR_GASEOUS: float = 0.30  # Matched to terran value
 
@@ -97,8 +93,8 @@ func generate_atmosphere_data(theme: int, seed_value: int) -> Dictionary:
 	}
 
 # Static function to get an atmosphere texture with caching
-static func get_atmosphere_texture(theme: int, seed_value: int, color: Color, thickness: float) -> ImageTexture:
-	var cache_key = str(theme) + "_" + str(seed_value)
+static func get_atmosphere_texture(theme: int, seed_value: int, color: Color, thickness: float, planet_size: int = 0) -> ImageTexture:
+	var cache_key = str(theme) + "_" + str(seed_value) + "_" + str(planet_size)
 	
 	# Check if we have this texture in cache
 	if atmosphere_texture_cache.has(cache_key):
@@ -106,7 +102,7 @@ static func get_atmosphere_texture(theme: int, seed_value: int, color: Color, th
 	
 	# Create a new generator and generate the texture
 	var generator = new()
-	var texture = generator.generate_atmosphere_texture(theme, seed_value, color, thickness)
+	var texture = generator.generate_atmosphere_texture(theme, seed_value, color, thickness, planet_size)
 	
 	# Store in cache
 	atmosphere_texture_cache[cache_key] = texture
@@ -119,12 +115,15 @@ static func get_atmosphere_texture(theme: int, seed_value: int, color: Color, th
 	return texture
 
 # Generate pixelated atmosphere texture with adaptive step count based on planet type
-func generate_atmosphere_texture(theme: int, seed_value: int, color: Color, thickness_factor: float) -> ImageTexture:
+func generate_atmosphere_texture(theme: int, seed_value: int, color: Color, thickness_factor: float, planet_size: int = 0) -> ImageTexture:
 	var planet_category = PlanetGeneratorBase.get_planet_category(theme)
 	var is_gaseous = planet_category == PlanetCategories.GASEOUS
 	
-	# Size will match the actual planet size, not the atmosphere size
-	var planet_size = PlanetGeneratorBase.PLANET_SIZE_GASEOUS if is_gaseous else PlanetGeneratorBase.PLANET_SIZE_TERRAN
+	# Get the actual planet size based on seed or use provided size
+	if planet_size == 0:
+		# This is a fallback if planet_size is not provided
+		planet_size = PlanetGeneratorBase.get_planet_size(seed_value, is_gaseous)
+	
 	var planet_radius = planet_size / 2.0
 	
 	# Calculate the atmosphere size based on the planet size and thickness factor
@@ -149,6 +148,14 @@ func generate_atmosphere_texture(theme: int, seed_value: int, color: Color, thic
 	
 	# Determine number of steps based on planet category
 	var num_steps = ALPHA_STEPS_GASEOUS if is_gaseous else ALPHA_STEPS_TERRAN
+	
+	# Scale steps based on atmosphere size compared to default
+	var default_size = 512.0 if is_gaseous else 256.0
+	var steps_scale = clamp(atmosphere_size / default_size, 0.5, 2.0)
+	num_steps = int(num_steps * steps_scale)
+	
+	# Ensure minimum number of steps
+	num_steps = max(num_steps, 8)
 	
 	# Precalculate alpha values for each step from edge
 	var alpha_steps = []
@@ -238,7 +245,3 @@ func get_atmosphere_color_for_theme(theme: int) -> Color:
 # Get atmosphere thickness for a theme (utility function)
 func get_atmosphere_thickness_for_theme(theme: int) -> float:
 	return ATMOSPHERE_THICKNESS.get(theme, 0.8)  # Default to ICE thickness
-
-# Get base atmosphere size based on planet category
-func get_atmosphere_size_for_category(category: int) -> int:
-	return BASE_ATMOSPHERE_SIZE_GASEOUS if category == PlanetCategories.GASEOUS else BASE_ATMOSPHERE_SIZE_TERRAN

@@ -162,7 +162,8 @@ func create_planet_texture(seed_value: int, theme_override: int = -1) -> Array:
 		theme_id = PlanetTheme.JUPITER + rng.randi() % 4
 	
 	# Set up for gas giant generation
-	var planet_size = PLANET_SIZE_GASEOUS
+	# Get random planet size based on seed
+	var planet_size = get_planet_size(seed_value, true)  # true = gaseous
 	var image = Image.create(planet_size, planet_size, true, Image.FORMAT_RGBA8)
 	var colors = generate_gas_giant_palette(theme_id, seed_value)
 	
@@ -249,5 +250,5 @@ func create_planet_texture(seed_value: int, theme_override: int = -1) -> Array:
 	return [
 		ImageTexture.create_from_image(image),
 		ImageTexture.create_from_image(empty_atmosphere),
-		planet_size
+		planet_size  # Return the actual size used
 	]

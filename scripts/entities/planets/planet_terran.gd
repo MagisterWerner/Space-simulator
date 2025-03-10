@@ -30,6 +30,9 @@ func _perform_specialized_initialization(params: Dictionary) -> void:
 		# Generate a random terran theme
 		theme_id = _determine_theme(seed_value)
 	
+	# Get the variable pixel size for terran planets (based on seed)
+	pixel_size = PlanetGeneratorBase.get_planet_size(seed_value, false)  # false = terran
+	
 	# Set the terran subtype for reference
 	terran_subtype = get_theme_name().to_lower()
 	
@@ -38,9 +41,6 @@ func _perform_specialized_initialization(params: Dictionary) -> void:
 	
 	# Generate or get atmosphere textures
 	_generate_atmosphere_texture()
-	
-	# Set the pixel size for terran planets
-	pixel_size = 256
 
 # Determine theme based on seed - returns a valid terran theme
 func _determine_theme(seed_val: int) -> int:
@@ -52,7 +52,7 @@ func _determine_theme(seed_val: int) -> int:
 
 # Generate planet textures
 func _generate_planet_texture() -> void:
-	var unique_identifier = str(seed_value) + "_terran_" + str(theme_id)
+	var unique_identifier = str(seed_value) + "_terran_" + str(theme_id) + "_size_" + str(pixel_size)
 	
 	if use_texture_cache and PlanetGeneratorBase.texture_cache.has("terran") and PlanetGeneratorBase.texture_cache.terran.has(unique_identifier):
 		# Use cached texture
@@ -75,15 +75,15 @@ func _generate_atmosphere_texture() -> void:
 	var atmosphere_generator = AtmosphereGenerator.new()
 	atmosphere_data = atmosphere_generator.generate_atmosphere_data(theme_id, seed_value)
 	
-	var unique_identifier = str(seed_value) + "_atmo_" + str(theme_id)
+	var unique_identifier = str(seed_value) + "_atmo_" + str(theme_id) + "_" + str(pixel_size)
 	
 	if use_texture_cache and PlanetGeneratorBase.texture_cache.has("atmospheres") and PlanetGeneratorBase.texture_cache.atmospheres.has(unique_identifier):
 		# Use cached atmosphere texture
 		atmosphere_texture = PlanetGeneratorBase.texture_cache.atmospheres[unique_identifier]
 	else:
-		# Generate new atmosphere texture
+		# Generate new atmosphere texture - pass the pixel_size to ensure correct scaling
 		atmosphere_texture = atmosphere_generator.generate_atmosphere_texture(
-			theme_id, seed_value, atmosphere_data.color, atmosphere_data.thickness)
+			theme_id, seed_value, atmosphere_data.color, atmosphere_data.thickness, pixel_size)
 			
 		# Cache the texture
 		if use_texture_cache:

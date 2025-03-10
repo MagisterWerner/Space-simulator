@@ -139,7 +139,8 @@ func create_planet_texture(seed_value: int, explicit_theme: int = -1) -> Array:
 		theme = rng.randi() % PlanetTheme.JUPITER
 	
 	# Set up for terran planet generation
-	var planet_size = PLANET_SIZE_TERRAN
+	# Get random planet size based on seed
+	var planet_size = get_planet_size(seed_value, false)  # false = terran
 	var image = Image.create(planet_size, planet_size, true, Image.FORMAT_RGBA8)
 	var colors = generate_terran_palette(theme, seed_value)
 	
@@ -203,5 +204,5 @@ func create_planet_texture(seed_value: int, explicit_theme: int = -1) -> Array:
 	return [
 		ImageTexture.create_from_image(image),
 		ImageTexture.create_from_image(empty_atmosphere),
-		planet_size
+		planet_size  # Return the actual size used
 	]

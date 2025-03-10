@@ -34,11 +34,13 @@ enum PlanetTheme {
 	NEPTUNE   # Neptune-like (blue tones)
 }
 
-# Size constants (accessible to all derived classes)
+# Base planet sizes (used as references and defaults)
 const PLANET_SIZE_TERRAN: int = 256
 const PLANET_SIZE_GASEOUS: int = 512  # Gas giants are twice as large
-const PLANET_RADIUS_TERRAN: float = 128.0
-const PLANET_RADIUS_GASEOUS: float = 256.0  # Larger radius for gaseous planets
+
+# Size arrays for planet variation
+const TERRAN_PLANET_SIZES: Array = [256, 272, 298]
+const GASEOUS_PLANET_SIZES: Array = [512, 544, 576]
 
 # Noise generation constants
 const TERRAIN_OCTAVES: int = 4
@@ -63,6 +65,21 @@ func _init() -> void:
 	for i in range(CUBIC_RESOLUTION):
 		var t = float(i) / float(CUBIC_RESOLUTION - 1)
 		cubic_lookup[i] = t * t * (3.0 - 2.0 * t)
+
+# Get a planet size based on seed and type
+static func get_planet_size(seed_value: int, is_gaseous: bool = false) -> int:
+	var rng = RandomNumberGenerator.new()
+	rng.seed = seed_value
+	
+	# Use appropriate size array based on planet type
+	var size_array = GASEOUS_PLANET_SIZES if is_gaseous else TERRAN_PLANET_SIZES
+	var index = rng.randi() % size_array.size()
+	
+	return size_array[index]
+
+# Get the planet radius from a size (always half the texture size)
+static func get_planet_radius(size: int) -> float:
+	return size / 2.0
 
 # Get the category for a planet theme - kept as static method for compatibility
 static func get_planet_category(theme: int) -> int:

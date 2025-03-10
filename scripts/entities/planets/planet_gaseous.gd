@@ -59,21 +59,21 @@ func _perform_specialized_initialization(params: Dictionary) -> void:
 		# Choose a random gaseous theme
 		theme_id = PlanetThemes.JUPITER + rng.randi() % 4
 	
+	# Get the variable pixel size for gaseous planets (based on seed)
+	pixel_size = PlanetGeneratorBase.get_planet_size(seed_value, true)  # true = gaseous
+	
 	# Generate or get planet textures
 	_generate_planet_texture()
 	
 	# Generate or get atmosphere textures
 	_generate_atmosphere_texture()
 	
-	# Set the pixel size for gaseous planets (larger)
-	pixel_size = 512
-	
 	# Note: debug options are already set in the parent class's initialization
 
 # Generate gas giant planet texture
 func _generate_planet_texture() -> void:
-	# Create a unique identifier that includes the theme
-	var unique_identifier = str(seed_value) + "_theme_" + str(theme_id)
+	# Create a unique identifier that includes the theme and size
+	var unique_identifier = str(seed_value) + "_theme_" + str(theme_id) + "_size_" + str(pixel_size)
 	
 	if use_texture_cache and PlanetGeneratorBase.texture_cache.has("gaseous") and PlanetGeneratorBase.texture_cache.gaseous.has(unique_identifier):
 		# Use cached texture
@@ -98,15 +98,15 @@ func _generate_atmosphere_texture() -> void:
 	# Pass the correct theme ID directly (no need for adjusted seed)
 	atmosphere_data = atmosphere_generator.generate_atmosphere_data(theme_id, seed_value)
 	
-	var unique_identifier = str(seed_value) + "_atmo_" + str(theme_id)
+	var unique_identifier = str(seed_value) + "_atmo_" + str(theme_id) + "_" + str(pixel_size)
 	
 	if use_texture_cache and PlanetGeneratorBase.texture_cache.has("atmospheres") and PlanetGeneratorBase.texture_cache.atmospheres.has(unique_identifier):
 		# Use cached atmosphere texture
 		atmosphere_texture = PlanetGeneratorBase.texture_cache.atmospheres[unique_identifier]
 	else:
-		# Generate new atmosphere texture
+		# Generate new atmosphere texture - pass the pixel_size for accurate scaling
 		atmosphere_texture = atmosphere_generator.generate_atmosphere_texture(
-			theme_id, seed_value, atmosphere_data.color, atmosphere_data.thickness)
+			theme_id, seed_value, atmosphere_data.color, atmosphere_data.thickness, pixel_size)
 			
 		# Cache the texture
 		if use_texture_cache:
