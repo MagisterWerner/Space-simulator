@@ -548,8 +548,8 @@ func _resolve_orbit_collision(moon_params: Dictionary, existing_orbits: Array,
 			# Ensure within valid range for this moon type
 			var distance_range = _moon_params.distance_ranges[moon_type]
 			moon_params.distance = clamp(moon_params.distance, 
-									   pixel_size/2 * distance_range.x, 
-									   pixel_size/2 * distance_range.y * 1.2)  # Allow 20% beyond normal maximum
+									   pixel_size/2.0 * distance_range.x, 
+									   pixel_size/2.0 * distance_range.y * 1.2)  # Allow 20% beyond normal maximum
 		else:
 			# For terran planets, adjust both distance and deviation
 			var adjustment = rng.randf_range(15, 30 + attempt * 5)
@@ -562,8 +562,8 @@ func _resolve_orbit_collision(moon_params: Dictionary, existing_orbits: Array,
 			moon_params.orbit_deviation = rng.randf_range(0.05, max_orbit_deviation * (1.0 + attempt * 0.1))
 			
 			# Keep within valid range with some flexibility
-			var min_distance = pixel_size/2 * min_moon_distance_factor * 0.9  # Allow 10% below minimum
-			var max_distance = pixel_size/2 * max_moon_distance_factor * 1.1  # Allow 10% above maximum
+			var min_distance = pixel_size/2.0 * min_moon_distance_factor * 0.9  # Allow 10% below minimum
+			var max_distance = pixel_size/2.0 * max_moon_distance_factor * 1.1  # Allow 10% above maximum
 			moon_params.distance = clamp(moon_params.distance, min_distance, max_distance)
 		
 		# Try different phases - more variation with each attempt
@@ -577,13 +577,13 @@ func _resolve_orbit_collision(moon_params: Dictionary, existing_orbits: Array,
 	if is_gaseous_planet:
 		var distance_range = _moon_params.distance_ranges[moon_type]
 		moon_params.distance = rng.randf_range(
-			pixel_size/2 * distance_range.x,
-			pixel_size/2 * distance_range.y * 1.3  # Allow even more flexibility
+			pixel_size/2.0 * distance_range.x,
+			pixel_size/2.0 * distance_range.y * 1.3  # Allow even more flexibility
 		)
 	else:
 		moon_params.distance = rng.randf_range(
-			pixel_size/2 * min_moon_distance_factor * 0.8,
-			pixel_size/2 * max_moon_distance_factor * 1.2
+			pixel_size/2.0 * min_moon_distance_factor * 0.8,
+			pixel_size/2.0 * max_moon_distance_factor * 1.2
 		)
 	
 	moon_params.phase_offset = rng.randf() * TAU

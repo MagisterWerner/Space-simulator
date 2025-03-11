@@ -112,7 +112,7 @@ func generate_random_seed() -> void:
 # Get the starting position for the player in world coordinates
 func get_player_starting_position() -> Vector2:
 	# Player starts near the center of the grid
-	var center_cell = Vector2i(grid_size / 2, grid_size / 2)
+	var center_cell = Vector2i(grid_size / 2.0, grid_size / 2.0)
 	return get_cell_world_position(center_cell)
 
 # Convert grid cell coordinates to world position (center of cell)

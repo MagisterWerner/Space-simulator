@@ -13,9 +13,9 @@ script = ExtResource("1_txjaf")
 script = ExtResource("7_yyfjg_1")
 use_random_seed = false
 grid_cell_size = 768
-grid_size = 3
-grid_line_width = 1.0
-grid_opacity = 0.3
+grid_size = 4
+grid_line_width = 0.5
+grid_opacity = 0.25
 terran_planets = 1
 debug_mode = true
 
