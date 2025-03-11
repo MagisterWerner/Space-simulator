@@ -14,7 +14,6 @@ var _entity_container: Node
 # Visibility optimization
 var _is_active: bool = true
 var _visibility_range: float = 1500
-var _last_camera_position: Vector2 = Vector2.ZERO
 
 func _ready():
 	# Create container for entities
@@ -25,8 +24,8 @@ func _ready():
 	# Set chunk name for debugging
 	name = "Chunk_%d_%d" % [coordinates.x, coordinates.y]
 	
-	# We'll check camera position in _process instead of using a signal
-	# This avoids the nonexistent signal error
+	# Connect to camera for visibility culling
+	get_viewport().get_camera_2d().connect("position_changed", _on_camera_position_changed)
 
 # Initialize the chunk with data
 func initialize(coords: Vector2i, data: Dictionary, full_detail: bool):
@@ -73,16 +72,6 @@ func _process(delta):
 	if not is_full_detail or not _is_active:
 		return
 	
-	# Check camera position to update visibility
-	var camera = get_viewport().get_camera_2d()
-	if camera and is_instance_valid(camera):
-		var camera_position = camera.global_position
-		
-		# Only update if camera moved significantly
-		if camera_position.distance_to(_last_camera_position) > 50:
-			_last_camera_position = camera_position
-			_update_visibility(camera_position)
-	
 	var player = get_tree().get_nodes_in_group("player")[0] if get_tree().get_nodes_in_group("player").size() > 0 else null
 	if not player:
 		return
@@ -121,24 +110,6 @@ func _process(delta):
 			if entity is RigidBody2D:
 				entity.set_physics_process(Engine.get_physics_frames() % 4 == 0)
 
-# Update visibility based on camera position
-func _update_visibility(camera_position: Vector2):
-	var chunk_center = global_position + Vector2(500, 500)
-	var distance = chunk_center.distance_to(camera_position)
-	
-	# Activate/deactivate based on visibility
-	var should_be_active = distance < _visibility_range
-	if should_be_active != _is_active:
-		_is_active = should_be_active
-		_entity_container.visible = _is_active
-		
-		# Disable processing when not active
-		for entity in _entities:
-			if entity.has_method("set_processing"):
-				entity.set_processing(_is_active)
-			if entity is RigidBody2D:
-				entity.set_physics_process(_is_active)
-
 # Create background elements
 func _create_background():
 	var background = Node2D.new()
@@ -169,13 +140,26 @@ func _create_background():
 		element.position = Vector2(pos_x, pos_y)
 		background.add_child(element)
 
+# Visibility culling based on camera position
+func _on_camera_position_changed(camera_position: Vector2):
+	var chunk_center = global_position + Vector2(500, 500)
+	var distance = chunk_center.distance_to(camera_position)
+	
+	# Activate/deactivate based on visibility
+	var should_be_active = distance < _visibility_range
+	if should_be_active != _is_active:
+		_is_active = should_be_active
+		_entity_container.visible = _is_active
+		
+		# Disable processing when not active
+		for entity in _entities:
+			if entity.has_method("set_processing"):
+				entity.set_processing(_is_active)
+			if entity is RigidBody2D:
+				entity.set_physics_process(_is_active)
+
 # Get a consistent chunk ID for deterministic generation
 func _get_chunk_id(coords: Vector2i) -> int:
 	# Create a base chunk ID using the coordinate
 	# We use prime multipliers to avoid grid patterns
 	return 12347 + (coords.x * 7919) + (coords.y * 6837)
-
-# Set chunk detail level
-func set_detail_level(full_detail: bool):
-	is_full_detail = full_detail
-	# Implementation depends on how you want to visualize detail levels

@@ -168,58 +168,28 @@ func _process(delta: float) -> void:
 		_update_player_position()
 	
 	# Process entity instantiation queue with fixed batch size
-	if not _entity_queue.is_empty():
+	if not _entity_queue.empty():
 		var batch_count = min(entity_batch_size, _entity_queue.size())
-		var i = 0
 		
-		# Keep track of processed items to remove
-		var processed_indices = []
-		
-		# Process up to batch_count valid entities
-		while i < batch_count and i < _entity_queue.size():
-			var entity_data = _entity_queue[i]
-			var chunk = entity_data.chunk
-			var chunk_key = entity_data.chunk_key
+		for i in range(batch_count):
+			var entity_data = _entity_queue.pop_front()
+			_instantiate_entity(entity_data.entity, entity_data.chunk)
 			
-			# Check if the chunk is still valid
-			if is_instance_valid(chunk) and (
-			   (_loaded_chunks.has(chunk_key) and _loaded_chunks[chunk_key] == chunk) or
-			   (_low_detail_chunks.has(chunk_key) and _low_detail_chunks[chunk_key] == chunk)):
-				# Chunk is valid, instantiate the entity
-				_instantiate_entity(entity_data.entity, chunk)
-				
-				# Update pending entity count for this chunk
-				if _pending_chunk_entities.has(chunk_key):
-					_pending_chunk_entities[chunk_key] -= 1
-					if _pending_chunk_entities[chunk_key] <= 0:
-						_pending_chunk_entities.erase(chunk_key)
-						
-						# If we finished all entities for a chunk, update its state
-						if _chunk_states.has(chunk_key) and _chunk_states[chunk_key] == ChunkState.INSTANTIATING:
-							var chunk_coords = str_to_vector2i(chunk_key)
-							# Determine if it should be full or low detail
-							if _get_chunk_full_detail_state(chunk_coords):
-								_chunk_states[chunk_key] = ChunkState.FULL_DETAIL
-							else:
-								_chunk_states[chunk_key] = ChunkState.LOW_DETAIL
-				
-				processed_indices.append(i)
-			else:
-				# Chunk is no longer valid, just remove the entity and update counts
-				if _pending_chunk_entities.has(chunk_key):
-					_pending_chunk_entities[chunk_key] -= 1
-					if _pending_chunk_entities[chunk_key] <= 0:
-						_pending_chunk_entities.erase(chunk_key)
-				
-				processed_indices.append(i)
-				
-			i += 1
-		
-		# Remove processed items in reverse order to avoid index shifting
-		processed_indices.sort()
-		processed_indices.reverse()
-		for idx in processed_indices:
-			_entity_queue.remove_at(idx)
+			# Update pending entity count for this chunk
+			var chunk_key = entity_data.chunk_key
+			if _pending_chunk_entities.has(chunk_key):
+				_pending_chunk_entities[chunk_key] -= 1
+				if _pending_chunk_entities[chunk_key] <= 0:
+					_pending_chunk_entities.erase(chunk_key)
+					
+					# If we finished all entities for a chunk, update its state
+					if _chunk_states.has(chunk_key) and _chunk_states[chunk_key] == ChunkState.INSTANTIATING:
+						var chunk_coords = str_to_vector2i(chunk_key)
+						# Determine if it should be full or low detail
+						if _get_chunk_full_detail_state(chunk_coords):
+							_chunk_states[chunk_key] = ChunkState.FULL_DETAIL
+						else:
+							_chunk_states[chunk_key] = ChunkState.LOW_DETAIL
 		
 		# Exit early to maintain a consistent frame rate
 		return
@@ -228,7 +198,7 @@ func _process(delta: float) -> void:
 	var current_time = Time.get_ticks_msec()
 	
 	# Check if we can process another chunk
-	if not _chunk_data_cache.is_empty() and current_time >= _next_chunk_instantiation_time:
+	if not _chunk_data_cache.empty() and current_time >= _next_chunk_instantiation_time:
 		# Process one chunk at a time
 		var next_chunk_key = _chunk_data_cache.keys()[0]
 		var chunk_data = _chunk_data_cache[next_chunk_key]
@@ -264,7 +234,7 @@ func _process(delta: float) -> void:
 	var can_load = (now - _last_load_time) >= min_wait_between_loads_ms
 	
 	# Process loading queue if we have capacity and enough time has passed
-	if current_loads < max_concurrent_loads and can_load and not _loading_queue.is_empty():
+	if current_loads < max_concurrent_loads and can_load and not _loading_queue.empty():
 		var next_in_queue = _loading_queue.pop_front()
 		var chunk_coords = next_in_queue.coords
 		var chunk_key = vector2i_to_str(chunk_coords)
@@ -322,7 +292,7 @@ func _create_base_chunk(coords: Vector2i, chunk_data: Dictionary) -> void:
 
 # Queue entities for staggered instantiation
 func _queue_entities_for_instantiation(entity_data_list: Array, chunk: Node, chunk_key: String) -> void:
-	if entity_data_list.is_empty():
+	if entity_data_list.empty():
 		# If no entities, just mark as complete
 		if _chunk_states.has(chunk_key) and _chunk_states[chunk_key] == ChunkState.INSTANTIATING:
 			if _get_chunk_full_detail_state(str_to_vector2i(chunk_key)):
@@ -556,7 +526,7 @@ func _thread_worker() -> void:
 		
 		# Get a task from the queue
 		var task = null
-		if not _thread_task_queue.is_empty():
+		if not _thread_task_queue.empty():
 			task = _thread_task_queue.pop_front()
 		_thread_mutex.unlock()
 		
@@ -705,7 +675,7 @@ func _get_entity_from_pool(entity_type: String) -> Node:
 		_entity_pools[entity_type] = []
 	
 	# Check if we have a free entity in the pool
-	if not _entity_pools[entity_type].is_empty():
+	if not _entity_pools[entity_type].empty():
 		return _entity_pools[entity_type].pop_back()
 	
 	# Otherwise create a new entity
