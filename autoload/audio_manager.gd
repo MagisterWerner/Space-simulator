@@ -1,17 +1,60 @@
 # autoload/audio_manager.gd
-# Audio Manager refactored with dependency injection
+# =========================
+# Purpose:
+#   Comprehensive audio management system for background music and sound effects.
+#   Designed for high-performance in bullet-hell style games with optimized audio pooling.
+#   Handles volume control, audio buses, and persistence of audio settings.
+#
+# Interface:
+#   Signals:
+#     - music_changed(track_name)
+#     - volume_changed(bus_name, volume_db)
+#
+#   Music Methods:
+#     - preload_music(track_name, file_path)
+#     - preload_music_directory(directory_path, recursive)
+#     - play_music(track_name, crossfade)
+#     - stop_music()
+#     - pause_music()
+#     - resume_music()
+#
+#   SFX Methods:
+#     - preload_sfx(sfx_name, file_path, pool_size)
+#     - preload_sfx_directory(directory_path, recursive)
+#     - play_sfx(sfx_name, position, pitch_scale, volume_db)
+#     - play_sfx_with_culling(sfx_name, position, max_distance, pitch_scale)
+#     - stop_sfx(sfx_name)
+#     - stop_all_sfx()
+#     - resize_sfx_pool(sfx_name, new_size)
+#
+#   Volume Control:
+#     - set_master_volume(volume)
+#     - set_music_volume(volume)
+#     - set_sfx_volume(volume)
+#     - set_music_enabled(enabled)
+#     - set_sfx_enabled(enabled)
+#     - save_settings()
+#
+# Dependencies:
+#   - None
+#
+# Usage Example:
+#   # Initialize audio resources
+#   AudioManager.preload_music("main_theme", "res://audio/music/main_theme.ogg")
+#   AudioManager.preload_sfx("laser", "res://audio/sfx/laser.wav", 30)
+#   
+#   # Play audio
+#   AudioManager.play_music("main_theme")
+#   AudioManager.play_sfx("laser", player_position, randf_range(0.95, 1.05))
 
-extends "res://autoload/base_service.gd"
+extends Node
 
+# Signal declarations
 signal music_changed(track_name)
 signal volume_changed(bus_name, volume_db)
 signal music_finished
 signal sfx_pool_created(sfx_name, pool_size)
 signal audio_buses_initialized
-
-# Service references
-var event_manager = null
-var game_settings = null
 
 # Constants
 const MUSIC_BUS = "Music"
@@ -46,45 +89,20 @@ const DEFAULT_POOL_SIZE = 10
 const MAX_POOL_SIZE = 30
 
 # Initialization flags
-var _audio_initialized = false
+var _initialized = false
 var _buses_initialized = false
 
+# Initialization
 func _ready() -> void:
-	# Register self with ServiceLocator
-	call_deferred("register_self")
+	# Call deferred to ensure this runs after scene tree is ready
+	call_deferred("_initialize_audio_system")
 	
 	# Make this node process even when game is paused
 	process_mode = Node.PROCESS_MODE_ALWAYS
 
-# Return dependencies required by this service
-func get_dependencies() -> Array:
-	return [] # AudioManager has no required dependencies
-
-# Initialize this service
-func initialize_service() -> void:
-	# Get optional EventManager dependency
-	if has_dependency("EventManager"):
-		event_manager = get_dependency("EventManager")
-		_connect_to_events()
-	
-	# Get optional GameSettings dependency
-	if has_dependency("GameSettings"):
-		game_settings = get_dependency("GameSettings")
-		
-		# Apply settings if available
-		if game_settings.has("audio_settings"):
-			_apply_game_settings()
-	
-	# Setup audio system
-	_initialize_audio_system()
-	
-	# Mark as initialized
-	_service_initialized = true
-	print("AudioManager: Service initialized successfully")
-
 # Deferred initialization to ensure this happens after all other autoloads
 func _initialize_audio_system() -> void:
-	if _audio_initialized:
+	if _initialized:
 		return
 		
 	# Log initialization
@@ -99,71 +117,8 @@ func _initialize_audio_system() -> void:
 	# Load saved settings
 	_load_settings()
 	
-	_audio_initialized = true
+	_initialized = true
 	print("AudioManager: Audio system initialized successfully")
-
-# Apply settings from GameSettings
-func _apply_game_settings() -> void:
-	if not game_settings:
-		return
-		
-	# Check for audio settings
-	if game_settings.has("audio_settings"):
-		var audio_settings = game_settings.audio_settings
-		
-		# Apply settings if available
-		if audio_settings.has("music_enabled"):
-			config.music_enabled = audio_settings.music_enabled
-		
-		if audio_settings.has("sfx_enabled"):
-			config.sfx_enabled = audio_settings.sfx_enabled
-			
-		if audio_settings.has("music_volume"):
-			config.music_volume = audio_settings.music_volume
-			
-		if audio_settings.has("sfx_volume"):
-			config.sfx_volume = audio_settings.sfx_volume
-			
-		if audio_settings.has("master_volume"):
-			config.master_volume = audio_settings.master_volume
-	
-	# Apply the settings
-	_apply_volume_settings()
-
-# Connect to EventManager signals
-func _connect_to_events() -> void:
-	if not event_manager:
-		return
-		
-	# Connect to game state events
-	connect_to_dependency("EventManager", "game_paused", _on_game_paused)
-	connect_to_dependency("EventManager", "game_resumed", _on_game_resumed)
-	connect_to_dependency("EventManager", "game_started", _on_game_started)
-	connect_to_dependency("EventManager", "game_over", _on_game_over)
-	
-	# Connect to any other relevant events
-	connect_to_dependency("EventManager", "player_died", _on_player_died)
-
-# Event handlers
-func _on_game_paused() -> void:
-	# Optionally modify audio when game is paused (like lowering volume)
-	pass
-
-func _on_game_resumed() -> void:
-	# Restore audio settings when game is resumed
-	pass
-
-func _on_game_started() -> void:
-	# Play game start music if needed
-	pass
-
-func _on_game_over() -> void:
-	# Play game over music if needed
-	pass
-
-func _on_player_died() -> void:
-	# Play death sound or music
-	pass
 
 # Create necessary audio buses if they don't exist
 func _setup_audio_buses() -> void:
@@ -246,10 +201,6 @@ func save_settings() -> void:
 	config_file.set_value("audio", "positional_audio", config.positional_audio)
 	
 	config_file.save("user://audio_settings.cfg")
-	
-	# Update GameSettings if available
-	if game_settings and game_settings.has_method("set_audio_settings"):
-		game_settings.set_audio_settings(config)
 
 # Apply volume settings to buses
 func _apply_volume_settings() -> void:
@@ -306,7 +257,7 @@ func unload_music(track_name: String) -> void:
 # Play a music track with optional crossfade
 func play_music(track_name: String, crossfade: bool = true) -> void:
 	# Make sure we're initialized
-	if not _audio_initialized:
+	if not _initialized:
 		push_warning("AudioManager: Attempting to play music before initialization, deferring...")
 		call_deferred("play_music", track_name, crossfade)
 		return
@@ -412,7 +363,7 @@ func _create_sfx_pool(sfx_name: String, pool_size: int) -> void:
 		return
 	
 	# Make sure we're initialized
-	if not _audio_initialized:
+	if not _initialized:
 		call_deferred("_create_sfx_pool", sfx_name, pool_size)
 		return
 	
@@ -496,7 +447,7 @@ func _on_sfx_finished(player: Node, sfx_name: String) -> void:
 # Play a sound effect
 func play_sfx(sfx_name: String, position = null, pitch_scale: float = 1.0, volume_db: float = 0.0) -> Node:
 	# Make sure we're initialized
-	if not _audio_initialized:
+	if not _initialized:
 		push_warning("AudioManager: Attempting to play sound before initialization")
 		return null
 	
@@ -546,25 +497,10 @@ func play_sfx_with_culling(sfx_name: String, position: Vector2, max_distance: fl
 	# Find player position
 	var player_pos = Vector2.ZERO
 	
-	# Get EntityManager dependency if not using ServiceLocator
-	var entity_manager
-	if has_dependency("EntityManager"):
-		entity_manager = get_dependency("EntityManager")
-	else:
-		# Fallback to direct access
-		if Engine.has_singleton("EntityManager"):
-			entity_manager = Engine.get_singleton("EntityManager")
-	
-	# Find player position
-	if entity_manager:
-		var player = entity_manager.get_nearest_entity(Vector2.ZERO, "player")
-		if player and is_instance_valid(player):
-			player_pos = player.global_position
-	else:
-		# Direct search in the scene tree
-		var player_ships = get_tree().get_nodes_in_group("player")
-		if not player_ships.is_empty() and is_instance_valid(player_ships[0]):
-			player_pos = player_ships[0].global_position
+	# Find player position from EntityManager or player group
+	var player_ships = get_tree().get_nodes_in_group("player")
+	if not player_ships.is_empty() and is_instance_valid(player_ships[0]):
+		player_pos = player_ships[0].global_position
 	
 	var distance = position.distance_to(player_pos)
 	
@@ -728,5 +664,5 @@ func preload_music_directory(directory_path: String, recursive: bool = false) ->
 		dir.list_dir_end()
 
 # Get initialization status
-func is_audio_initialized() -> bool:
-	return _audio_initialized and _buses_initialized
+func is_initialized() -> bool:
+	return _initialized and _buses_initialized

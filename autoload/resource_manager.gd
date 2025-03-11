@@ -1,17 +1,36 @@
 # autoload/resource_manager.gd
-# Resource Manager refactored with dependency injection
+# ===========================
+# Purpose:
+#   Manages the player's resources, inventory, and trading system.
+#   Handles resource types, quantities, and resource-related operations.
+#   Updated to work with GameSettings for initial resource values.
+#
+# Interface:
+#   Signals:
+#     - resource_added(resource_id, amount)
+#     - resource_removed(resource_id, amount)
+#     - resource_changed(resource_id, new_amount, old_amount)
+#     - cargo_capacity_changed(new_capacity, old_capacity)
+#
+#   Enums:
+#     - ResourceType: CREDITS, FUEL, METAL_ORE, etc.
+#
+#   Resource Methods:
+#     - add_resource(resource_id, amount)
+#     - remove_resource(resource_id, amount)
+#     - get_resource_amount(resource_id)
+#     - has_resource(resource_id, amount)
+#     - get_resource_name(resource_id)
 
-extends "res://autoload/base_service.gd"
+extends Node
 
 signal resource_added(resource_id, amount)
 signal resource_removed(resource_id, amount)
 signal resource_changed(resource_id, new_amount, old_amount)
 signal cargo_capacity_changed(new_capacity, old_capacity)
 
-# Reference to other services
-var game_settings = null
-var seed_manager = null
-var event_manager = null
+# Reference to game settings
+var game_settings: GameSettings = null
 
 # Resource types
 enum ResourceType {
@@ -119,57 +138,45 @@ var used_capacity: float = 0.0
 # Market price fluctuations for different stations/regions
 var market_modifiers: Dictionary = {}  # station_id -> { resource_id -> price_modifier }
 
-# Debug flag
+# Seed-related variables
+var _seed_ready: bool = false
 var debug_mode: bool = false
 
 func _ready() -> void:
-	# Register self with ServiceLocator
-	call_deferred("register_self")
-	
 	# Initialize inventory with zero amounts
 	for resource_id in resource_data:
 		inventory[resource_id] = 0.0
 	
-	# Configure process mode to continue during pause
-	process_mode = Node.PROCESS_MODE_ALWAYS
-
-# Return dependencies required by this service
-func get_dependencies() -> Array:
-	return ["SeedManager"] # Required dependency
-
-# Initialize this service
-func initialize_service() -> void:
-	# Get SeedManager dependency
-	seed_manager = get_dependency("SeedManager")
+	# Check SeedManager dependency
+	_seed_ready = has_node("/root/SeedManager")
 	
-	# Connect to SeedManager signals
-	connect_to_dependency("SeedManager", "seed_changed", _on_seed_changed)
+	# Look for GameSettings in the main scene
+	call_deferred("_find_game_settings")
+
+func _find_game_settings() -> void:
+	# Wait a frame to ensure the scene is loaded
+	await get_tree().process_frame
 	
-	# Get optional GameSettings dependency
-	if has_dependency("GameSettings"):
-		game_settings = get_dependency("GameSettings")
+	# Find GameSettings in the main scene
+	var main_scene = get_tree().current_scene
+	game_settings = main_scene.get_node_or_null("GameSettings")
+	
+	if game_settings:
+		debug_mode = game_settings.debug_mode
+		if debug_mode:
+			print("ResourceManager: Connected to GameSettings")
 		
-		# Get debug mode from settings
-		if game_settings.has("debug_mode"):
-			debug_mode = game_settings.debug_mode
-	
-	# Get optional EventManager dependency
-	if has_dependency("EventManager"):
-		event_manager = get_dependency("EventManager")
-	
-	# Generate initial market modifiers
-	_update_market_modifiers()
-	
-	# Mark as initialized
-	_service_initialized = true
-	print("ResourceManager: Service initialized successfully")
+		# Listen for seed changes if SeedManager is available
+		if _seed_ready and has_node("/root/SeedManager"):
+			if SeedManager.has_signal("seed_changed") and not SeedManager.is_connected("seed_changed", _on_seed_changed):
+				SeedManager.connect("seed_changed", _on_seed_changed)
 
 # Handle seed changes
 func _on_seed_changed(new_seed: int) -> void:
 	if debug_mode:
 		print("ResourceManager: Detected seed change to ", new_seed)
 	
-	# Update market modifiers with new seed
+	# You might want to update market modifiers or other procedural values here
 	_update_market_modifiers()
 
 # Add resources to inventory
@@ -328,9 +335,9 @@ func trade_with_station(station_id: String, buy_resources: Dictionary, sell_reso
 	for resource_id in buy_resources:
 		add_resource(resource_id, buy_resources[resource_id])
 	
-	# Notify EventManager if available
-	if event_manager:
-		event_manager.safe_emit("trade_completed", [station_id, buy_resources, sell_resources, credits_change])
+	# Notify any event system
+	if has_node("/root/EventManager"):
+		EventManager.safe_emit("trade_completed", [station_id, buy_resources, sell_resources, credits_change])
 	
 	return true
 
@@ -386,11 +393,11 @@ func _update_market_modifiers() -> void:
 	market_modifiers.clear()
 	
 	# Only proceed if SeedManager is available
-	if not seed_manager:
+	if not _seed_ready or not has_node("/root/SeedManager"):
 		return
 	
 	# Get the current seed
-	var current_seed = seed_manager.get_seed()
+	var current_seed = SeedManager.get_seed()
 	
 	# Define stations - in a real implementation, these would come from a 
 	# world generator or station manager
@@ -410,10 +417,10 @@ func _update_market_modifiers() -> void:
 			var object_id = hash(station_id) + resource_id * 100
 			
 			# Generate a price modifier between 0.7 and 1.3
-			var price_modifier = seed_manager.get_random_value(object_id, 0.7, 1.3)
+			var price_modifier = SeedManager.get_random_value(object_id, 0.7, 1.3)
 			
 			# Some resources might be completely unavailable (null) or in high demand
-			var availability_roll = seed_manager.get_random_value(object_id, 0.0, 1.0, 1)
+			var availability_roll = SeedManager.get_random_value(object_id, 0.0, 1.0, 1)
 			
 			if availability_roll < 0.1:
 				# Resource is unavailable
