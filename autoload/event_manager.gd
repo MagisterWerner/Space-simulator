@@ -1,61 +1,10 @@
+# autoload/event_manager.gd
+# Event Manager refactored with dependency injection
+
 @tool # Enable tool mode
 @warning_ignore("unused_signal") # Suppress unused signal warnings - normal for event buses
 
-# autoload/event_manager.gd
-# =========================
-# Purpose:
-#   Centralized event bus system for game-wide communication.
-#   Enables decoupled architecture by allowing systems to communicate without direct references.
-#   Provides categorized signals for player, gameplay, entity, resource, and UI events.
-#   Includes helper methods for safe signal handling and dynamic signal creation.
-#
-# Interface:
-#   Player Events:
-#     - player_position_changed(position)
-#     - player_damaged(amount, source)
-#     - player_died
-#     - player_respawned(position)
-#
-#   Gameplay Events:
-#     - game_started
-#     - game_paused
-#     - game_resumed
-#     - game_over
-#     - game_restarted
-#
-#   Entity Events:
-#     - entity_spawned(entity, entity_type)
-#     - entity_despawned(entity, entity_type)
-#     - enemy_destroyed(enemy, destroyer)
-#     - asteroid_mined(asteroid, player)
-#
-#   Resource Events:
-#     - credits_changed(new_amount)
-#     - resource_collected(resource_id, amount)
-#     - trade_completed(station, resources_bought, resources_sold, total_cost)
-#
-#   Helper Methods:
-#     - safe_connect(signal_name, callable)
-#     - safe_disconnect(signal_name, callable)
-#     - safe_emit(signal_name, args)
-#     - add_dynamic_signal(signal_name)
-#     - remove_dynamic_signal(signal_name)
-#
-# Dependencies:
-#   - None
-#
-# Usage Example:
-#   # Connect to signals safely
-#   EventManager.safe_connect("player_died", _on_player_died)
-#   
-#   # Emit signals with type checking
-#   EventManager.safe_emit("credits_changed", [1000])
-#   
-#   # Add a dynamic signal at runtime
-#   EventManager.add_dynamic_signal("custom_event")
-#   EventManager.connect("custom_event", _on_custom_event)
-
-extends Node
+extends "res://autoload/base_service.gd"
 
 # === PLAYER EVENTS ===
 ## Emitted when player position changes significantly
@@ -134,11 +83,23 @@ signal ui_closed(ui_type)
 var _dynamic_signals: Array = []
 
 func _ready() -> void:
+	# Register self with ServiceLocator
+	call_deferred("register_self")
+	
 	# Configure process mode to continue during pause
 	process_mode = Node.PROCESS_MODE_ALWAYS
-	
+
+# Return dependencies required by this service
+func get_dependencies() -> Array:
+	return [] # EventManager has no required dependencies
+
+# Initialize this service
+func initialize_service() -> void:
 	if OS.is_debug_build():
-		print("EventManager initialized successfully")
+		print("EventManager: Initialized successfully")
+	
+	# Mark as initialized
+	_service_initialized = true
 
 # === HELPER METHODS ===
 

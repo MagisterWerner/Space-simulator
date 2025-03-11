@@ -1,22 +1,7 @@
 # autoload/label_manager.gd
-# ========================
-# Purpose:
-#   Manages in-game labels and text indicators
-#   Handles pooling of label objects for performance
-#   Provides API for creating various label types
-#
-# Examples:
-#   Create a label for a planet or station
-#    LabelManager.create_entity_label(entity, "Planet Name", "planet")
-#
-#   Show damage or other numeric values
-#    LabelManager.create_floating_number(position, 50, "damage")
-#
-#   Display important messages
-#   LabelManager.show_world_message("Mission Complete!", 3.0, "success")
-# ========================
+# Label Manager refactored with dependency injection
 
-extends Node
+extends "res://autoload/base_service.gd"
 
 # Configuration properties
 @export_category("Label Settings")
@@ -34,8 +19,11 @@ extends Node
 @export_category("Debug")
 @export var debug_mode: bool = false
 
-# Reference to game settings
-var game_settings: GameSettings = null
+# Service references
+var game_settings = null
+var entity_manager = null
+var event_manager = null
+var resource_manager = null
 
 # Label pools
 var _entity_label_pool: Array = []
@@ -60,16 +48,45 @@ var _current_world_message: Node = null
 var _entity_label_check_time: float = 0.0
 const ENTITY_LABEL_CHECK_INTERVAL: float = 0.5
 
-# Initialization
 func _ready() -> void:
+	# Register self with ServiceLocator
+	call_deferred("register_self")
+	
 	# Configure this node to continue during pause
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	
-	# Find GameSettings in the main scene
-	_find_game_settings()
-	
 	# Get viewport size
 	_viewport_size = get_viewport().get_visible_rect().size
+
+# Return dependencies required by this service
+func get_dependencies() -> Array:
+	return ["EntityManager"] # Required dependency
+
+# Initialize this service
+func initialize_service() -> void:
+	# Get EntityManager dependency
+	entity_manager = get_dependency("EntityManager")
+	
+	# Connect to entity manager signals
+	entity_manager.entity_spawned.connect(_on_entity_spawned)
+	entity_manager.entity_despawned.connect(_on_entity_despawned)
+	
+	# Get optional EventManager dependency
+	if has_dependency("EventManager"):
+		event_manager = get_dependency("EventManager")
+		_connect_event_signals()
+	
+	# Get optional ResourceManager dependency
+	if has_dependency("ResourceManager"):
+		resource_manager = get_dependency("ResourceManager")
+	
+	# Get optional GameSettings dependency
+	if has_dependency("GameSettings"):
+		game_settings = get_dependency("GameSettings")
+		
+		# Apply debug settings if available
+		if game_settings.has("debug_mode"):
+			debug_mode = game_settings.debug_mode
 	
 	# Initialize label scenes
 	_load_label_scenes()
@@ -80,30 +97,21 @@ func _ready() -> void:
 	# Initialize label pools
 	_initialize_label_pools()
 	
-	# Connect to entity manager signals
-	if has_node("/root/EntityManager"):
-		EntityManager.entity_spawned.connect(_on_entity_spawned)
-		EntityManager.entity_despawned.connect(_on_entity_despawned)
-	
-	# Connect to event manager signals
-	if has_node("/root/EventManager"):
-		# Connect to relevant events
-		EventManager.safe_connect("player_damaged", _on_player_damaged)
-		EventManager.safe_connect("enemy_destroyed", _on_enemy_destroyed)
-		EventManager.safe_connect("resource_collected", _on_resource_collected)
-	
+	# Mark as initialized
+	_service_initialized = true
 	debug_print("Label Manager initialized")
 
-func _find_game_settings() -> void:
-	# Try to find GameSettings in the main scene
-	var main_scene = get_tree().current_scene
-	game_settings = main_scene.get_node_or_null("GameSettings")
-	
-	if game_settings:
-		# Apply any relevant settings from GameSettings
-		debug_mode = game_settings.debug_mode
-		debug_print("Connected to GameSettings")
+# Connect to EventManager signals
+func _connect_event_signals() -> void:
+	if not event_manager:
+		return
+		
+	# Connect to relevant events
+	connect_to_dependency("EventManager", "player_damaged", _on_player_damaged)
+	connect_to_dependency("EventManager", "enemy_destroyed", _on_enemy_destroyed)
+	connect_to_dependency("EventManager", "resource_collected", _on_resource_collected)
 
+# Load label scenes
 func _load_label_scenes() -> void:
 	# Load label scenes
 	var entity_label_path = "res://scenes/ui/labels/entity_label.tscn"
@@ -263,16 +271,18 @@ func _find_camera() -> void:
 	_camera = get_viewport().get_camera_2d()
 	
 	if not _camera:
-		# Try finding through player
-		var player_ships = get_tree().get_nodes_in_group("player")
-		if not player_ships.is_empty():
-			_camera = player_ships[0].get_viewport().get_camera_2d()
-	
-	if not _camera:
-		# Try finding in the Main scene
-		var main = get_node_or_null("/root/Main")
-		if main:
-			_camera = main.get_node_or_null("Camera2D")
+		# Try finding through player using EntityManager
+		if entity_manager:
+			var player = entity_manager.get_nearest_entity(Vector2.ZERO, "player")
+			if player and is_instance_valid(player):
+				_camera = player.get_viewport().get_camera_2d()
+		
+		# Fallback - direct search in the scene tree
+		if not _camera:
+			# Try finding in the Main scene
+			var main = get_node_or_null("/root/Main")
+			if main:
+				_camera = main.get_node_or_null("Camera2D")
 
 # Handle viewport resize
 func _on_viewport_resize() -> void:
@@ -287,8 +297,8 @@ func _update_entity_label_visibility() -> void:
 		return
 	
 	var player_pos = Vector2.ZERO
-	if has_node("/root/EntityManager"):
-		var player = EntityManager.get_nearest_entity(Vector2.ZERO, "player")
+	if entity_manager:
+		var player = entity_manager.get_nearest_entity(Vector2.ZERO, "player")
 		if player and is_instance_valid(player):
 			player_pos = player.global_position
 	
@@ -304,17 +314,17 @@ func _update_entity_label_visibility() -> void:
 		var label = _labeled_entities[entity_id]
 		var entity = null
 		
-		# Get the entity from EntityManager if available
-		if has_node("/root/EntityManager"):
+		# Get the entity from EntityManager
+		if entity_manager:
 			# Find entity based on ID from various entity dictionaries
-			if EntityManager.players.has(entity_id):
-				entity = EntityManager.players[entity_id]
-			elif EntityManager.ships.has(entity_id):
-				entity = EntityManager.ships[entity_id]
-			elif EntityManager.asteroids.has(entity_id):
-				entity = EntityManager.asteroids[entity_id]
-			elif EntityManager.stations.has(entity_id):
-				entity = EntityManager.stations[entity_id]
+			if entity_manager.players.has(entity_id):
+				entity = entity_manager.players[entity_id]
+			elif entity_manager.ships.has(entity_id):
+				entity = entity_manager.ships[entity_id]
+			elif entity_manager.asteroids.has(entity_id):
+				entity = entity_manager.asteroids[entity_id]
+			elif entity_manager.stations.has(entity_id):
+				entity = entity_manager.stations[entity_id]
 		
 		if is_instance_valid(entity):
 			# Check distance
@@ -410,13 +420,17 @@ func _on_player_damaged(amount: float, source = null) -> void:
 	if not show_damage_numbers:
 		return
 	
-	# Get player position
-	var player_ships = get_tree().get_nodes_in_group("player")
-	if player_ships.is_empty():
-		return
+	# Get player position using EntityManager
+	var player = null
+	if entity_manager:
+		player = entity_manager.get_nearest_entity(Vector2.ZERO, "player")
+	else:
+		# Fallback - direct scene tree query
+		var player_ships = get_tree().get_nodes_in_group("player")
+		if not player_ships.is_empty():
+			player = player_ships[0]
 	
-	var player = player_ships[0]
-	if not is_instance_valid(player):
+	if not player or not is_instance_valid(player):
 		return
 	
 	# Show damage number on player
@@ -435,19 +449,23 @@ func _on_enemy_destroyed(enemy, _destroyer) -> void:
 		create_floating_number(enemy.global_position, value, "score")
 
 func _on_resource_collected(resource_id: int, amount: int) -> void:
-	# Get player position
-	var player_ships = get_tree().get_nodes_in_group("player")
-	if player_ships.is_empty():
-		return
-		
-	var player = player_ships[0]
-	if not is_instance_valid(player):
+	# Get player position using EntityManager
+	var player = null
+	if entity_manager:
+		player = entity_manager.get_nearest_entity(Vector2.ZERO, "player")
+	else:
+		# Fallback - direct scene tree query
+		var player_ships = get_tree().get_nodes_in_group("player")
+		if not player_ships.is_empty():
+			player = player_ships[0]
+			
+	if not player or not is_instance_valid(player):
 		return
 	
-	# Get resource name if ResourceManager is available
+	# Get resource name from ResourceManager
 	var resource_name = "Resource"
-	if has_node("/root/ResourceManager"):
-		resource_name = ResourceManager.get_resource_name(resource_id)
+	if resource_manager and resource_manager.has_method("get_resource_name"):
+		resource_name = resource_manager.get_resource_name(resource_id)
 	
 	# Create floating number for resource
 	create_floating_number(

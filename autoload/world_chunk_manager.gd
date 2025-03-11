@@ -1,5 +1,7 @@
-# scripts/autoload/world_chunk_manager.gd
-extends Node
+# autoload/world_chunk_manager.gd
+# World Chunk Manager refactored with dependency injection
+
+extends "res://autoload/base_service.gd"
 
 signal chunk_loaded(chunk_coords: Vector2i)
 signal chunk_unloaded(chunk_coords: Vector2i)
@@ -27,6 +29,10 @@ signal chunk_unloaded(chunk_coords: Vector2i)
 	"station": null
 }
 
+# Service references
+var seed_manager = null
+var entity_manager = null
+
 #------------------------------------------------------------------
 # Internal State
 #------------------------------------------------------------------
@@ -47,11 +53,10 @@ var _exit_thread: bool = false
 # Object pools
 var _entity_pools: Dictionary = {}
 
-#------------------------------------------------------------------
-# Initialization
-#------------------------------------------------------------------
-
-func _ready():
+func _ready() -> void:
+	# Register self with ServiceLocator
+	call_deferred("register_self")
+	
 	# Skip in editor
 	if Engine.is_editor_hint():
 		return
@@ -66,6 +71,22 @@ func _ready():
 	
 	# Try to load entity scenes if they exist
 	_try_load_entity_scenes()
+
+# Return dependencies required by this service
+func get_dependencies() -> Array:
+	return ["SeedManager"] # Required dependency
+
+# Initialize this service
+func initialize_service() -> void:
+	# Get SeedManager dependency
+	seed_manager = get_dependency("SeedManager")
+	
+	# Connect to SeedManager signals
+	connect_to_dependency("SeedManager", "seed_changed", _on_seed_changed)
+	
+	# Get optional EntityManager dependency
+	if has_dependency("EntityManager"):
+		entity_manager = get_dependency("EntityManager")
 	
 	# Start worker threads
 	for i in range(thread_count):
@@ -73,17 +94,9 @@ func _ready():
 		thread.start(_thread_worker)
 		_generation_thread_pool.append(thread)
 	
-	# Wait for SeedManager to be ready
-	if not Engine.has_singleton("SeedManager"):
-		push_warning("SeedManager singleton not found!")
-	else:
-		if not SeedManager.is_initialized:
-			await SeedManager.seed_initialized
-		
-		# Connect to SeedManager for regeneration when seed changes
-		SeedManager.connect("seed_changed", _on_seed_changed)
-	
-	print("WorldChunkManager initialized as singleton")
+	# Mark as initialized
+	_service_initialized = true
+	print("WorldChunkManager: Service initialized successfully")
 
 # Try to load entity scenes if they exist in the project
 func _try_load_entity_scenes():
@@ -192,7 +205,17 @@ func _process(delta):
 	_process_chunk_queues(delta)
 	
 	# Update player position and manage chunks
-	var player = get_tree().get_nodes_in_group("player")[0] if get_tree().get_nodes_in_group("player").size() > 0 else null
+	var player = null
+	
+	# Try to get player through EntityManager first
+	if entity_manager:
+		player = entity_manager.get_nearest_entity(Vector2.ZERO, "player")
+	else:
+		# Fallback to direct scene tree query
+		var player_ships = get_tree().get_nodes_in_group("player")
+		if not player_ships.is_empty():
+			player = player_ships[0]
+	
 	if player:
 		var new_player_chunk = world_to_chunk(player.global_position)
 		if new_player_chunk != _player_chunk:
@@ -361,27 +384,38 @@ func _generate_chunk_data(coords: Vector2i, full_detail: bool) -> Dictionary:
 		}
 	}
 	
-	# Use SeedManager if available
-	if Engine.has_singleton("SeedManager"):
-		data.background.type = SeedManager.get_random_int(chunk_id, 0, 3)
-		data.background.density = SeedManager.get_random_value(chunk_id + 1, 0.1, 1.0)
+	# Use SeedManager for deterministic generation
+	if seed_manager:
+		data.background.type = seed_manager.get_random_int(chunk_id, 0, 3)
+		data.background.density = seed_manager.get_random_value(chunk_id + 1, 0.1, 1.0)
+	else:
+		# Fallback if SeedManager not available
+		var rng = RandomNumberGenerator.new()
+		rng.seed = chunk_id
+		data.background.type = rng.randi_range(0, 3)
+		data.background.density = rng.randf_range(0.1, 1.0)
 	
 	# For preloaded chunks, only generate the minimum needed data
 	if not full_detail:
 		return data
 	
 	# Determine what entities should be in this chunk
-	var entity_count = min(
-		max_entities_per_chunk,
-		SeedManager.get_random_int(chunk_id + 2, 5, 25) if Engine.has_singleton("SeedManager") else 15  # Fallback if SeedManager not available
-	)
+	var entity_count = 15  # Default
+	if seed_manager:
+		entity_count = min(max_entities_per_chunk, seed_manager.get_random_int(chunk_id + 2, 5, 25))
 	
 	# Generate entities
 	for i in range(entity_count):
 		var entity_id = chunk_id + (i * 100)
 		
 		# Determine entity type
-		var entity_type_roll = SeedManager.get_random_value(entity_id, 0, 1) if Engine.has_singleton("SeedManager") else randf()  # Fallback if SeedManager not available
+		var entity_type_roll = 0.0
+		if seed_manager:
+			entity_type_roll = seed_manager.get_random_value(entity_id, 0, 1)
+		else:
+			var rng = RandomNumberGenerator.new()
+			rng.seed = entity_id
+			entity_type_roll = rng.randf()
 			
 		var entity_type = "asteroid"
 		if entity_type_roll > 0.8:
@@ -394,14 +428,28 @@ func _generate_chunk_data(coords: Vector2i, full_detail: bool) -> Dictionary:
 			continue
 		
 		# Determine entity position within chunk
-		var pos_x = SeedManager.get_random_value(entity_id + 1, 0, chunk_size) if Engine.has_singleton("SeedManager") else randf() * chunk_size  # Fallback
-			
-		var pos_y = SeedManager.get_random_value(entity_id + 2, 0, chunk_size) if Engine.has_singleton("SeedManager") else randf() * chunk_size  # Fallback
+		var pos_x = 0.0
+		var pos_y = 0.0
+		
+		if seed_manager:
+			pos_x = seed_manager.get_random_value(entity_id + 1, 0, chunk_size)
+			pos_y = seed_manager.get_random_value(entity_id + 2, 0, chunk_size)
+		else:
+			var rng = RandomNumberGenerator.new()
+			rng.seed = entity_id
+			pos_x = rng.randf() * chunk_size
+			pos_y = rng.randf() * chunk_size
 			
 		var world_x = (coords.x * chunk_size) + pos_x
 		var world_y = (coords.y * chunk_size) + pos_y
 		
-		var rotation = SeedManager.get_random_value(entity_id + 3, 0, TAU) if Engine.has_singleton("SeedManager") else randf() * TAU  # Fallback
+		var rotation = 0.0
+		if seed_manager:
+			rotation = seed_manager.get_random_value(entity_id + 3, 0, TAU)
+		else:
+			var rng = RandomNumberGenerator.new()
+			rng.seed = entity_id + 3
+			rotation = rng.randf() * TAU
 		
 		data.entities.append({
 			"type": entity_type,
@@ -483,6 +531,9 @@ func _get_entity_from_pool(entity_type: String) -> Node:
 		return _entity_pools[entity_type].pop_back()
 	else:
 		var entity = entity_scenes[entity_type].instantiate()
+		# Register with EntityManager if available
+		if entity_manager and entity_manager.has_method("register_entity"):
+			entity_manager.register_entity(entity, entity_type)
 		return entity
 
 # Return an entity to the object pool

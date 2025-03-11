@@ -1,48 +1,7 @@
 # autoload/entity_manager.gd
-# ==========================
-# Purpose:
-#   Centralized entity management system for tracking and manipulating all game entities.
-#   Handles entity registration, spawning, and despawning.
-#   Provides utilities for finding and filtering entities based on type and distance.
-#   Maintains separate dictionaries for different entity types for efficient lookup.
-#
-# Interface:
-#   Signals:
-#     - entity_spawned(entity, entity_type)
-#     - entity_despawned(entity, entity_type)
-#     - player_spawned(player)
-#
-#   Registration Methods:
-#     - register_entity(entity, entity_type)
-#     - deregister_entity(entity)
-#
-#   Spawning Methods:
-#     - spawn_player(spawn_position)
-#     - spawn_enemy_ship(type_index, spawn_position)
-#     - spawn_asteroid(type_index, spawn_position)
-#     - spawn_station(type_index, spawn_position)
-#     - despawn_all(entity_type)
-#
-#   Query Methods:
-#     - get_nearest_entity(from_position, entity_type, exclude_entity)
-#     - get_entities_in_radius(from_position, radius, entity_type, exclude_entity)
-#
-# Dependencies:
-#   - None
-#
-# Usage Example:
-#   # Spawn the player
-#   var player = EntityManager.spawn_player(Vector2(500, 300))
-#   
-#   # Spawn an enemy and register it
-#   var enemy = enemy_scene.instantiate()
-#   add_child(enemy)
-#   EntityManager.register_entity(enemy, "ship")
-#   
-#   # Find the nearest asteroid to the player
-#   var nearest_asteroid = EntityManager.get_nearest_entity(player.global_position, "asteroid")
+# Entity Manager refactored with dependency injection
 
-extends Node
+extends "res://autoload/base_service.gd"
 
 signal entity_spawned(entity, entity_type)
 signal entity_despawned(entity, entity_type)
@@ -67,29 +26,61 @@ var station_scenes: Array[PackedScene] = []
 var _scenes_initialized: bool = false
 
 func _ready() -> void:
+	# Wait one frame before registering to ensure ServiceLocator is ready
+	await get_tree().process_frame
+	register_self()
+	
 	# Set up process mode to continue during pause
 	process_mode = Node.PROCESS_MODE_ALWAYS
-	
+
+# Return dependencies required by this service
+func get_dependencies() -> Array:
+	return [] # EntityManager has no required dependencies
+
+# Initialize this service
+func initialize_service() -> void:
 	# Initialize scenes
 	_initialize_scenes()
+	
+	# Mark as initialized
+	_service_initialized = true
+	print("EntityManager: Service initialized successfully")
 
 func _initialize_scenes() -> void:
 	if _scenes_initialized:
 		return
 	
 	# Load player ship scene
-	player_ship_scene = load("res://scenes/player/player_ship.tscn")
+	if ResourceLoader.exists("res://scenes/player/player_ship.tscn"):
+		player_ship_scene = load("res://scenes/player/player_ship.tscn")
 	
 	# Load asteroid scenes (add your actual paths)
-	# Example: asteroid_scenes.append(load("res://asteroids/asteroid_small.tscn"))
+	# Example: 
+	if ResourceLoader.exists("res://scenes/entities/asteroids/asteroid_small.tscn"):
+		asteroid_scenes.append(load("res://scenes/entities/asteroids/asteroid_small.tscn"))
+	if ResourceLoader.exists("res://scenes/entities/asteroids/asteroid_medium.tscn"):
+		asteroid_scenes.append(load("res://scenes/entities/asteroids/asteroid_medium.tscn"))
+	if ResourceLoader.exists("res://scenes/entities/asteroids/asteroid_large.tscn"):
+		asteroid_scenes.append(load("res://scenes/entities/asteroids/asteroid_large.tscn"))
 	
 	# Load enemy ship scenes (add your actual paths)
-	# Example: enemy_ship_scenes.append(load("res://enemies/enemy_basic.tscn"))
+	# Example:
+	if ResourceLoader.exists("res://scenes/entities/enemies/enemy_basic.tscn"):
+		enemy_ship_scenes.append(load("res://scenes/entities/enemies/enemy_basic.tscn"))
+	if ResourceLoader.exists("res://scenes/entities/enemies/enemy_scout.tscn"):
+		enemy_ship_scenes.append(load("res://scenes/entities/enemies/enemy_scout.tscn"))
+	if ResourceLoader.exists("res://scenes/entities/enemies/enemy_cruiser.tscn"):
+		enemy_ship_scenes.append(load("res://scenes/entities/enemies/enemy_cruiser.tscn"))
 	
 	# Load station scenes (add your actual paths)
-	# Example: station_scenes.append(load("res://stations/trading_station.tscn"))
+	# Example:
+	if ResourceLoader.exists("res://scenes/entities/stations/trading_station.tscn"):
+		station_scenes.append(load("res://scenes/entities/stations/trading_station.tscn"))
+	if ResourceLoader.exists("res://scenes/entities/stations/repair_station.tscn"):
+		station_scenes.append(load("res://scenes/entities/stations/repair_station.tscn"))
 	
 	_scenes_initialized = true
+	print("EntityManager: Scenes initialized")
 
 func register_entity(entity: Node, entity_type: String = "generic") -> int:
 	# Generate a unique ID for the entity
@@ -144,7 +135,8 @@ func _on_entity_tree_exiting(entity: Node) -> void:
 
 func spawn_player(spawn_position: Vector2 = Vector2.ZERO) -> Node:
 	# Ensure scenes are initialized
-	_initialize_scenes()
+	if not _scenes_initialized:
+		_initialize_scenes()
 	
 	if not player_ship_scene:
 		push_error("EntityManager: player_ship_scene not set")
@@ -163,7 +155,8 @@ func spawn_player(spawn_position: Vector2 = Vector2.ZERO) -> Node:
 
 func spawn_enemy_ship(type_index: int = 0, spawn_position: Vector2 = Vector2.ZERO) -> Node:
 	# Ensure scenes are initialized
-	_initialize_scenes()
+	if not _scenes_initialized:
+		_initialize_scenes()
 	
 	if enemy_ship_scenes.is_empty():
 		push_error("EntityManager: enemy_ship_scenes array is empty")
@@ -185,7 +178,8 @@ func spawn_enemy_ship(type_index: int = 0, spawn_position: Vector2 = Vector2.ZER
 
 func spawn_asteroid(type_index: int = -1, spawn_position: Vector2 = Vector2.ZERO) -> Node:
 	# Ensure scenes are initialized
-	_initialize_scenes()
+	if not _scenes_initialized:
+		_initialize_scenes()
 	
 	if asteroid_scenes.is_empty():
 		# Create a default asteroid if none are defined
@@ -215,7 +209,8 @@ func spawn_asteroid(type_index: int = -1, spawn_position: Vector2 = Vector2.ZERO
 
 func spawn_station(type_index: int = 0, spawn_position: Vector2 = Vector2.ZERO) -> Node:
 	# Ensure scenes are initialized
-	_initialize_scenes()
+	if not _scenes_initialized:
+		_initialize_scenes()
 	
 	if station_scenes.is_empty():
 		# Create a default station if none are defined
@@ -342,3 +337,85 @@ func despawn_all(entity_type: String = "") -> void:
 	for entity in entities_to_despawn:
 		if is_instance_valid(entity):
 			entity.queue_free()
+
+# Get total counts of each entity type
+func get_entity_counts() -> Dictionary:
+	var counts = {
+		"player": players.size(),
+		"ship": ships.size(),
+		"asteroid": asteroids.size(),
+		"station": stations.size(),
+		"total": players.size() + ships.size() + asteroids.size() + stations.size()
+	}
+	return counts
+
+# Find an entity by ID
+func find_entity_by_id(entity_id: int) -> Node:
+	# Check each dictionary
+	if players.has(entity_id):
+		return players[entity_id]
+	if ships.has(entity_id):
+		return ships[entity_id]
+	if asteroids.has(entity_id):
+		return asteroids[entity_id]
+	if stations.has(entity_id):
+		return stations[entity_id]
+	
+	return null
+
+# Find all entities of a specific type
+func get_all_entities_of_type(entity_type: String) -> Array:
+	match entity_type:
+		"player":
+			return players.values()
+		"ship":
+			return ships.values()
+		"asteroid":
+			return asteroids.values()
+		"station":
+			return stations.values()
+		_:
+			# Return all entities
+			var all_entities = []
+			all_entities.append_array(players.values())
+			all_entities.append_array(ships.values())
+			all_entities.append_array(asteroids.values())
+			all_entities.append_array(stations.values())
+			return all_entities
+
+# Filter entities by a custom criteria function
+func filter_entities(entity_type: String, filter_function: Callable) -> Array:
+	var entities = get_all_entities_of_type(entity_type)
+	var filtered_entities = []
+	
+	for entity in entities:
+		if filter_function.call(entity):
+			filtered_entities.append(entity)
+	
+	return filtered_entities
+
+# Reset the entity manager (for testing or game restarts)
+func reset() -> void:
+	# First despawn all entities
+	despawn_all()
+	
+	# Reset the counter
+	entity_counter = 0
+	
+	# Clear all dictionaries
+	players.clear()
+	ships.clear()
+	asteroids.clear()
+	stations.clear()
+	
+	print("EntityManager: Reset completed")
+
+# Debug method to print entity statistics
+func print_entity_stats() -> void:
+	var counts = get_entity_counts()
+	print("Entity Statistics:")
+	print("- Players: ", counts.player)
+	print("- Ships: ", counts.ship)
+	print("- Asteroids: ", counts.asteroid)
+	print("- Stations: ", counts.station)
+	print("- Total: ", counts.total)

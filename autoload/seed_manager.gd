@@ -1,13 +1,12 @@
 # autoload/seed_manager.gd
-# ========================
-# Purpose:
-#   Provides deterministic randomization methods using the game seed.
-#   Ensures consistent procedural generation based on GameSettings' seed.
+# Provides deterministic randomization methods using the game seed.
+# Core component for procedural generation throughout the game.
 
-extends Node
+extends "res://autoload/base_service.gd"
 
 signal seed_initialized
 signal seed_changed(new_seed)
+signal debug_mode_changed(enabled)
 
 # Cache for deterministic values
 var _noise_generators = {}
@@ -15,12 +14,12 @@ var _value_cache = {}
 var _max_cache_size = 1000  # Limit the cache size
 
 # Reference to GameSettings
-var game_settings: GameSettings = null
+var game_settings: Object = null
 
 # Flags
 var debug_mode: bool = false
 var enable_cache: bool = true  # Can be toggled for memory optimization
-var is_initialized: bool = false
+var _seed_initialized: bool = false # Renamed to avoid conflict with base_service.is_initialized
 
 # Default seed to use if GameSettings is not available
 const DEFAULT_SEED = 0
@@ -35,53 +34,62 @@ var _stats = {
 }
 
 func _ready() -> void:
-	# Find GameSettings after a frame delay
-	call_deferred("_find_game_settings")
-
-func _find_game_settings() -> void:
-	# Wait a frame to ensure the scene is loaded
+	# Wait one frame before registering to ensure ServiceLocator is ready
 	await get_tree().process_frame
+	register_self()
 	
-	# Find GameSettings in the main scene
-	var main_scene = get_tree().current_scene
-	game_settings = main_scene.get_node_or_null("GameSettings")
+	# Set process mode to continue during pause
+	process_mode = Node.PROCESS_MODE_ALWAYS
+
+# Return dependencies required by this service
+func get_dependencies() -> Array:
+	return [] # SeedManager has no required dependencies
+
+# Initialize this service
+func initialize_service() -> void:
+	# SeedManager is ready for usage after auto-registration
+	_seed_initialized = true
 	
-	if game_settings:
-		# Connect to GameSettings seed_changed signal
-		if not game_settings.is_connected("seed_changed", _on_game_settings_seed_changed):
-			game_settings.connect("seed_changed", _on_game_settings_seed_changed)
+	# Find GameSettings if available (optional dependency)
+	if has_dependency("GameSettings"):
+		game_settings = get_dependency("GameSettings")
 		
-		# Connect to debug settings changes
-		if not game_settings.is_connected("debug_settings_changed", _on_debug_settings_changed):
-			game_settings.connect("debug_settings_changed", _on_debug_settings_changed)
+		# Connect to GameSettings signals
+		connect_to_dependency("GameSettings", "seed_changed", _on_game_settings_seed_changed)
+		connect_to_dependency("GameSettings", "debug_settings_changed", _on_debug_settings_changed)
 		
-		# Wait for GameSettings to be fully initialized if needed
-		if not game_settings._initialized:
-			await game_settings.settings_initialized
+		# Get initial values from settings
+		if game_settings.has_method("get_seed"):
+			_current_seed = game_settings.get_seed()
 		
-		# Use debug mode from settings - check both master and specific toggle
-		debug_mode = game_settings.debug_mode and game_settings.debug_seed_manager
-		
-		# Get the seed from GameSettings
-		_current_seed = game_settings.get_seed()
+		# Check for debug mode properties safely
+		if "debug_mode" in game_settings:
+			if "debug_seed_manager" in game_settings:
+				debug_mode = game_settings.debug_mode and game_settings.debug_seed_manager
+			else:
+				debug_mode = game_settings.debug_mode
 		
 		if debug_mode:
 			print("SeedManager: Connected to GameSettings, using seed:", _current_seed)
 	else:
-		if debug_mode:
-			print("SeedManager: GameSettings not found, using default seed")
+		print("SeedManager: GameSettings not found, using default seed")
 	
 	# Mark as initialized and emit signal
-	is_initialized = true
+	_service_initialized = true
 	seed_initialized.emit()
 	
 	# Record startup time for stats
 	_stats.last_cache_clear = Time.get_ticks_msec()
 
+# Public getter for initialization status
+func is_seed_ready() -> bool:
+	return _seed_initialized
+
 # Handle debug setting changes
 func _on_debug_settings_changed(debug_settings: Dictionary) -> void:
 	# Update debug mode based on both master toggle and specific toggle
 	debug_mode = debug_settings.get("master", false) and debug_settings.get("seed_manager", false)
+	debug_mode_changed.emit(debug_mode)
 	
 	if debug_mode:
 		print("SeedManager: Debug mode enabled")
@@ -105,6 +113,12 @@ func get_seed() -> int:
 
 # Set the seed directly (used by external systems)
 func set_seed(new_seed: int) -> void:
+	# Check for early calls during initialization
+	if not is_inside_tree():
+		# Defer until we're ready
+		call_deferred("set_seed", new_seed)
+		return
+		
 	if _current_seed == new_seed:
 		return  # No change needed
 		
@@ -119,13 +133,14 @@ func set_seed(new_seed: int) -> void:
 
 # Get the hash representation of the current seed
 func get_seed_hash() -> String:
-	if game_settings:
-		return game_settings.seed_hash
+	if game_settings and game_settings.has_method("get_seed_hash"):
+		return game_settings.get_seed_hash()
 	return _generate_seed_hash(_current_seed)
 
 # Toggle debug mode
 func set_debug_mode(enable: bool) -> void:
 	debug_mode = enable
+	debug_mode_changed.emit(debug_mode)
 	
 	if debug_mode:
 		# Print cache statistics when enabling debug mode
@@ -150,14 +165,23 @@ func print_cache_stats() -> void:
 # Utility debug print
 func debug_print(message: String) -> void:
 	if debug_mode:
-		if Engine.has_singleton("DebugLogger"):
-			DebugLogger.debug("SeedManager", message)
+		if has_dependency("DebugLogger"):
+			var logger = get_dependency("DebugLogger")
+			logger.debug("SeedManager", message)
 		else:
 			print("SeedManager: " + message)
 
 # Get a consistent random value between min and max for a given object ID
 # Use object_subid for different values from same object
 func get_random_value(object_id: int, min_val: float, max_val: float, object_subid: int = 0) -> float:
+	# Check for early calls during initialization
+	if not is_inside_tree():
+		# Give a deterministic but not cached value for early calls
+		var hash_seed = _hash_combine(_current_seed, object_id + object_subid)
+		var temp_rng = RandomNumberGenerator.new()
+		temp_rng.seed = hash_seed
+		return min_val + temp_rng.randf() * (max_val - min_val)
+	
 	# Update stats
 	_stats.total_requests += 1
 	
@@ -185,6 +209,14 @@ func get_random_value(object_id: int, min_val: float, max_val: float, object_sub
 
 # Get a random integer in a given range for an object
 func get_random_int(object_id: int, min_val: int, max_val: int, object_subid: int = 0) -> int:
+	# Check for early calls during initialization
+	if not is_inside_tree():
+		# Give a deterministic but not cached value for early calls
+		var hash_seed = _hash_combine(_current_seed, object_id + object_subid)
+		var temp_rng = RandomNumberGenerator.new()
+		temp_rng.seed = hash_seed
+		return temp_rng.randi_range(min_val, max_val)
+	
 	# Update stats
 	_stats.total_requests += 1
 	
@@ -211,6 +243,14 @@ func get_random_int(object_id: int, min_val: int, max_val: int, object_subid: in
 
 # Get a random boolean based on probability
 func get_random_bool(object_id: int, probability: float = 0.5, object_subid: int = 0) -> bool:
+	# Check for early calls during initialization
+	if not is_inside_tree():
+		# Give a deterministic but not cached value for early calls
+		var hash_seed = _hash_combine(_current_seed, object_id + object_subid)
+		var temp_rng = RandomNumberGenerator.new()
+		temp_rng.seed = hash_seed
+		return temp_rng.randf() <= probability
+	
 	# Update stats
 	_stats.total_requests += 1
 	
@@ -237,6 +277,16 @@ func get_random_bool(object_id: int, probability: float = 0.5, object_subid: int
 
 # Get a random point in a circle with given radius
 func get_random_point_in_circle(object_id: int, radius: float, object_subid: int = 0) -> Vector2:
+	# Check for early calls during initialization
+	if not is_inside_tree():
+		# Give a deterministic but not cached value for early calls
+		var hash_seed = _hash_combine(_current_seed, object_id + object_subid)
+		var temp_rng = RandomNumberGenerator.new()
+		temp_rng.seed = hash_seed
+		var angle = temp_rng.randf() * TAU
+		var distance = sqrt(temp_rng.randf()) * radius
+		return Vector2(cos(angle) * distance, sin(angle) * distance)
+	
 	# Update stats
 	_stats.total_requests += 1
 	
@@ -338,6 +388,31 @@ func shuffle_array(array: Array, object_id: int = 0) -> void:
 		array[i] = array[j]
 		array[j] = temp
 
+# Get a random element from an array
+func choose(object_id: int, array: Array) -> Variant:
+	if array.is_empty():
+		return null
+	
+	var index = get_random_int(object_id, 0, array.size() - 1)
+	return array[index]
+
+# Generate multiple unique indices from a range
+func unique_indices(object_id: int, count: int, max_index: int) -> Array:
+	if count > max_index + 1:
+		# Can't generate more unique indices than the range allows
+		count = max_index + 1
+	
+	# Create an array of all possible indices
+	var all_indices = []
+	for i in range(max_index + 1):
+		all_indices.append(i)
+	
+	# Shuffle the array deterministically
+	shuffle_array(all_indices, object_id)
+	
+	# Return the first 'count' elements
+	return all_indices.slice(0, count)
+
 # Helper method to get/create a noise generator
 func _get_noise_generator(object_id: int) -> FastNoiseLite:
 	if not _noise_generators.has(object_id):
@@ -349,6 +424,12 @@ func _get_noise_generator(object_id: int) -> FastNoiseLite:
 
 # Helper to clear caches
 func _clear_caches() -> void:
+	# Check for early calls during initialization
+	if not is_inside_tree():
+		# Defer until we're ready
+		call_deferred("_clear_caches")
+		return
+	
 	_value_cache.clear()
 	_noise_generators.clear()
 	
@@ -361,13 +442,14 @@ func _clear_caches() -> void:
 	if debug_mode:
 		debug_print("Cleared caches due to seed change")
 	
-	# Also trigger a clear of the texture cache in PlanetSpawnerBase
-	if get_tree().root.has_node("Main"):
-		# Wait one frame to ensure everything is loaded
-		await get_tree().process_frame
-		
-		# Call the static method to clear the texture cache
-		PlanetSpawnerBase.clear_texture_cache()
+	# Try to clear texture cache if PlanetSpawnerBase exists
+	# First try through DI, then fallback to direct access
+	var planet_spawner = null
+	if has_dependency("PlanetSpawnerBase"):
+		planet_spawner = get_dependency("PlanetSpawnerBase")
+	
+	if planet_spawner and planet_spawner.has_method("clear_texture_cache"):
+		planet_spawner.clear_texture_cache()
 
 # Helper to clean cache if it gets too big
 func _clean_cache_if_needed() -> void:
