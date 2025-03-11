@@ -100,11 +100,18 @@ func _update_seed_value() -> void:
 			var pos_hash = (int(global_position.x) * 13) + (int(global_position.y) * 7)
 			_seed_value = base_seed + pos_hash + local_seed_offset
 	else:
-		# Fallback when GameSettings isn't available
-		_seed_value = hash(str(grid_x) + str(grid_y) + str(local_seed_offset) + str(Time.get_unix_time_from_system()))
+		# Fallback when GameSettings isn't available - use SeedManager if possible
+		if has_node("/root/SeedManager"):
+			_seed_value = SeedManager.get_seed() + (grid_x * 1000) + (grid_y * 100) + local_seed_offset
+		else:
+			# Last resort fallback
+			_seed_value = hash(str(grid_x) + str(grid_y) + str(local_seed_offset) + str(Time.get_unix_time_from_system()))
 	
 	# Initialize RNG with our seed
 	_rng.seed = _seed_value
+	
+	if game_settings and game_settings.debug_mode:
+		print("%s: Generated seed %d for grid position (%d, %d)" % [get_spawner_type(), _seed_value, grid_x, grid_y])
 
 # This is a virtual method that derived classes will override
 func spawn_planet() -> Node2D:
@@ -187,14 +194,15 @@ func _calculate_spawn_position() -> Vector2:
 
 # Get a deterministic parameter for the planet from seed
 func get_deterministic_param(param_name: String, min_val: float, max_val: float, sub_id: int = 0) -> float:
-	if game_settings:
-		# Use GameSettings for deterministic values
-		var object_id = _seed_value + hash(param_name)
-		return game_settings.get_random_value(object_id, min_val, max_val, sub_id)
-	elif has_node("/root/SeedManager"):
-		# Fallback to SeedManager
+	# Always try to use SeedManager first for consistency
+	if has_node("/root/SeedManager"):
+		# Create a deterministic object ID from param_name
 		var object_id = _seed_value + hash(param_name)
 		return SeedManager.get_random_value(object_id, min_val, max_val, sub_id)
+	elif game_settings:
+		# Fallback to GameSettings
+		var object_id = _seed_value + hash(param_name)
+		return game_settings.get_random_value(object_id, min_val, max_val, sub_id)
 	else:
 		# Local fallback
 		return min_val + (max_val - min_val) * _rng.randf()

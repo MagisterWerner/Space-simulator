@@ -210,13 +210,13 @@ func get_cell_distance(from_cell: Vector2i, to_cell: Vector2i) -> int:
 # Generate a deterministic value for a cell
 # This is useful for procedural generation that needs to be consistent
 func get_cell_value(cell_coords: Vector2i, min_val: float, max_val: float, parameter_id: int = 0) -> float:
-	# First try to use SeedManager for consistency
+	# Always try to use SeedManager first for consistency
 	if _seed_ready and has_node("/root/SeedManager"):
 		# Create a deterministic object ID from cell coordinates
 		var object_id = cell_coords.x * 10000 + cell_coords.y
 		return SeedManager.get_random_value(object_id, min_val, max_val, parameter_id)
 	elif game_settings:
-		# Fall back to GameSettings
+		# Fall back to GameSettings only if SeedManager isn't available
 		var object_id = cell_coords.x * 10000 + cell_coords.y
 		return game_settings.get_random_value(object_id, min_val, max_val, parameter_id)
 	else:
@@ -227,13 +227,13 @@ func get_cell_value(cell_coords: Vector2i, min_val: float, max_val: float, param
 
 # Get a deterministic integer for a cell
 func get_cell_int(cell_coords: Vector2i, min_val: int, max_val: int, parameter_id: int = 0) -> int:
-	# First try to use SeedManager for consistency
+	# Always try to use SeedManager first for consistency
 	if _seed_ready and has_node("/root/SeedManager"):
 		# Create a deterministic object ID from cell coordinates
 		var object_id = cell_coords.x * 10000 + cell_coords.y
 		return SeedManager.get_random_int(object_id, min_val, max_val, parameter_id)
 	elif game_settings:
-		# Fall back to GameSettings
+		# Fall back to GameSettings only if SeedManager isn't available
 		var object_id = cell_coords.x * 10000 + cell_coords.y
 		return game_settings.get_random_int(object_id, min_val, max_val, parameter_id)
 	else:

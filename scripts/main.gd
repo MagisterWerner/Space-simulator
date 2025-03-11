@@ -41,7 +41,7 @@ func _initialize_game() -> void:
 			if SeedManager.has_signal("seed_initialized"):
 				await SeedManager.seed_initialized
 		
-		# Set the seed in SeedManager
+		# Set the seed in SeedManager - important for world generation
 		SeedManager.set_seed(game_settings.get_seed())
 		
 		if game_settings.debug_mode:

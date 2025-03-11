@@ -4,28 +4,6 @@
 #   Core game management system that controls game state, levels, and gameplay systems.
 #   Handles the game lifecycle including starting, pausing, ending, and restarting.
 #   Updated to work with GameSettings for centralized configuration.
-#
-# Interface:
-#   Signals:
-#     - game_started
-#     - game_paused
-#     - game_resumed
-#     - game_over
-#     - game_restarted
-#     - player_credits_changed(new_amount)
-#     - upgrade_purchased(upgrade, component)
-#     - save_game_created(save_id)
-#     - save_game_loaded(save_id)
-#
-#   Game Lifecycle Methods:
-#     - start_game()
-#     - pause_game()
-#     - resume_game()
-#     - end_game()
-#     - restart_game()
-#
-#   GameSettings Integration:
-#     - configure_with_settings(settings)
 
 extends Node
 
@@ -153,15 +131,15 @@ func configure_with_settings(settings: GameSettings) -> void:
 			if SeedManager.has_signal("seed_initialized"):
 				await SeedManager.seed_initialized
 		
-		# Update SeedManager with our settings
+		# Update SeedManager with our settings - use SeedManager's method for proper handling
 		SeedManager.set_seed(game_settings.get_seed())
 		
-		# Connect to settings seed changes
+		# Connect to settings seed changes if not already connected
 		if not game_settings.is_connected("seed_changed", _on_settings_seed_changed):
 			game_settings.connect("seed_changed", _on_settings_seed_changed)
 
 func _on_settings_seed_changed(new_seed: int) -> void:
-	# Update SeedManager if it exists
+	# Update SeedManager if it exists - use SeedManager's method for proper handling
 	if _seed_ready and has_node("/root/SeedManager"):
 		SeedManager.set_seed(new_seed)
 

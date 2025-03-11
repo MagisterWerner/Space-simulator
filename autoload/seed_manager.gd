@@ -3,25 +3,7 @@
 # Purpose:
 #   Manages procedural generation seeding and provides deterministic randomization methods.
 #   Ensures consistent procedural generation based on game seeds.
-#   Now works with GameSettings for centralized seed management.
-#
-# Interface:
-#   Signals:
-#     - seed_changed(new_seed)
-#     - seed_initialized
-#
-#   Seed Methods:
-#     - set_seed(new_seed)
-#     - set_random_seed()
-#     - get_seed()
-#     - get_seed_hash()
-#
-#   Randomization Methods:
-#     - get_random_value(object_id, min_val, max_val, object_subid)
-#     - get_random_int(object_id, min_val, max_val, object_subid)
-#     - get_random_point_in_circle(object_id, radius, object_subid)
-#     - get_2d_noise(x, y, scale, octaves, object_id)
-#     - get_weighted_element(object_id, elements, weights)
+#   Works with GameSettings for centralized seed management.
 
 extends Node
 
@@ -60,7 +42,7 @@ func _find_game_settings() -> void:
 	game_settings = main_scene.get_node_or_null("GameSettings")
 	
 	if game_settings:
-		# Connect to GameSettings seed_changed signal
+		# Connect to GameSettings seed_changed signal WITHOUT updating back
 		if game_settings.is_connected("seed_changed", _on_game_settings_seed_changed):
 			game_settings.disconnect("seed_changed", _on_game_settings_seed_changed)
 		game_settings.connect("seed_changed", _on_game_settings_seed_changed)
@@ -72,7 +54,8 @@ func _find_game_settings() -> void:
 		# Get seed from GameSettings
 		var settings_seed = game_settings.get_seed()
 		if settings_seed != 0 and settings_seed != current_seed:
-			set_seed(settings_seed)
+			# Important: Set seed directly without updating GameSettings back
+			_set_seed_internal(settings_seed)
 			
 		# Use debug mode from settings
 		debug_mode = game_settings.debug_mode
@@ -91,20 +74,20 @@ func _find_game_settings() -> void:
 	is_initialized = true
 	seed_initialized.emit()
 
+# Internal method to receive seed changes from GameSettings
 func _on_game_settings_seed_changed(new_seed: int) -> void:
-	# Update our seed when GameSettings seed changes
-	set_seed(new_seed)
+	# Update our seed when GameSettings seed changes, but DON'T update back
+	_set_seed_internal(new_seed)
 
 func _on_game_started() -> void:
 	# Use GameSettings seed if available
 	if game_settings:
-		set_seed(game_settings.get_seed())
-	
-func set_seed(new_seed: int) -> void:
-	# Store the old seed for history
-	if current_seed != 0 and current_seed != new_seed:
-		if debug_mode:
-			print("SeedManager: Changed seed from %s to %s" % [current_seed, new_seed])
+		_set_seed_internal(game_settings.get_seed())
+
+# Internal method to set seed without triggering GameSettings updates
+func _set_seed_internal(new_seed: int) -> void:
+	if current_seed != 0 and current_seed != new_seed and debug_mode:
+		print("SeedManager: Changed seed from %s to %s" % [current_seed, new_seed])
 	
 	current_seed = new_seed
 	rng.seed = current_seed
@@ -117,10 +100,23 @@ func set_seed(new_seed: int) -> void:
 	
 	# Notify all systems that depend on the seed
 	seed_changed.emit(current_seed)
+
+# Public method to set seed (should only be called by GameManager or direct API)
+func set_seed(new_seed: int) -> void:
+	_set_seed_internal(new_seed)
 	
-	# Update GameSettings if it exists and the seed came from elsewhere
+	# Update GameSettings if it exists (one-way update)
 	if game_settings and game_settings.get_seed() != current_seed:
+		# Temporarily disconnect to prevent cyclic updates
+		if game_settings.is_connected("seed_changed", _on_game_settings_seed_changed):
+			game_settings.disconnect("seed_changed", _on_game_settings_seed_changed)
+		
+		# Update GameSettings
 		game_settings.set_seed(current_seed)
+		
+		# Reconnect signal
+		if not game_settings.is_connected("seed_changed", _on_game_settings_seed_changed):
+			game_settings.connect("seed_changed", _on_game_settings_seed_changed)
 	
 	if debug_mode:
 		print("Seed set to: %s (hash: %s)" % [current_seed, seed_hash])
@@ -142,10 +138,6 @@ func get_seed_hash() -> String:
 # Get a consistent random value between min and max for a given object ID
 # Use object_subid for different values from same object
 func get_random_value(object_id: int, min_val: float, max_val: float, object_subid: int = 0) -> float:
-	# First use GameSettings if available
-	if game_settings and game_settings.has_method("get_random_value"):
-		return game_settings.get_random_value(object_id, min_val, max_val, object_subid)
-	
 	# Try to get from cache first
 	var cache_key = "value_%d_%d_%f_%f" % [object_id, object_subid, min_val, max_val]
 	if enable_cache and _value_cache.has(cache_key):
@@ -167,10 +159,6 @@ func get_random_value(object_id: int, min_val: float, max_val: float, object_sub
 
 # Get a random integer in a given range for an object
 func get_random_int(object_id: int, min_val: int, max_val: int, object_subid: int = 0) -> int:
-	# First use GameSettings if available
-	if game_settings and game_settings.has_method("get_random_int"):
-		return game_settings.get_random_int(object_id, min_val, max_val, object_subid)
-	
 	# Try to get from cache first
 	var cache_key = "int_%d_%d_%d_%d" % [object_id, object_subid, min_val, max_val]
 	if enable_cache and _value_cache.has(cache_key):
@@ -191,10 +179,6 @@ func get_random_int(object_id: int, min_val: int, max_val: int, object_subid: in
 
 # Get a random point in a circle with given radius
 func get_random_point_in_circle(object_id: int, radius: float, object_subid: int = 0) -> Vector2:
-	# First use GameSettings if available
-	if game_settings and game_settings.has_method("get_random_point_in_circle"):
-		return game_settings.get_random_point_in_circle(object_id, radius, object_subid)
-	
 	# Try to get from cache first
 	var cache_key = "circle_%d_%d_%f" % [object_id, object_subid, radius]
 	if enable_cache and _value_cache.has(cache_key):
