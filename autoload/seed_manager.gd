@@ -45,9 +45,7 @@ func _ready() -> void:
 	# Find GameSettings after a frame delay
 	call_deferred("_find_game_settings")
 	
-	# Initialize with a random seed if none is set
-	if current_seed == 0:
-		set_random_seed()
+	# We'll defer seed initialization until after attempting to find GameSettings
 
 func _find_game_settings() -> void:
 	# Wait a frame to ensure the scene is loaded
@@ -74,6 +72,10 @@ func _find_game_settings() -> void:
 		if debug_mode:
 			print("SeedManager: Connected to GameSettings")
 	else:
+		# Only now do we initialize with a random seed if none is set
+		if current_seed == 0:
+			set_random_seed()
+			
 		if debug_mode:
 			print("SeedManager: GameSettings not found, using standalone mode")
 
