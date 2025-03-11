@@ -166,35 +166,22 @@ func get_planet_type_description() -> String:
 		return get_planet_type_name(player_starting_planet_type - 1)
 
 # ---- DETERMINISTIC RANDOMIZATION ----
-# These methods now ALWAYS delegate to SeedManager if available
 
 # Get a deterministic random value for an object ID
 func get_random_value(object_id: int, min_val: float, max_val: float, object_subid: int = 0) -> float:
-	# Always delegate to SeedManager if available
-	if has_node("/root/SeedManager"):
-		return SeedManager.get_random_value(object_id, min_val, max_val, object_subid)
-	
-	# Fallback to local implementation only if SeedManager is not available
+	# Create seed based on game seed and object ID
 	_rng.seed = _hash_combine(game_seed, object_id + object_subid)
 	return min_val + _rng.randf() * (max_val - min_val)
 
 # Get a deterministic random integer
 func get_random_int(object_id: int, min_val: int, max_val: int, object_subid: int = 0) -> int:
-	# Always delegate to SeedManager if available
-	if has_node("/root/SeedManager"):
-		return SeedManager.get_random_int(object_id, min_val, max_val, object_subid)
-	
-	# Fallback to local implementation only if SeedManager is not available
+	# Create seed based on game seed and object ID
 	_rng.seed = _hash_combine(game_seed, object_id + object_subid)
 	return _rng.randi_range(min_val, max_val)
 
 # Get a deterministic position within a circle
 func get_random_point_in_circle(object_id: int, radius: float, object_subid: int = 0) -> Vector2:
-	# Always delegate to SeedManager if available
-	if has_node("/root/SeedManager"):
-		return SeedManager.get_random_point_in_circle(object_id, radius, object_subid)
-	
-	# Fallback to local implementation only if SeedManager is not available
+	# Create seed based on game seed and object ID
 	_rng.seed = _hash_combine(game_seed, object_id + object_subid)
 	var angle = _rng.randf() * TAU
 	var distance = sqrt(_rng.randf()) * radius  # Square root for uniform distribution
