@@ -173,10 +173,16 @@ func _setup_debug_panel() -> void:
 	var debug_canvas = get_node_or_null("/root/DebugCanvas")
 	
 	if not debug_canvas:
-		debug_canvas = CanvasLayer.new()
-		debug_canvas.name = "DebugCanvas"
-		debug_canvas.layer = 100  # Put it on top
-		get_tree().root.add_child(debug_canvas)
+		# FIX: Add check for Engine.get_main_loop()
+		var main_loop = Engine.get_main_loop()
+		if main_loop != null:
+			debug_canvas = CanvasLayer.new()
+			debug_canvas.name = "DebugCanvas"
+			debug_canvas.layer = 100  # Put it on top
+			main_loop.root.add_child(debug_canvas)
+		else:
+			push_warning("GameSettings: Cannot create DebugCanvas, Engine.get_main_loop() is null")
+			return
 	
 	# Load debug panel scene if it exists
 	var debug_panel_path = "res://scenes/ui/debug_panel.tscn"
@@ -203,7 +209,12 @@ func _input(event: InputEvent) -> void:
 func _update_debug_panel_visibility() -> void:
 	# Find debug panel if we don't have a reference
 	if not _debug_panel:
-		_debug_panel = get_tree().root.find_child("DebugPanel", true, false)
+		# FIX: Add check for Engine.get_main_loop()
+		var main_loop = Engine.get_main_loop()
+		if main_loop != null:
+			_debug_panel = main_loop.root.find_child("DebugPanel", true, false)
+		else:
+			return
 	
 	# Update visibility if we found it
 	if _debug_panel:
