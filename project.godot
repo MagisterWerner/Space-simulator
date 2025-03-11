@@ -34,7 +34,6 @@ GridManager="*res://autoload/grid_manager.gd"
 LabelManager="*res://autoload/label_manager.gd"
 WorldChunkManager="*res://autoload/world_chunk_manager.gd"
 DebugLogger="*res://scripts/utils/debug_logger.gd"
-AsyncWorldGenerator="*res://autoload/async_world_generator.gd"
 
 [category]
 
