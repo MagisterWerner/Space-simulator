@@ -61,8 +61,15 @@ class ReflectiveShieldStrategy extends Strategy:
 		rarity = "Epic"
 		price = 500
 	
-	func modify_shield_damage(damage_amount: float) -> float:
-		if randf() <= reflection_chance:
+	func modify_shield_damage(damage_amount: float, projectile_id: int = 0) -> float:
+		# Get SeedManager singleton
+		var seed_manager = Engine.get_singleton("SeedManager")
+		
+		# Use a deterministic random value based on projectile_id
+		# If no projectile_id is provided, use component's instance_id
+		var object_id = projectile_id if projectile_id > 0 else (owner_component.get_instance_id() if owner_component else 0)
+		
+		if seed_manager and seed_manager.get_random_value(object_id, 0.0, 1.0) <= reflection_chance:
 			# Reflect projectile
 			# This would require implementation in the game's projectile system
 			# to actually reflect the projectile that hit the shield

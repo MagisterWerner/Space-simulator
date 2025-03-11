@@ -17,7 +17,9 @@ func enter(params: Dictionary = {}) -> void:
 		var movement = ship.get_node_or_null("MovementComponent") as MovementComponent
 		if movement:
 			# Apply rotation in a random direction to simulate impact
-			if randf() > 0.5:
+			# Use SeedManager for deterministic randomization based on ship's instance id
+			var seed_manager = get_node("/root/SeedManager")
+			if seed_manager and seed_manager.get_random_value(ship.get_instance_id(), 0.0, 1.0) > 0.5:
 				movement.rotate_left()
 			else:
 				movement.rotate_right()

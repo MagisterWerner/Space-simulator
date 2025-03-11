@@ -141,6 +141,26 @@ func get_random_int(object_id: int, min_val: int, max_val: int, object_subid: in
 	
 	return result
 
+# Get a random boolean based on probability
+func get_random_bool(object_id: int, probability: float = 0.5, object_subid: int = 0) -> bool:
+	# Try to get from cache first
+	var cache_key = "bool_%d_%d_%f" % [object_id, object_subid, probability]
+	if enable_cache and _value_cache.has(cache_key):
+		return _value_cache[cache_key]
+	
+	var hash_seed = _hash_combine(_current_seed, object_id + object_subid)
+	var temp_rng = RandomNumberGenerator.new()
+	temp_rng.seed = hash_seed
+	
+	var result = temp_rng.randf() <= probability
+	
+	# Cache the result
+	if enable_cache:
+		_value_cache[cache_key] = result
+		_clean_cache_if_needed()
+	
+	return result
+
 # Get a random point in a circle with given radius
 func get_random_point_in_circle(object_id: int, radius: float, object_subid: int = 0) -> Vector2:
 	# Try to get from cache first
