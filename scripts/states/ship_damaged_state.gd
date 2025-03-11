@@ -1,4 +1,4 @@
-# ship_damaged_state.gd
+# scripts/states/ship_damaged_state.gd
 extends State
 class_name ShipDamagedState
 
@@ -18,11 +18,25 @@ func enter(params: Dictionary = {}) -> void:
 		if movement:
 			# Apply rotation in a random direction to simulate impact
 			# Use SeedManager for deterministic randomization based on ship's instance id
-			var seed_manager = get_node("/root/SeedManager")
-			if seed_manager and seed_manager.get_random_value(ship.get_instance_id(), 0.0, 1.0) > 0.5:
-				movement.rotate_left()
+			if Engine.has_singleton("SeedManager"):
+				var seed_manager = Engine.get_singleton("SeedManager")
+				
+				# Wait for SeedManager to be fully initialized if needed
+				if seed_manager.has_method("is_initialized") and not seed_manager.is_initialized and seed_manager.has_signal("seed_initialized"):
+					await seed_manager.seed_initialized
+				
+				# Use the ship's instance_id for deterministic damage rotation
+				var damage_seed = ship.get_instance_id() + int(Time.get_ticks_msec() / 1000)
+				if seed_manager.get_random_bool(damage_seed, 0.5):
+					movement.rotate_left()
+				else:
+					movement.rotate_right()
 			else:
-				movement.rotate_right()
+				# Fallback to non-deterministic if SeedManager not available
+				if randf() > 0.5:
+					movement.rotate_left()
+				else:
+					movement.rotate_right()
 
 func update(delta: float) -> void:
 	recovery_timer += delta

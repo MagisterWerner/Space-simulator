@@ -82,15 +82,29 @@ func setup(param1 = null, param2 = null, param3 = null, param4 = null) -> void:
 	# Store start position
 	_start_position = pos_vector
 	
-	# Add random horizontal offset
-	var h_offset = randf_range(-random_horizontal, random_horizontal)
+	# Add random horizontal offset - USING SEEDMANAGER FOR DETERMINISM
+	var h_offset = 0.0
+	if Engine.has_singleton("SeedManager"):
+		# Use the node's instance_id and current value as a seed source
+		var seed_manager = Engine.get_singleton("SeedManager")
+		# Wait for SeedManager to be fully initialized if needed
+		if seed_manager.has_method("is_initialized") and not seed_manager.is_initialized and seed_manager.has_signal("seed_initialized"):
+			await seed_manager.seed_initialized
+			
+		# Use a combination of the instance_id and the _value to create a unique but deterministic offset
+		var seed_value = get_instance_id() + int(_value * 1000)
+		h_offset = seed_manager.get_random_value(seed_value, -random_horizontal, random_horizontal)
+	else:
+		# Fallback to regular random if SeedManager is not available
+		h_offset = randf_range(-random_horizontal, random_horizontal)
+		
 	_movement_direction = (float_direction + Vector2(h_offset, 0)).normalized()
 	
 	# Create the visual label if needed
-	_create_floating_number()
+	create_floating_number()
 	
 	# Set up text and color
-	_configure_appearance()
+	configure_appearance()
 	
 	# Set initial position
 	global_position = pos_vector
@@ -99,7 +113,7 @@ func setup(param1 = null, param2 = null, param3 = null, param4 = null) -> void:
 	super.setup(pos_vector, value, type, metadata)
 
 # Create the floating number visual
-func _create_floating_number() -> void:
+func create_floating_number() -> void:
 	# Create container if not already created
 	if not _container:
 		_container = Control.new()
@@ -122,7 +136,7 @@ func _create_floating_number() -> void:
 		_container.add_child(_label)
 
 # Configure appearance based on type
-func _configure_appearance() -> void:
+func configure_appearance() -> void:
 	if not _label:
 		return
 		

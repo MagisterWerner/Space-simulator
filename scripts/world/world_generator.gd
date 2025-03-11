@@ -14,7 +14,7 @@ signal entity_generated(entity, type, cell)
 
 # References to required components
 var game_settings: GameSettings = null
-var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
+var seed_manager = null
 
 # Scene references
 var planet_spawner_terran_scene: PackedScene
@@ -43,6 +43,14 @@ func _ready() -> void:
 	# Find GameSettings in the main scene
 	var main_scene = get_tree().current_scene
 	game_settings = main_scene.get_node_or_null("GameSettings")
+	
+	# Get a reference to SeedManager
+	if Engine.has_singleton("SeedManager"):
+		seed_manager = Engine.get_singleton("SeedManager")
+		
+		# Wait for SeedManager to be fully initialized
+		if not seed_manager.is_initialized and seed_manager.has_signal("seed_initialized"):
+			await seed_manager.seed_initialized
 	
 	# Load required scenes if not set
 	_initialize_scenes()
@@ -84,12 +92,6 @@ func generate_starter_world() -> Dictionary:
 	
 	# Emit signal that generation has started
 	world_generation_started.emit()
-	
-	# Initialize RNG with game seed
-	if game_settings:
-		_rng.seed = game_settings.get_seed()
-	else:
-		_rng.randomize()
 	
 	# Reset tracking
 	_planet_cells.clear()
@@ -196,8 +198,8 @@ func generate_gaseous_planet(proximity: int = 2) -> Vector2i:
 					continue
 				candidate_cells.append(cell)
 	
-	# Shuffle the cells for random distribution
-	candidate_cells.shuffle()
+	# Shuffle the cells using deterministic method
+	_shuffle_candidates(candidate_cells)
 	
 	# Try to place a gaseous planet in one of the shuffled cells
 	for cell in candidate_cells:
@@ -210,15 +212,26 @@ func generate_gaseous_planet(proximity: int = 2) -> Vector2i:
 		if game_settings:
 			cell_seed = game_settings.get_seed() + (cell.x * 1000) + (cell.y * 100)
 		else:
-			cell_seed = _rng.randi()
+			# Use SeedManager for consistency if available
+			if seed_manager:
+				cell_seed = seed_manager.get_random_int(get_instance_id() + (cell.x * 100) + cell.y, 0, 1000000)
+			else:
+				cell_seed = randi()  # Fallback
+		
 		var seed_offset = cell_seed - (game_settings.get_seed() if game_settings else 0)
 		
 		# Create a planet spawner for this cell
 		var planet_spawner = planet_spawner_gaseous_scene.instantiate()
 			
 		# Randomize the gas giant type
-		_rng.seed = cell_seed
-		var gas_giant_type = _rng.randi_range(0, 3)  # 0-3 are the gas giant types
+		var gas_giant_type = 0
+		if seed_manager:
+			gas_giant_type = seed_manager.get_random_int(cell_seed, 0, 3)  # 0-3 are gas giant types
+		else:
+			# Fallback deterministic approach
+			var temp_rng = RandomNumberGenerator.new()
+			temp_rng.seed = cell_seed
+			gas_giant_type = temp_rng.randi_range(0, 3)
 		
 		# Add to scene and configure
 		add_child(planet_spawner)
@@ -304,9 +317,8 @@ func generate_random_terran_planet(proximity: int = 1) -> Vector2i:
 					continue
 				candidate_cells.append(cell)
 	
-	# Shuffle the cells based on seed to ensure deterministic but random placement
-	_rng.seed = game_settings.get_seed() if game_settings else 0
-	candidate_cells.shuffle()
+	# Shuffle the cells using deterministic method
+	_shuffle_candidates(candidate_cells)
 	
 	# Try to place a terran planet in one of the shuffled cells
 	for cell in candidate_cells:
@@ -319,7 +331,12 @@ func generate_random_terran_planet(proximity: int = 1) -> Vector2i:
 		if game_settings:
 			cell_seed = game_settings.get_seed() + (cell.x * 1000) + (cell.y * 100)
 		else:
-			cell_seed = _rng.randi()
+			# Use SeedManager for consistency if available
+			if seed_manager:
+				cell_seed = seed_manager.get_random_int(get_instance_id() + (cell.x * 100) + cell.y, 0, 1000000)
+			else:
+				cell_seed = randi()  # Fallback
+				
 		var seed_offset = cell_seed - (game_settings.get_seed() if game_settings else 0)
 		
 		# Create a planet spawner for this cell
@@ -331,9 +348,15 @@ func generate_random_terran_planet(proximity: int = 1) -> Vector2i:
 			# First terran planet (player's starting planet)
 			terran_type = game_settings.player_starting_planet_type
 		else:
-			# Random planet type
-			_rng.seed = cell_seed
-			terran_type = _rng.randi_range(0, 6)  # 0-6 are the terran types
+			# Random planet type using SeedManager if available
+			if seed_manager:
+				terran_type = seed_manager.get_random_int(cell_seed, 0, 6)  # 0-6 are terran types
+			else:
+				# Fallback deterministic approach
+				var temp_rng = RandomNumberGenerator.new()
+				temp_rng.seed = cell_seed
+				terran_type = temp_rng.randi_range(0, 6)
+				
 			if game_settings and terran_type == game_settings.player_starting_planet_type:
 				terran_type = (terran_type + 1) % 7  # Skip to next type
 		
@@ -417,8 +440,8 @@ func generate_asteroid_field() -> Vector2i:
 				if not is_cell_generated(cell):
 					candidate_cells.append(cell)
 	
-	# Shuffle the cells for random distribution
-	candidate_cells.shuffle()
+	# Shuffle the cells using deterministic method
+	_shuffle_candidates(candidate_cells)
 	
 	# Try to place an asteroid field in one of the shuffled cells
 	for cell in candidate_cells:
@@ -436,14 +459,26 @@ func generate_asteroid_field() -> Vector2i:
 		
 		# Configure the asteroid field if it has the appropriate methods
 		if asteroid_field.has_method("generate"):
-			# Add some randomization to density and size
+			# Add some randomization to density and size using SeedManager
 			var field_seed = 0
-			if game_settings:
-				field_seed = game_settings.get_seed() + (cell.x * 10000) + (cell.y * 1000)
+			var density = 1.0
+			var size = 1.0
+			
+			if seed_manager:
+				field_seed = seed_manager.get_seed() + (cell.x * 10000) + (cell.y * 1000)
+				density = seed_manager.get_random_value(field_seed, 0.5, 1.5)
+				size = seed_manager.get_random_value(field_seed + 1, 0.7, 1.3)
 			else:
-				field_seed = _rng.randi()
-			var density = _rng.randf_range(0.5, 1.5)
-			var size = _rng.randf_range(0.7, 1.3)
+				# Fallback to local deterministic RNG
+				if game_settings:
+					field_seed = game_settings.get_seed() + (cell.x * 10000) + (cell.y * 1000)
+				else:
+					field_seed = get_instance_id() + (cell.x * 10000) + (cell.y * 1000)
+				
+				var temp_rng = RandomNumberGenerator.new()
+				temp_rng.seed = field_seed
+				density = temp_rng.randf_range(0.5, 1.5)
+				size = temp_rng.randf_range(0.7, 1.3)
 			
 			asteroid_field.generate(field_seed, density, size)
 		
@@ -496,8 +531,8 @@ func generate_station() -> Vector2i:
 				if not is_cell_generated(cell):
 					candidate_cells.append(cell)
 	
-	# Shuffle the cells for random distribution
-	candidate_cells.shuffle()
+	# Shuffle the cells using deterministic method
+	_shuffle_candidates(candidate_cells)
 	
 	# Try to place a station in one of the shuffled cells
 	for cell in candidate_cells:
@@ -513,12 +548,31 @@ func generate_station() -> Vector2i:
 			world_pos = Vector2(cell.x * 1024, cell.y * 1024)
 		station.global_position = world_pos
 		
-		# Add slight position variation within the cell
+		# Add slight position variation within the cell using SeedManager
 		var cell_size = game_settings.grid_cell_size if game_settings else 1024
-		var offset = Vector2(
-			_rng.randf_range(-cell_size/4.0, cell_size/4.0),
-			_rng.randf_range(-cell_size/4.0, cell_size/4.0)
-		)
+		var offset = Vector2.ZERO
+		
+		if seed_manager:
+			var station_seed = get_instance_id() + (cell.x * 10000) + (cell.y * 1000)
+			offset = Vector2(
+				seed_manager.get_random_value(station_seed, -cell_size/4.0, cell_size/4.0),
+				seed_manager.get_random_value(station_seed + 1, -cell_size/4.0, cell_size/4.0)
+			)
+		else:
+			# Fallback to local deterministic RNG
+			var station_seed = 0
+			if game_settings:
+				station_seed = game_settings.get_seed() + (cell.x * 100000) + (cell.y * 10000)
+			else:
+				station_seed = get_instance_id() + (cell.x * 100000) + (cell.y * 10000)
+				
+			var temp_rng = RandomNumberGenerator.new()
+			temp_rng.seed = station_seed
+			offset = Vector2(
+				temp_rng.randf_range(-cell_size/4.0, cell_size/4.0),
+				temp_rng.randf_range(-cell_size/4.0, cell_size/4.0)
+			)
+			
 		station.global_position += offset
 		
 		# Configure the station if it has an initialize method
@@ -526,8 +580,11 @@ func generate_station() -> Vector2i:
 			var station_seed = 0
 			if game_settings:
 				station_seed = game_settings.get_seed() + (cell.x * 100000) + (cell.y * 10000)
+			elif seed_manager:
+				station_seed = seed_manager.get_random_int(get_instance_id() + (cell.x * 100000) + (cell.y * 10000), 0, 1000000)
 			else:
-				station_seed = _rng.randi()
+				station_seed = get_instance_id() + (cell.x * 100000) + (cell.y * 10000)
+				
 			station.initialize(station_seed)
 		
 		# Track this station
@@ -556,6 +613,24 @@ func generate_station() -> Vector2i:
 	# If we reach here, we couldn't place a station
 	push_warning("WorldGenerator: Failed to generate station - no valid cells available")
 	return Vector2i(-1, -1)
+
+# Deterministically shuffle candidate cells
+func _shuffle_candidates(candidate_cells: Array) -> void:
+	if seed_manager:
+		# Use SeedManager for consistent shuffling
+		seed_manager.shuffle_array(candidate_cells, get_instance_id())
+	else:
+		# Fallback to deterministic local shuffling
+		var seed_value = game_settings.get_seed() if game_settings else get_instance_id()
+		var temp_rng = RandomNumberGenerator.new()
+		temp_rng.seed = seed_value
+		
+		# Manual Fisher-Yates shuffle
+		for i in range(candidate_cells.size() - 1, 0, -1):
+			var j = temp_rng.randi_range(0, i)
+			var temp = candidate_cells[i]
+			candidate_cells[i] = candidate_cells[j]
+			candidate_cells[j] = temp
 
 # Callback for planet spawner signals
 func _on_planet_spawned(planet_instance) -> void:

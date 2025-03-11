@@ -227,6 +227,37 @@ func get_weighted_element(object_id: int, elements: Array, weights: Array = []) 
 	# Fallback
 	return elements[elements.size() - 1]
 
+# Get a random value for visual effects.
+# This doesn't need to be strictly deterministic across game restarts,
+# but should be consistent within the current game session.
+func get_visual_random_value(min_val: float, max_val: float) -> float:
+	# Use a combination of the current game time and the game seed
+	# This ensures visual variety but still produces consistent results in a session
+	var time_seed = (Time.get_ticks_msec() / 100) % 10000  # Use only the last 10000 centiseconds
+	return get_random_value(time_seed, min_val, max_val)
+
+# Get a visual random Vector2 for effects, animations, etc.
+func get_visual_random_vector(min_val: float, max_val: float) -> Vector2:
+	var time_seed = (Time.get_ticks_msec() / 100) % 10000
+	return Vector2(
+		get_random_value(time_seed, min_val, max_val),
+		get_random_value(time_seed + 1, min_val, max_val)
+	)
+
+# Deterministically shuffle an array using the seed
+func shuffle_array(array: Array, object_id: int = 0) -> void:
+	if array.size() <= 1:
+		return
+		
+	# Fisher-Yates shuffle algorithm with deterministic randomization
+	for i in range(array.size() - 1, 0, -1):
+		var j = get_random_int(object_id + i, 0, i)
+		
+		# Swap elements
+		var temp = array[i]
+		array[i] = array[j]
+		array[j] = temp
+
 # Helper method to get/create a noise generator
 func _get_noise_generator(object_id: int) -> FastNoiseLite:
 	if not _noise_generators.has(object_id):
