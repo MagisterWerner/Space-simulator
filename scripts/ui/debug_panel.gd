@@ -9,6 +9,7 @@ class_name DebugPanel
 
 # Toggle buttons for each debug option
 @onready var master_toggle: CheckBox = $VBoxContainer/MasterToggle
+@onready var panel_toggle: CheckBox = $VBoxContainer/PanelToggle
 @onready var seed_manager_toggle: CheckBox = $VBoxContainer/SeedManagerToggle
 @onready var world_generator_toggle: CheckBox = $VBoxContainer/WorldGeneratorToggle
 @onready var entity_generation_toggle: CheckBox = $VBoxContainer/EntityGenerationToggle
@@ -28,6 +29,9 @@ var game_settings: GameSettings = null
 var _updating_toggles: bool = false
 
 func _ready() -> void:
+	# Set up panel visuals
+	setup_panel_visuals()
+	
 	# Find GameSettings
 	_find_game_settings()
 	
@@ -36,6 +40,20 @@ func _ready() -> void:
 	
 	# Initialize toggle states based on current settings
 	_initialize_toggle_states()
+	
+	print("Debug panel initialized")
+
+# Setup panel visuals to ensure visibility
+func setup_panel_visuals() -> void:
+	# Make sure panel is in a visible area
+	if has_method("set_anchors_and_offsets_preset"):
+		set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	
+	# Ensure proper panel size
+	custom_minimum_size = Vector2(300, 400)
+	
+	# Set panel to be on top of other UI
+	z_index = 100
 
 # Find GameSettings node
 func _find_game_settings() -> void:
@@ -53,6 +71,7 @@ func _find_game_settings() -> void:
 func _connect_signals() -> void:
 	# Connect toggle buttons
 	master_toggle.toggled.connect(_on_master_toggle)
+	panel_toggle.toggled.connect(_on_panel_toggle)
 	seed_manager_toggle.toggled.connect(_on_seed_manager_toggle)
 	world_generator_toggle.toggled.connect(_on_world_generator_toggle)
 	entity_generation_toggle.toggled.connect(_on_entity_generation_toggle)
@@ -74,6 +93,7 @@ func _initialize_toggle_states() -> void:
 	
 	# Set toggle states
 	master_toggle.button_pressed = game_settings.debug_mode
+	panel_toggle.button_pressed = game_settings.debug_panel
 	seed_manager_toggle.button_pressed = game_settings.debug_seed_manager
 	world_generator_toggle.button_pressed = game_settings.debug_world_generator
 	entity_generation_toggle.button_pressed = game_settings.debug_entity_generation
@@ -91,6 +111,9 @@ func _initialize_toggle_states() -> void:
 # Update which toggles are enabled based on master toggle
 func _update_toggle_enabled_states() -> void:
 	var master_on = master_toggle.button_pressed
+	
+	# Panel toggle is always enabled (to ensure we can re-show the panel)
+	panel_toggle.disabled = false
 	
 	# Child toggles are only enabled if master toggle is on
 	seed_manager_toggle.disabled = !master_on
@@ -112,6 +135,7 @@ func _on_debug_settings_changed(debug_settings: Dictionary) -> void:
 	
 	# Update toggle states based on the settings
 	master_toggle.button_pressed = debug_settings.get("master", false)
+	panel_toggle.button_pressed = debug_settings.get("panel", false)
 	seed_manager_toggle.button_pressed = debug_settings.get("seed_manager", false)
 	world_generator_toggle.button_pressed = debug_settings.get("world_generator", false)
 	entity_generation_toggle.button_pressed = debug_settings.get("entity_generation", false)
@@ -140,6 +164,16 @@ func _on_master_toggle(toggled: bool) -> void:
 	_update_toggle_enabled_states()
 	
 	_updating_toggles = false
+
+func _on_panel_toggle(toggled: bool) -> void:
+	if _updating_toggles or not game_settings:
+		return
+	
+	game_settings.debug_panel = toggled
+	
+	# Special handling since this affects the panel's own visibility
+	if not toggled:
+		print("Debug panel set to hide. Use F3 to show it again.")
 
 func _on_seed_manager_toggle(toggled: bool) -> void:
 	if _updating_toggles or not game_settings:
@@ -223,6 +257,8 @@ func _on_toggle_all_pressed() -> void:
 	components_toggle.button_pressed = new_state
 	logging_toggle.button_pressed = new_state
 	grid_toggle.button_pressed = new_state
+	
+	# We don't change panel visibility here to prevent auto-hiding
 	
 	# Update GameSettings
 	game_settings.debug_seed_manager = new_state

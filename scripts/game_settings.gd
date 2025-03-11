@@ -4,7 +4,6 @@
 #   Centralized configuration node for all game-wide settings
 #   Handles seed management, grid configuration, planet generation
 #   Provides consistent access to game parameters for all systems
-#   Now includes detailed debug options for each system
 
 extends Node
 class_name GameSettings
@@ -62,6 +61,12 @@ var player_starting_planet_type: int = 0  # Default to Random (index 0)
 @export var debug_mode: bool = false
 ## Draw additional debug info for generation
 @export var draw_debug_grid: bool = false
+## Show debug panel
+@export var debug_panel: bool = false:
+	set(value):
+		debug_panel = value
+		_notify_debug_change("panel", value)
+		_update_debug_panel_visibility()
 
 # ---- DETAILED DEBUG OPTIONS ----
 @export_category("Detailed Debug Options")
@@ -111,6 +116,7 @@ var player_starting_planet_type: int = 0  # Default to Random (index 0)
 var _initialized: bool = false
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var _debug_settings: Dictionary = {}
+var _debug_panel = null
 
 func _ready() -> void:
 	# Initialize seed if needed
@@ -130,12 +136,16 @@ func _ready() -> void:
 	
 	# Apply initial debug settings
 	_apply_debug_settings()
+	
+	# Setup debug panel if needed
+	call_deferred("_setup_debug_panel")
 
 # Initialize debug settings dictionary
 func _initialize_debug_settings() -> void:
 	_debug_settings = {
 		"master": debug_mode,
 		"grid": draw_debug_grid,
+		"panel": debug_panel,
 		"seed_manager": debug_seed_manager,
 		"world_generator": debug_world_generator,
 		"entity_generation": debug_entity_generation,
@@ -151,8 +161,54 @@ func _apply_debug_settings() -> void:
 	if Engine.has_singleton("SeedManager"):
 		SeedManager.set_debug_mode(debug_mode and debug_seed_manager)
 	
+	# Update debug panel visibility
+	_update_debug_panel_visibility()
+	
 	# Emit signal with all current debug settings
 	debug_settings_changed.emit(_debug_settings)
+
+# Set up debug panel
+func _setup_debug_panel() -> void:
+	# Find or create a CanvasLayer for the debug panel
+	var debug_canvas = get_node_or_null("/root/DebugCanvas")
+	
+	if not debug_canvas:
+		debug_canvas = CanvasLayer.new()
+		debug_canvas.name = "DebugCanvas"
+		debug_canvas.layer = 100  # Put it on top
+		get_tree().root.add_child(debug_canvas)
+	
+	# Load debug panel scene if it exists
+	var debug_panel_path = "res://scenes/ui/debug_panel.tscn"
+	if ResourceLoader.exists(debug_panel_path):
+		var debug_panel_scene = load(debug_panel_path)
+		_debug_panel = debug_panel_scene.instantiate()
+		_debug_panel.name = "DebugPanel"
+		debug_canvas.add_child(_debug_panel)
+		
+		# Set initial visibility
+		_update_debug_panel_visibility()
+	
+	# Register keyboard shortcut for toggling panel
+	set_process_input(true)
+
+# Input handling for debug panel toggle
+func _input(event: InputEvent) -> void:
+	# Toggle debug panel with F3 key
+	if OS.is_debug_build() and event is InputEventKey:
+		if event.pressed and event.keycode == KEY_F3:
+			debug_panel = !debug_panel
+
+# Update the debug panel visibility
+func _update_debug_panel_visibility() -> void:
+	# Find debug panel if we don't have a reference
+	if not _debug_panel:
+		_debug_panel = get_tree().root.find_child("DebugPanel", true, false)
+	
+	# Update visibility if we found it
+	if _debug_panel:
+		_debug_panel.visible = debug_panel
+		print("Debug panel visibility: " + str(debug_panel))
 
 # Notify systems when a specific debug setting changes
 func _notify_debug_change(setting_name: String, value: bool) -> void:
@@ -165,7 +221,7 @@ func _notify_debug_change(setting_name: String, value: bool) -> void:
 	# Special handling for certain systems
 	if setting_name == "seed_manager" and Engine.has_singleton("SeedManager"):
 		SeedManager.set_debug_mode(debug_mode and value)
-		
+	
 	# Notify all systems about the changes
 	debug_settings_changed.emit(_debug_settings)
 
@@ -177,6 +233,8 @@ func set_debug_option(option_name: String, value: bool) -> void:
 		property_name = "debug_mode"
 	elif option_name == "grid":
 		property_name = "draw_debug_grid"
+	elif option_name == "panel":
+		property_name = "debug_panel"
 	
 	# Only set if property exists
 	if has_property(self, property_name):
@@ -200,6 +258,8 @@ func toggle_debug_option(option_name: String) -> bool:
 		property_name = "debug_mode"
 	elif option_name == "grid":
 		property_name = "draw_debug_grid"
+	elif option_name == "panel":
+		property_name = "debug_panel"
 	
 	# Only toggle if property exists
 	if has_property(self, property_name):
@@ -221,6 +281,8 @@ func get_debug_status(system_name: String) -> bool:
 		return debug_mode
 	elif system_name == "grid":
 		return debug_mode and draw_debug_grid
+	elif system_name == "panel":
+		return debug_panel
 	
 	# Default to false for unknown systems
 	return false
