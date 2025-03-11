@@ -1,4 +1,4 @@
-# scripts/ui/labels/world_message.gd
+9# scripts/ui/labels/world_message.gd
 # ========================
 # Purpose:
 #   Large, centered text notifications for game events

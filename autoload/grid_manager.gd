@@ -1,54 +1,45 @@
-# scripts/managers/grid_manager.gd
-# Utility singleton for grid-based functionality, now using GameSettings
 extends Node
 
 signal player_cell_changed(old_cell, new_cell)
 signal seed_initialized
 
-var game_settings: GameSettings = null
-var world_grid: Node2D = null
+var game_settings = null
+var world_grid = null
 
-# Fallback values if settings not available
-var cell_size: int = 1024
-var grid_size: int = 10
+# Fallback values
+var cell_size = 1024
+var grid_size = 10
 
-var _player_current_cell: Vector2i = Vector2i(-1, -1)
-var _player_last_check_position: Vector2 = Vector2.ZERO
-var _grid_initialized: bool = false
-var _seed_ready: bool = false
-var _seed_value: int = 12345  # Default seed value
+var _player_current_cell = Vector2i(-1, -1)
+var _player_last_check_position = Vector2.ZERO
+var _grid_initialized = false
+var _seed_ready = false
+var _seed_value = 12345
 
-func _ready() -> void:
-	# Process mode to keep working during pause
+func _ready():
 	process_mode = Node.PROCESS_MODE_ALWAYS
-	
-	# Find the world grid after a frame delay to ensure it's initialized
 	call_deferred("_find_game_systems")
 
-func _find_game_systems() -> void:
-	# Wait one frame to ensure grid is initialized
+func _find_game_systems():
+	# Wait one frame
 	await get_tree().process_frame
 	
-	# Find GameSettings in the main scene
+	# Find GameSettings
 	var main_scene = get_tree().current_scene
 	game_settings = main_scene.get_node_or_null("GameSettings")
 	
-	# Connect to GameSettings for seed changes if available
+	# Connect to GameSettings for seed changes
 	if game_settings and game_settings.has_signal("seed_changed"):
 		if not game_settings.is_connected("seed_changed", _on_seed_changed):
 			game_settings.connect("seed_changed", _on_seed_changed)
 	
-	# Connect to SeedManager for seed changes
+	# Connect to SeedManager
 	_connect_to_seed_manager()
 	
 	if game_settings:
-		# Update our local variables from settings
+		# Update local variables
 		cell_size = game_settings.grid_cell_size
 		grid_size = game_settings.grid_size
-		
-		if game_settings.debug_mode:
-			print("GridManager: Found GameSettings, using configured values")
-			print("GridManager: Cell size: ", cell_size, ", Grid size: ", grid_size)
 	
 	# Find the world grid
 	_find_world_grid()
@@ -56,69 +47,54 @@ func _find_game_systems() -> void:
 	_grid_initialized = true
 	seed_initialized.emit()
 
-func _process(_delta: float) -> void:
-	# Check player position and update cell information
+func _process(_delta):
 	_update_player_cell()
 
-func _connect_to_seed_manager() -> void:
-	# Check for SeedManager dependency
+func _connect_to_seed_manager():
 	if has_node("/root/SeedManager"):
-		# Connect to seed changes if not already connected
+		# Connect to seed changes
 		if SeedManager.has_signal("seed_changed") and not SeedManager.is_connected("seed_changed", _on_seed_changed):
 			SeedManager.connect("seed_changed", _on_seed_changed)
 		
-		# Wait for SeedManager to be initialized if needed
+		# Wait for initialization if needed
 		if SeedManager.has_method("is_initialized") and not SeedManager.is_initialized:
 			if SeedManager.has_signal("seed_initialized"):
 				SeedManager.seed_initialized.connect(_on_seed_manager_initialized)
 		else:
-			# SeedManager is already initialized
 			_seed_ready = true
 			_seed_value = SeedManager.get_seed()
-	else:
-		# No SeedManager found, use GameSettings directly
+	elif game_settings:
 		_seed_ready = false
-		if game_settings:
-			_seed_value = game_settings.get_seed()
+		_seed_value = game_settings.get_seed()
 
-func _on_seed_manager_initialized() -> void:
+func _on_seed_manager_initialized():
 	_seed_ready = true
 	if has_node("/root/SeedManager"):
 		_seed_value = SeedManager.get_seed()
-		print("GridManager: SeedManager initialized, seed set to ", _seed_value)
 
-func _on_seed_changed(new_seed: int) -> void:
+func _on_seed_changed(new_seed):
 	_seed_value = new_seed
 	_seed_ready = true
-	print("GridManager: Seed updated to ", new_seed)
 
-func _find_world_grid() -> void:
+func _find_world_grid():
 	# Try to find the grid in various ways
 	var grids = get_tree().get_nodes_in_group("world_grid")
 	if not grids.is_empty():
 		world_grid = grids[0]
-		if world_grid:
-			# Update our cache from the grid's values if not using GameSettings
-			if not game_settings:
-				cell_size = world_grid.cell_size
-				grid_size = world_grid.grid_size
+		if world_grid and not game_settings:
+			cell_size = world_grid.cell_size
+			grid_size = world_grid.grid_size
 		return
 	
 	# Try to find directly in the Main scene
 	var main = get_node_or_null("/root/Main")
 	if main:
 		world_grid = main.get_node_or_null("WorldGrid")
-		if world_grid:
-			# Update our cache from the grid's values if not using GameSettings
-			if not game_settings:
-				cell_size = world_grid.cell_size
-				grid_size = world_grid.grid_size
-			return
-	
-	# If grid not found, log message
-	print("GridManager: WorldGrid not found, using cached values")
+		if world_grid and not game_settings:
+			cell_size = world_grid.cell_size
+			grid_size = world_grid.grid_size
 
-func _update_player_cell() -> void:
+func _update_player_cell():
 	var player_ships = get_tree().get_nodes_in_group("player")
 	if player_ships.is_empty():
 		return
@@ -133,56 +109,29 @@ func _update_player_cell() -> void:
 	_player_last_check_position = player_position
 	
 	# Calculate cell coordinates
-	var cell_coords: Vector2i
-	
-	# First use GameSettings if available
-	if game_settings:
-		cell_coords = game_settings.get_cell_coords(player_position)
-	# Then try world grid if available
-	elif world_grid and world_grid.has_method("get_cell_coords"):
-		cell_coords = world_grid.get_cell_coords(player_position)
-	else:
-		# Calculate manually if grid not available
-		var grid_offset = Vector2(-cell_size * grid_size / 2.0, -cell_size * grid_size / 2.0)
-		var local_pos = player_position - grid_offset
-		cell_coords = Vector2i(
-			int(floor(local_pos.x / cell_size)),
-			int(floor(local_pos.y / cell_size))
-		)
+	var cell_coords = world_to_cell(player_position)
 	
 	# Check if cell changed
 	if cell_coords != _player_current_cell:
 		var old_cell = _player_current_cell
 		_player_current_cell = cell_coords
-		
-		# Emit signal
 		player_cell_changed.emit(old_cell, _player_current_cell)
-		
-		# Debug info
-		if (game_settings and game_settings.debug_mode) or (not game_settings and _grid_initialized):
-			if old_cell.x >= 0 and old_cell.y >= 0:
-				print("Player moved from cell (%d,%d) to (%d,%d)" % [
-					old_cell.x, old_cell.y, 
-					cell_coords.x, cell_coords.y
-				])
-			else:
-				print("Player entered cell (%d,%d)" % [cell_coords.x, cell_coords.y])
 
 # Get player's current cell coordinates
-func get_player_cell() -> Vector2i:
-	_update_player_cell()
+func get_player_cell():
 	return _player_current_cell
 
 # Convert world position to cell coordinates
-func world_to_cell(world_position: Vector2) -> Vector2i:
-	# First use GameSettings if available
-	if game_settings:
+func world_to_cell(world_position):
+	# Use GameSettings if available
+	if game_settings and game_settings.has_method("get_cell_coords"):
 		return game_settings.get_cell_coords(world_position)
-	# Then try world grid if available
-	elif world_grid and world_grid.has_method("get_cell_coords"):
+	
+	# Use world_grid if available
+	if world_grid and world_grid.has_method("get_cell_coords"):
 		return world_grid.get_cell_coords(world_position)
 	
-	# Calculate manually if grid not available
+	# Calculate manually
 	var grid_offset = Vector2(-cell_size * grid_size / 2.0, -cell_size * grid_size / 2.0)
 	var local_pos = world_position - grid_offset
 	return Vector2i(
@@ -190,25 +139,26 @@ func world_to_cell(world_position: Vector2) -> Vector2i:
 		int(floor(local_pos.y / cell_size))
 	)
 
-# Convert cell coordinates to world position (center of cell)
-func cell_to_world(cell_coords: Vector2i) -> Vector2:
-	# First use GameSettings if available
-	if game_settings:
+# Convert cell coordinates to world position
+func cell_to_world(cell_coords):
+	# Use GameSettings if available
+	if game_settings and game_settings.has_method("get_cell_world_position"):
 		return game_settings.get_cell_world_position(cell_coords)
-	# Then try world grid if available
-	elif world_grid and world_grid.has_method("get_cell_center"):
+	
+	# Use world_grid if available
+	if world_grid and world_grid.has_method("get_cell_center"):
 		return world_grid.get_cell_center(cell_coords)
 	
-	# Calculate manually if grid not available
+	# Calculate manually
 	var grid_offset = Vector2(-cell_size * grid_size / 2.0, -cell_size * grid_size / 2.0)
 	return grid_offset + Vector2(
 		cell_coords.x * cell_size + cell_size / 2.0,
 		cell_coords.y * cell_size + cell_size / 2.0
 	)
 
-# Check if cell coordinates are valid (within grid bounds)
-func is_valid_cell(cell_coords: Vector2i) -> bool:
-	if game_settings:
+# Check if cell coordinates are valid
+func is_valid_cell(cell_coords):
+	if game_settings and game_settings.has_method("is_valid_cell"):
 		return game_settings.is_valid_cell(cell_coords)
 	
 	return (
@@ -217,8 +167,8 @@ func is_valid_cell(cell_coords: Vector2i) -> bool:
 	)
 
 # Get neighboring cell coordinates
-func get_neighbor_cells(cell_coords: Vector2i, include_diagonals: bool = false) -> Array[Vector2i]:
-	var neighbors: Array[Vector2i] = []
+func get_neighbor_cells(cell_coords, include_diagonals = false):
+	var neighbors = []
 	
 	# Cardinal directions
 	var directions = [
@@ -230,10 +180,12 @@ func get_neighbor_cells(cell_coords: Vector2i, include_diagonals: bool = false) 
 	
 	# Add diagonals if requested
 	if include_diagonals:
-		directions.append(Vector2i(1, 1))
-		directions.append(Vector2i(1, -1))
-		directions.append(Vector2i(-1, 1))
-		directions.append(Vector2i(-1, -1))
+		directions.append_array([
+			Vector2i(1, 1),
+			Vector2i(1, -1),
+			Vector2i(-1, 1),
+			Vector2i(-1, -1)
+		])
 	
 	# Check each direction
 	for dir in directions:
@@ -244,48 +196,39 @@ func get_neighbor_cells(cell_coords: Vector2i, include_diagonals: bool = false) 
 	return neighbors
 
 # Get Manhattan distance between two cells
-func get_cell_distance(from_cell: Vector2i, to_cell: Vector2i) -> int:
+func get_cell_distance(from_cell, to_cell):
 	return abs(from_cell.x - to_cell.x) + abs(from_cell.y - to_cell.y)
 
 # Generate a deterministic value for a cell
-# This is useful for procedural generation that needs to be consistent
-func get_cell_value(cell_coords: Vector2i, min_val: float, max_val: float, parameter_id: int = 0) -> float:
-	# Ensure SeedManager is initialized before using it
-	if not _seed_ready:
-		_connect_to_seed_manager()
-		
-	# Always try to use SeedManager first for consistency
+func get_cell_value(cell_coords, min_val, max_val, parameter_id = 0):
+	# Use SeedManager if available
 	if _seed_ready and has_node("/root/SeedManager"):
-		# Create a deterministic object ID from cell coordinates
 		var object_id = cell_coords.x * 10000 + cell_coords.y
 		return SeedManager.get_random_value(object_id, min_val, max_val, parameter_id)
-	elif game_settings:
-		# Fall back to GameSettings only if SeedManager isn't available
+		
+	elif game_settings and game_settings.has_method("get_random_value"):
 		var object_id = cell_coords.x * 10000 + cell_coords.y
 		return game_settings.get_random_value(object_id, min_val, max_val, parameter_id)
+		
 	else:
-		# Last resort - create a simple hash-based random value
+		# Simple hash-based random value
 		var rng = RandomNumberGenerator.new()
 		rng.seed = hash(str(_seed_value) + str(cell_coords) + str(parameter_id))
 		return min_val + rng.randf() * (max_val - min_val)
 
 # Get a deterministic integer for a cell
-func get_cell_int(cell_coords: Vector2i, min_val: int, max_val: int, parameter_id: int = 0) -> int:
-	# Ensure SeedManager is initialized before using it
-	if not _seed_ready:
-		_connect_to_seed_manager()
-		
-	# Always try to use SeedManager first for consistency
+func get_cell_int(cell_coords, min_val, max_val, parameter_id = 0):
+	# Use SeedManager if available
 	if _seed_ready and has_node("/root/SeedManager"):
-		# Create a deterministic object ID from cell coordinates
 		var object_id = cell_coords.x * 10000 + cell_coords.y
 		return SeedManager.get_random_int(object_id, min_val, max_val, parameter_id)
-	elif game_settings:
-		# Fall back to GameSettings only if SeedManager isn't available
+		
+	elif game_settings and game_settings.has_method("get_random_int"):
 		var object_id = cell_coords.x * 10000 + cell_coords.y
 		return game_settings.get_random_int(object_id, min_val, max_val, parameter_id)
+		
 	else:
-		# Last resort - create a simple hash-based random value
+		# Simple hash-based random value
 		var rng = RandomNumberGenerator.new()
 		rng.seed = hash(str(_seed_value) + str(cell_coords) + str(parameter_id))
 		return rng.randi_range(min_val, max_val)
