@@ -1,5 +1,6 @@
 # autoload/grid_manager.gd
-# Grid Manager refactored with dependency injection
+# Grid Manager that provides grid-based world management functionality
+# with proper dependency injection and property checking
 
 extends "res://autoload/base_service.gd"
 
@@ -46,14 +47,14 @@ func initialize_service() -> void:
 		game_settings = get_dependency("GameSettings")
 		
 		# Update our local variables from settings
-		if game_settings.has("grid_cell_size"):
+		if "grid_cell_size" in game_settings:
 			cell_size = game_settings.grid_cell_size
 			
-		if game_settings.has("grid_size"):
+		if "grid_size" in game_settings:
 			grid_size = game_settings.grid_size
 			
 		# Debug logging
-		if game_settings.has("debug_mode") and game_settings.debug_mode:
+		if "debug_mode" in game_settings and game_settings.debug_mode:
 			print("GridManager: Found GameSettings, using configured values")
 			print("GridManager: Cell size: ", cell_size, ", Grid size: ", grid_size)
 	
@@ -83,9 +84,9 @@ func _find_world_grid() -> void:
 		if world_grid:
 			# Update our cache from the grid's values if not using GameSettings
 			if not game_settings:
-				if world_grid.has("cell_size"):
+				if "cell_size" in world_grid:
 					cell_size = world_grid.cell_size
-				if world_grid.has("grid_size"):
+				if "grid_size" in world_grid:
 					grid_size = world_grid.grid_size
 		return
 	
@@ -96,9 +97,9 @@ func _find_world_grid() -> void:
 		if world_grid:
 			# Update our cache from the grid's values if not using GameSettings
 			if not game_settings:
-				if world_grid.has("cell_size"):
+				if "cell_size" in world_grid:
 					cell_size = world_grid.cell_size
-				if world_grid.has("grid_size"):
+				if "grid_size" in world_grid:
 					grid_size = world_grid.grid_size
 			return
 	
@@ -160,7 +161,7 @@ func _update_player_cell() -> void:
 		player_cell_changed.emit(old_cell, _player_current_cell)
 		
 		# Debug info
-		var debug_mode = game_settings and game_settings.has("debug_mode") and game_settings.debug_mode
+		var debug_mode = game_settings and "debug_mode" in game_settings and game_settings.debug_mode
 		if debug_mode or (not game_settings and _grid_initialized):
 			if old_cell.x >= 0 and old_cell.y >= 0:
 				print("Player moved from cell (%d,%d) to (%d,%d)" % [
