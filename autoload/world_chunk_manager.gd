@@ -18,9 +18,9 @@ signal player_entered_chunk(old_chunk: Vector2i, new_chunk: Vector2i)
 @export_category("Performance")
 @export var thread_count: int = 2  # Number of generation threads
 @export var generation_budget_ms: float = 5.0  # Max ms per frame for generation
-@export var entity_batch_size: int = 5  # Max entities to create per frame
+@export var entity_budget_per_frame: int = 10  # Max entities to create per frame
 @export var max_concurrent_loads: int = 3  # Max chunks loading at once
-@export var min_wait_between_loads_ms: int = 150  # Increased to 150ms from 50ms
+@export var min_wait_between_loads_ms: int = 50  # Prevent bursts of loading
 
 @export_category("References")
 @export var chunk_scene: PackedScene  # Basic chunk scene
@@ -50,13 +50,6 @@ var _thread_task_queue: Array = []
 var _exit_thread: bool = false
 var _last_load_time: int = 0
 
-# Entity instantiation controls
-var _entity_queue: Array = []  # Queue of entities waiting to be instantiated
-var _pending_chunk_entities: Dictionary = {}  # chunk_key -> number of pending entities
-var _next_chunk_instantiation_time: int = 0  # Time to process next chunk
-var _chunk_instantiation_interval_ms: int = 200  # Wait between chunk instantiations
-var _current_instantiating_chunk: String = ""  # Currently processing chunk
-
 # Entity pools for reuse
 var _entity_pools: Dictionary = {}
 
@@ -64,7 +57,6 @@ enum ChunkState {
 	UNLOADED,
 	QUEUED,
 	GENERATING,
-	INSTANTIATING,  # New state for chunks being instantiated
 	LOW_DETAIL,
 	FULL_DETAIL
 }
@@ -167,58 +159,29 @@ func _process(delta: float) -> void:
 	if not grid_manager:
 		_update_player_position()
 	
-	# Process entity instantiation queue with fixed batch size
-	if not _entity_queue.empty():
-		var batch_count = min(entity_batch_size, _entity_queue.size())
-		
-		for i in range(batch_count):
-			var entity_data = _entity_queue.pop_front()
-			_instantiate_entity(entity_data.entity, entity_data.chunk)
-			
-			# Update pending entity count for this chunk
-			var chunk_key = entity_data.chunk_key
-			if _pending_chunk_entities.has(chunk_key):
-				_pending_chunk_entities[chunk_key] -= 1
-				if _pending_chunk_entities[chunk_key] <= 0:
-					_pending_chunk_entities.erase(chunk_key)
-					
-					# If we finished all entities for a chunk, update its state
-					if _chunk_states.has(chunk_key) and _chunk_states[chunk_key] == ChunkState.INSTANTIATING:
-						var chunk_coords = str_to_vector2i(chunk_key)
-						# Determine if it should be full or low detail
-						if _get_chunk_full_detail_state(chunk_coords):
-							_chunk_states[chunk_key] = ChunkState.FULL_DETAIL
-						else:
-							_chunk_states[chunk_key] = ChunkState.LOW_DETAIL
-		
-		# Exit early to maintain a consistent frame rate
-		return
+	# Process loading queue with time budget
+	var budget_start = Time.get_ticks_msec()
+	var entities_processed = 0
 	
-	# Process one chunk's data at a time with time controls
-	var current_time = Time.get_ticks_msec()
-	
-	# Check if we can process another chunk
-	if not _chunk_data_cache.empty() and current_time >= _next_chunk_instantiation_time:
-		# Process one chunk at a time
+	# First process any fully generated chunk data waiting to be instantiated
+	while _chunk_data_cache and (Time.get_ticks_msec() - budget_start) < generation_budget_ms:
+		# Process one chunk's data at a time
 		var next_chunk_key = _chunk_data_cache.keys()[0]
 		var chunk_data = _chunk_data_cache[next_chunk_key]
 		
 		# Create the chunk in the main thread
 		var chunk_coords = str_to_vector2i(next_chunk_key)
-		_chunk_states[next_chunk_key] = ChunkState.INSTANTIATING
-		_current_instantiating_chunk = next_chunk_key
-		
-		# Create the base chunk first (without entities)
-		call_deferred("_create_base_chunk", chunk_coords, chunk_data)
+		_instantiate_chunk(chunk_coords, chunk_data)
 		
 		# Remove from cache
 		_chunk_data_cache.erase(next_chunk_key)
 		
-		# Set the next time we can process another chunk
-		_next_chunk_instantiation_time = current_time + _chunk_instantiation_interval_ms
+		# Count entities for budget
+		entities_processed += chunk_data.entities.size()
 		
-		# Exit early to maintain a consistent frame rate
-		return
+		# Break if we've hit our entity budget
+		if entities_processed >= entity_budget_per_frame:
+			break
 	
 	# Update distance-based detail levels for existing chunks
 	_update_chunk_detail_levels()
@@ -234,7 +197,7 @@ func _process(delta: float) -> void:
 	var can_load = (now - _last_load_time) >= min_wait_between_loads_ms
 	
 	# Process loading queue if we have capacity and enough time has passed
-	if current_loads < max_concurrent_loads and can_load and not _loading_queue.empty():
+	if current_loads < max_concurrent_loads and can_load and not _loading_queue.is_empty():
 		var next_in_queue = _loading_queue.pop_front()
 		var chunk_coords = next_in_queue.coords
 		var chunk_key = vector2i_to_str(chunk_coords)
@@ -257,61 +220,6 @@ func _process(delta: float) -> void:
 		# Remember when we last started a load
 		_last_load_time = now
 
-# Deferred method to create a base chunk without entities
-func _create_base_chunk(coords: Vector2i, chunk_data: Dictionary) -> void:
-	var chunk_key = vector2i_to_str(coords)
-	
-	# Skip if already loaded
-	if _loaded_chunks.has(chunk_key) or _low_detail_chunks.has(chunk_key):
-		_chunk_states[chunk_key] = ChunkState.FULL_DETAIL if _loaded_chunks.has(chunk_key) else ChunkState.LOW_DETAIL
-		return
-	
-	# Create chunk instance
-	var chunk = chunk_scene.instantiate()
-	add_child(chunk)
-	
-	# Setup coordinates and data
-	var full_detail = _get_chunk_full_detail_state(coords)
-	chunk.initialize(coords, chunk_data, full_detail)
-	
-	# Set position based on coordinates
-	chunk.global_position = Vector2(coords.x * chunk_size, coords.y * chunk_size)
-	
-	# Store in the appropriate dictionary
-	if full_detail:
-		_loaded_chunks[chunk_key] = chunk
-		chunk_loaded.emit(coords, chunk)
-	else:
-		_low_detail_chunks[chunk_key] = chunk
-		low_detail_chunk_loaded.emit(coords, chunk)
-	
-	print("Created base chunk at %s" % coords)
-	
-	# Queue entities for staggered instantiation
-	_queue_entities_for_instantiation(chunk_data.entities, chunk, chunk_key)
-
-# Queue entities for staggered instantiation
-func _queue_entities_for_instantiation(entity_data_list: Array, chunk: Node, chunk_key: String) -> void:
-	if entity_data_list.empty():
-		# If no entities, just mark as complete
-		if _chunk_states.has(chunk_key) and _chunk_states[chunk_key] == ChunkState.INSTANTIATING:
-			if _get_chunk_full_detail_state(str_to_vector2i(chunk_key)):
-				_chunk_states[chunk_key] = ChunkState.FULL_DETAIL
-			else:
-				_chunk_states[chunk_key] = ChunkState.LOW_DETAIL
-		return
-	
-	# Track how many entities need to be processed for this chunk
-	_pending_chunk_entities[chunk_key] = entity_data_list.size()
-	
-	# Add each entity to the queue
-	for entity_data in entity_data_list:
-		_entity_queue.append({
-			"entity": entity_data,
-			"chunk": chunk,
-			"chunk_key": chunk_key
-		})
-
 func _update_player_position() -> void:
 	# Find player in entity manager or scene tree
 	var player = null
@@ -320,7 +228,7 @@ func _update_player_position() -> void:
 		player = entity_manager.get_nearest_entity(Vector2.ZERO, "player")
 	else:
 		var players = get_tree().get_nodes_in_group("player")
-		if not players.empty():
+		if not players.is_empty():
 			player = players[0]
 	
 	if player and is_instance_valid(player):
@@ -526,7 +434,7 @@ func _thread_worker() -> void:
 		
 		# Get a task from the queue
 		var task = null
-		if not _thread_task_queue.empty():
+		if not _thread_task_queue.is_empty():
 			task = _thread_task_queue.pop_front()
 		_thread_mutex.unlock()
 		
@@ -634,7 +542,40 @@ func _generate_chunk_data(coords: Vector2i) -> Dictionary:
 	
 	return data
 
-# Instantiate single entity with deferred calls
+func _instantiate_chunk(coords: Vector2i, chunk_data: Dictionary) -> void:
+	var chunk_key = vector2i_to_str(coords)
+	
+	# Skip if already loaded
+	if _loaded_chunks.has(chunk_key) or _low_detail_chunks.has(chunk_key):
+		return
+	
+	# Create chunk instance
+	var chunk = chunk_scene.instantiate()
+	add_child(chunk)
+	
+	# Setup coordinates and data
+	var full_detail = _get_chunk_full_detail_state(coords)
+	chunk.initialize(coords, chunk_data, full_detail)
+	
+	# Set position based on coordinates
+	chunk.global_position = Vector2(coords.x * chunk_size, coords.y * chunk_size)
+	
+	# Instantiate entities
+	for entity_data in chunk_data.entities:
+		_instantiate_entity(entity_data, chunk)
+	
+	# Store in the appropriate dictionary
+	if full_detail:
+		_loaded_chunks[chunk_key] = chunk
+		_chunk_states[chunk_key] = ChunkState.FULL_DETAIL
+		chunk_loaded.emit(coords, chunk)
+	else:
+		_low_detail_chunks[chunk_key] = chunk
+		_chunk_states[chunk_key] = ChunkState.LOW_DETAIL
+		low_detail_chunk_loaded.emit(coords, chunk)
+	
+	print("Instantiated chunk at %s" % coords)
+
 func _instantiate_entity(entity_data: Dictionary, chunk: Node) -> void:
 	var entity_type = entity_data.type
 	var entity_id = entity_data.id
@@ -662,12 +603,12 @@ func _instantiate_entity(entity_data: Dictionary, chunk: Node) -> void:
 		else:
 			entity.set_meta("entity_id", entity_id)
 		
-		# Add entity to chunk - use call_deferred for thread safety
-		chunk.call_deferred("add_entity", entity)
+		# Add entity to chunk
+		chunk.add_entity(entity)
 		
 		# Register with EntityManager if available
 		if entity_manager and entity_manager.has_method("register_entity"):
-			entity_manager.call_deferred("register_entity", entity, entity_type)
+			entity_manager.register_entity(entity, entity_type)
 
 func _get_entity_from_pool(entity_type: String) -> Node:
 	# Create pools if they don't exist
@@ -675,7 +616,7 @@ func _get_entity_from_pool(entity_type: String) -> Node:
 		_entity_pools[entity_type] = []
 	
 	# Check if we have a free entity in the pool
-	if not _entity_pools[entity_type].empty():
+	if not _entity_pools[entity_type].is_empty():
 		return _entity_pools[entity_type].pop_back()
 	
 	# Otherwise create a new entity
@@ -748,9 +689,7 @@ func load_chunk(coords: Vector2i, full_detail: bool = true) -> void:
 	
 	# Skip if already loaded or in process
 	if _loaded_chunks.has(chunk_key) or _low_detail_chunks.has(chunk_key) or \
-	   (_chunk_states.has(chunk_key) and (_chunk_states[chunk_key] == ChunkState.QUEUED or 
-	   _chunk_states[chunk_key] == ChunkState.GENERATING or 
-	   _chunk_states[chunk_key] == ChunkState.INSTANTIATING)):
+	   (_chunk_states.has(chunk_key) and (_chunk_states[chunk_key] == ChunkState.QUEUED or _chunk_states[chunk_key] == ChunkState.GENERATING)):
 		return
 	
 	# Add to loading queue with appropriate priority
@@ -874,10 +813,6 @@ func load_chunks_around_position(position: Vector2, full_detail_range: int = 2, 
 
 # Reset the chunk manager
 func reset() -> void:
-	# Clear entity queue and pending chunks
-	_entity_queue.clear()
-	_pending_chunk_entities.clear()
-	
 	# Unload all chunks
 	var loaded_keys = _loaded_chunks.keys()
 	for chunk_key in loaded_keys:
@@ -957,8 +892,6 @@ func _on_seed_changed(new_seed: int) -> void:
 	# Stop all current loading
 	_loading_queue.clear()
 	_chunk_data_cache.clear()
-	_entity_queue.clear()
-	_pending_chunk_entities.clear()
 	
 	# Remember which chunks were loaded
 	var loaded_chunks = _loaded_chunks.keys().duplicate()
