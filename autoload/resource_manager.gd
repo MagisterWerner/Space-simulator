@@ -138,10 +138,17 @@ var used_capacity: float = 0.0
 # Market price fluctuations for different stations/regions
 var market_modifiers: Dictionary = {}  # station_id -> { resource_id -> price_modifier }
 
+# Seed-related variables
+var _seed_ready: bool = false
+var debug_mode: bool = false
+
 func _ready() -> void:
 	# Initialize inventory with zero amounts
 	for resource_id in resource_data:
 		inventory[resource_id] = 0.0
+	
+	# Check SeedManager dependency
+	_seed_ready = has_node("/root/SeedManager")
 	
 	# Look for GameSettings in the main scene
 	call_deferred("_find_game_settings")
@@ -154,8 +161,23 @@ func _find_game_settings() -> void:
 	var main_scene = get_tree().current_scene
 	game_settings = main_scene.get_node_or_null("GameSettings")
 	
-	if game_settings and game_settings.debug_mode:
-		print("ResourceManager: Connected to GameSettings")
+	if game_settings:
+		debug_mode = game_settings.debug_mode
+		if debug_mode:
+			print("ResourceManager: Connected to GameSettings")
+		
+		# Listen for seed changes if SeedManager is available
+		if _seed_ready and has_node("/root/SeedManager"):
+			if SeedManager.has_signal("seed_changed") and not SeedManager.is_connected("seed_changed", _on_seed_changed):
+				SeedManager.connect("seed_changed", _on_seed_changed)
+
+# Handle seed changes
+func _on_seed_changed(new_seed: int) -> void:
+	if debug_mode:
+		print("ResourceManager: Detected seed change to ", new_seed)
+	
+	# You might want to update market modifiers or other procedural values here
+	_update_market_modifiers()
 
 # Add resources to inventory
 func add_resource(resource_id: int, amount: float) -> bool:
@@ -356,7 +378,7 @@ func initialize_starting_resources() -> void:
 		add_resource(ResourceType.CREDITS, game_settings.player_starting_credits)
 		add_resource(ResourceType.FUEL, game_settings.player_starting_fuel)
 		
-		if game_settings.debug_mode:
+		if debug_mode:
 			print("ResourceManager: Initialized with starting credits: ", 
 				  game_settings.player_starting_credits, 
 				  ", fuel: ", game_settings.player_starting_fuel)
@@ -364,3 +386,61 @@ func initialize_starting_resources() -> void:
 		# Fallback to default starting values
 		add_resource(ResourceType.CREDITS, 1000)
 		add_resource(ResourceType.FUEL, 100)
+
+# Generate deterministic market modifiers based on seed
+func _update_market_modifiers() -> void:
+	# Clear existing modifiers
+	market_modifiers.clear()
+	
+	# Only proceed if SeedManager is available
+	if not _seed_ready or not has_node("/root/SeedManager"):
+		return
+	
+	# Get the current seed
+	var current_seed = SeedManager.get_seed()
+	
+	# Define stations - in a real implementation, these would come from a 
+	# world generator or station manager
+	var station_ids = ["station_1", "station_2", "station_3", "station_4"]
+	
+	# For each station, generate deterministic price modifiers
+	for i in range(station_ids.size()):
+		var station_id = station_ids[i]
+		var station_modifiers = {}
+		
+		# For each resource type, generate a modifier
+		for resource_id in resource_data:
+			if resource_id == ResourceType.CREDITS:
+				continue  # Skip credits
+			
+			# Create a deterministic object ID for this station-resource combination
+			var object_id = hash(station_id) + resource_id * 100
+			
+			# Generate a price modifier between 0.7 and 1.3
+			var price_modifier = SeedManager.get_random_value(object_id, 0.7, 1.3)
+			
+			# Some resources might be completely unavailable (null) or in high demand
+			var availability_roll = SeedManager.get_random_value(object_id, 0.0, 1.0, 1)
+			
+			if availability_roll < 0.1:
+				# Resource is unavailable
+				price_modifier = 0.0
+			elif availability_roll > 0.9:
+				# Resource is in high demand
+				price_modifier *= 1.5
+			
+			station_modifiers[resource_id] = price_modifier
+		
+		# Set the modifiers for this station
+		market_modifiers[station_id] = station_modifiers
+	
+	if debug_mode:
+		print("ResourceManager: Updated market modifiers using seed ", current_seed)
+		
+		# Print first station modifiers as an example
+		if not station_ids.is_empty():
+			var sample_station = station_ids[0]
+			print("Sample modifiers for ", sample_station, ":")
+			for resource_id in market_modifiers[sample_station]:
+				var modifier = market_modifiers[sample_station][resource_id]
+				print("  ", get_resource_name(resource_id), ": ", modifier)

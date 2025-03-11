@@ -8,6 +8,7 @@
 # Interface:
 #   Signals:
 #     - seed_changed(new_seed)
+#     - seed_initialized
 #
 #   Seed Methods:
 #     - set_seed(new_seed)
@@ -25,6 +26,7 @@
 extends Node
 
 signal seed_changed(new_seed)
+signal seed_initialized
 
 # Seed properties
 var current_seed: int = 0
@@ -40,12 +42,14 @@ var _max_cache_size = 1000  # Limit the cache size
 # Flags
 var debug_mode: bool = false
 var enable_cache: bool = true  # Can be toggled for memory optimization
+var is_initialized: bool = false
+
+# Default seed to use if no seed is available
+const DEFAULT_SEED = 12345
 
 func _ready() -> void:
 	# Find GameSettings after a frame delay
 	call_deferred("_find_game_settings")
-	
-	# We'll defer seed initialization until after attempting to find GameSettings
 
 func _find_game_settings() -> void:
 	# Wait a frame to ensure the scene is loaded
@@ -60,6 +64,10 @@ func _find_game_settings() -> void:
 		if game_settings.is_connected("seed_changed", _on_game_settings_seed_changed):
 			game_settings.disconnect("seed_changed", _on_game_settings_seed_changed)
 		game_settings.connect("seed_changed", _on_game_settings_seed_changed)
+		
+		# Wait for GameSettings to be fully initialized if needed
+		if not game_settings._initialized:
+			await game_settings.settings_initialized
 		
 		# Get seed from GameSettings
 		var settings_seed = game_settings.get_seed()
@@ -78,6 +86,10 @@ func _find_game_settings() -> void:
 			
 		if debug_mode:
 			print("SeedManager: GameSettings not found, using standalone mode")
+	
+	# Mark as initialized and emit signal
+	is_initialized = true
+	seed_initialized.emit()
 
 func _on_game_settings_seed_changed(new_seed: int) -> void:
 	# Update our seed when GameSettings seed changes
@@ -120,11 +132,8 @@ func set_random_seed() -> void:
 	set_seed(new_seed)
 
 func get_seed() -> int:
-	# If GameSettings is available, prefer its seed
-	if game_settings:
-		var settings_seed = game_settings.get_seed()
-		if settings_seed != current_seed:
-			set_seed(settings_seed)
+	# Simply return the current seed value without changing it
+	# This ensures consistent results for consecutive calls
 	return current_seed
 
 func get_seed_hash() -> String:

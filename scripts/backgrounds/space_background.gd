@@ -38,6 +38,9 @@ class_name ImprovedSpaceBackground
 @export var debug_mode: bool = false
 @export var visualize_clusters: bool = false
 
+# Default seed to use if SeedManager is not available
+const DEFAULT_SEED: int = 12345
+
 # Internal state
 var camera: Camera2D
 var viewport_size: Vector2
@@ -45,6 +48,7 @@ var initialized: bool = false
 var star_layers: Array[ParallaxLayer] = []
 var _twinkle_time: float = 0.0
 var background_layer: ParallaxLayer = null
+var background_seed: int = DEFAULT_SEED
 
 # Cluster data for far stars
 var _cluster_centers: Array = []
@@ -72,16 +76,28 @@ func setup_background() -> void:
 	find_camera()
 	
 	# If requested, use the global seed
-	var background_seed: int = 0
-	if use_game_seed and has_node("/root/SeedManager") and SeedManager.has_method("get_seed"):
-		background_seed = SeedManager.get_seed()
-		if debug_mode:
-			print("SpaceBackground: Using global seed: ", background_seed)
-	else:
-		# Create a seed based on the current time
-		background_seed = int(Time.get_unix_time_from_system())
-		if debug_mode:
-			print("SpaceBackground: Using time-based seed: ", background_seed)
+	background_seed = DEFAULT_SEED  # Default deterministic seed
+	
+	if use_game_seed:
+		# Try to get seed from SeedManager
+		if has_node("/root/SeedManager"):
+			# Wait for SeedManager to be fully initialized if needed
+			if SeedManager.has_method("is_initialized") and not SeedManager.is_initialized and SeedManager.has_signal("seed_initialized"):
+				await SeedManager.seed_initialized
+			
+			background_seed = SeedManager.get_seed()
+			
+			# Listen for seed changes
+			if SeedManager.has_signal("seed_changed") and not SeedManager.is_connected("seed_changed", _on_seed_changed):
+				SeedManager.connect("seed_changed", _on_seed_changed)
+			
+			if debug_mode:
+				print("SpaceBackground: Using global seed: ", background_seed)
+		else:
+			# Log error but use default seed
+			push_warning("SpaceBackground: SeedManager not found, using default seed: " + str(DEFAULT_SEED))
+			if debug_mode:
+				print("SpaceBackground: Using default seed: ", background_seed)
 	
 	# Generate cluster data if clustering is enabled
 	if enable_clustering:
@@ -110,6 +126,15 @@ func setup_background() -> void:
 	
 	# Emit signal for other systems to respond
 	background_initialized.emit()
+
+# Handle seed changes
+func _on_seed_changed(new_seed: int) -> void:
+	if debug_mode:
+		print("SpaceBackground: Seed changed from ", background_seed, " to ", new_seed)
+	
+	# Update seed and regenerate background
+	background_seed = new_seed
+	reset()
 
 func find_camera() -> void:
 	# First try finding the player ship through the EntityManager
@@ -259,7 +284,7 @@ func create_background_layer() -> void:
 
 # Create a single star layer with the given parameters
 func create_star_layer(layer_name: String, scroll_factor: float, count: int, 
-					  star_color: Color, max_size: Vector2, seed_value: int) -> void:
+					 star_color: Color, max_size: Vector2, seed_value: int) -> void:
 	var parallax_layer = ParallaxLayer.new()
 	parallax_layer.name = layer_name
 	parallax_layer.motion_scale = Vector2(scroll_factor, scroll_factor)
@@ -340,7 +365,7 @@ class StarField extends Node2D:
 	
 	func _ready() -> void:
 		rng = RandomNumberGenerator.new()
-		rng.seed = seed_value if seed_value != 0 else hash(str(star_count) + str(Time.get_unix_time_from_system()))
+		rng.seed = seed_value if seed_value != 0 else 12345
 		
 		generate_stars()
 	
@@ -594,11 +619,6 @@ func update_viewport_size() -> void:
 	
 	# If using clustering, recalculate clusters for the new viewport size
 	if enable_clustering:
-		var background_seed = 0
-		if use_game_seed and has_node("/root/SeedManager") and SeedManager.has_method("get_seed"):
-			background_seed = SeedManager.get_seed()
-		else:
-			background_seed = int(Time.get_unix_time_from_system())
 		_generate_clusters(background_seed)
 	
 	# Update mirroring size for all layers

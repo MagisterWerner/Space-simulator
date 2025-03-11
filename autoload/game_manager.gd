@@ -145,8 +145,15 @@ func configure_with_settings(settings: GameSettings) -> void:
 	if game_settings.debug_mode:
 		print("GameManager: Configured with GameSettings")
 	
-	# Update SeedManager with our settings if available
+	# Wait for SeedManager to be initialized if needed
 	if _seed_ready:
+		# Ensure SeedManager gets the correct seed
+		if has_node("/root/SeedManager") and SeedManager.has_method("is_initialized") and not SeedManager.is_initialized:
+			# Wait for initialization if possible
+			if SeedManager.has_signal("seed_initialized"):
+				await SeedManager.seed_initialized
+		
+		# Update SeedManager with our settings
 		SeedManager.set_seed(game_settings.get_seed())
 		
 		# Connect to settings seed changes
@@ -155,7 +162,7 @@ func configure_with_settings(settings: GameSettings) -> void:
 
 func _on_settings_seed_changed(new_seed: int) -> void:
 	# Update SeedManager if it exists
-	if _seed_ready:
+	if _seed_ready and has_node("/root/SeedManager"):
 		SeedManager.set_seed(new_seed)
 
 # Set the player's start position from Main.gd
@@ -180,6 +187,10 @@ func start_game() -> void:
 	game_running = true
 	is_game_paused = false
 	player_upgrades.clear()
+	
+	# Ensure SeedManager has the correct seed before world generation
+	if _seed_ready and game_settings:
+		SeedManager.set_seed(game_settings.get_seed())
 	
 	# Determine spawn position
 	var spawn_position = Vector2.ZERO

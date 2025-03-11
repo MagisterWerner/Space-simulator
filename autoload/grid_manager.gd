@@ -14,6 +14,7 @@ var grid_size: int = 10
 var _player_current_cell: Vector2i = Vector2i(-1, -1)
 var _player_last_check_position: Vector2 = Vector2.ZERO
 var _grid_initialized: bool = false
+var _seed_ready: bool = false
 
 func _ready() -> void:
 	# Process mode to keep working during pause
@@ -30,6 +31,9 @@ func _find_game_systems() -> void:
 	var main_scene = get_tree().current_scene
 	game_settings = main_scene.get_node_or_null("GameSettings")
 	
+	# Check for SeedManager dependency
+	_seed_ready = has_node("/root/SeedManager")
+	
 	if game_settings:
 		# Update our local variables from settings
 		cell_size = game_settings.grid_cell_size
@@ -37,6 +41,7 @@ func _find_game_systems() -> void:
 		
 		if game_settings.debug_mode:
 			print("GridManager: Found GameSettings, using configured values")
+			print("GridManager: Cell size: ", cell_size, ", Grid size: ", grid_size)
 	
 	# Find the world grid
 	_find_world_grid()
@@ -201,3 +206,38 @@ func get_neighbor_cells(cell_coords: Vector2i, include_diagonals: bool = false) 
 # Get Manhattan distance between two cells
 func get_cell_distance(from_cell: Vector2i, to_cell: Vector2i) -> int:
 	return abs(from_cell.x - to_cell.x) + abs(from_cell.y - to_cell.y)
+
+# Generate a deterministic value for a cell
+# This is useful for procedural generation that needs to be consistent
+func get_cell_value(cell_coords: Vector2i, min_val: float, max_val: float, parameter_id: int = 0) -> float:
+	# First try to use SeedManager for consistency
+	if _seed_ready and has_node("/root/SeedManager"):
+		# Create a deterministic object ID from cell coordinates
+		var object_id = cell_coords.x * 10000 + cell_coords.y
+		return SeedManager.get_random_value(object_id, min_val, max_val, parameter_id)
+	elif game_settings:
+		# Fall back to GameSettings
+		var object_id = cell_coords.x * 10000 + cell_coords.y
+		return game_settings.get_random_value(object_id, min_val, max_val, parameter_id)
+	else:
+		# Last resort - create a simple hash-based random value
+		var rng = RandomNumberGenerator.new()
+		rng.seed = hash(str(cell_coords) + str(parameter_id))
+		return min_val + rng.randf() * (max_val - min_val)
+
+# Get a deterministic integer for a cell
+func get_cell_int(cell_coords: Vector2i, min_val: int, max_val: int, parameter_id: int = 0) -> int:
+	# First try to use SeedManager for consistency
+	if _seed_ready and has_node("/root/SeedManager"):
+		# Create a deterministic object ID from cell coordinates
+		var object_id = cell_coords.x * 10000 + cell_coords.y
+		return SeedManager.get_random_int(object_id, min_val, max_val, parameter_id)
+	elif game_settings:
+		# Fall back to GameSettings
+		var object_id = cell_coords.x * 10000 + cell_coords.y
+		return game_settings.get_random_int(object_id, min_val, max_val, parameter_id)
+	else:
+		# Last resort - create a simple hash-based random value
+		var rng = RandomNumberGenerator.new()
+		rng.seed = hash(str(cell_coords) + str(parameter_id))
+		return rng.randi_range(min_val, max_val)

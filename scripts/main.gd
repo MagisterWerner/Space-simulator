@@ -14,7 +14,7 @@ var player_start_cell: Vector2i = Vector2i(-1, -1)
 
 func _ready() -> void:
 	screen_size = get_viewport_rect().size
-	# In your main game scene or initialization code
+	# Preload sound effects
 	AudioManager.preload_sfx("laser", "res://assets/audio/laser.sfxr", 20)  # Pool size of 20
 	AudioManager.preload_sfx("explosion_debris", "res://assets/audio/explosion_debris.wav", 10)
 	AudioManager.preload_sfx("explosion_fire", "res://assets/audio/explosion_fire.wav", 10)
@@ -34,6 +34,19 @@ func _on_game_settings_initialized() -> void:
 	_initialize_game()
 
 func _initialize_game() -> void:
+	# Make sure SeedManager gets the correct seed from GameSettings
+	if has_node("/root/SeedManager") and game_settings:
+		# Wait for SeedManager to be initialized if necessary
+		if SeedManager.has_method("is_initialized") and not SeedManager.is_initialized:
+			if SeedManager.has_signal("seed_initialized"):
+				await SeedManager.seed_initialized
+		
+		# Set the seed in SeedManager
+		SeedManager.set_seed(game_settings.get_seed())
+		
+		if game_settings.debug_mode:
+			print("Main: Initialized SeedManager with seed: ", game_settings.get_seed())
+	
 	# Initialize world generator
 	world_generator = WorldGenerator.new()
 	add_child(world_generator)
@@ -70,6 +83,10 @@ func _initialize_game() -> void:
 	
 	# Ensure space background is initialized
 	if space_background and not space_background.initialized:
+		# If the background uses the game seed, wait until it's properly initialized
+		if space_background.use_game_seed and has_node("/root/SeedManager"):
+			space_background.background_seed = SeedManager.get_seed()
+		
 		space_background.setup_background()
 	
 	# Start the game using GameManager
@@ -87,6 +104,9 @@ func _start_game_manager() -> void:
 			# Configure game manager with our settings
 			if game_settings and game_manager.has_method("configure_with_settings"):
 				game_manager.configure_with_settings(game_settings)
+				
+				# Wait for any async operations to complete
+				await get_tree().process_frame
 			
 			# Pass the player start position to GameManager
 			if game_manager.has_method("set_player_start_position"):
