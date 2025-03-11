@@ -7,6 +7,7 @@
 extends Node
 
 signal seed_initialized
+signal seed_changed(new_seed)
 
 # Cache for deterministic values
 var _noise_generators = {}
@@ -23,6 +24,7 @@ var is_initialized: bool = false
 
 # Default seed to use if GameSettings is not available
 const DEFAULT_SEED = 12345
+var _current_seed: int = DEFAULT_SEED
 
 func _ready() -> void:
 	# Find GameSettings after a frame delay
@@ -48,8 +50,11 @@ func _find_game_settings() -> void:
 		# Use debug mode from settings
 		debug_mode = game_settings.debug_mode
 		
+		# Get the seed from GameSettings
+		_current_seed = game_settings.get_seed()
+		
 		if debug_mode:
-			print("SeedManager: Connected to GameSettings")
+			print("SeedManager: Connected to GameSettings, using seed:", _current_seed)
 	else:
 		if debug_mode:
 			print("SeedManager: GameSettings not found, using default seed")
@@ -62,21 +67,37 @@ func _find_game_settings() -> void:
 func _on_game_settings_seed_changed(new_seed: int) -> void:
 	# Clear caches when seed changes
 	_clear_caches()
+	_current_seed = new_seed
+	
+	# Emit our own signal so other systems can update
+	seed_changed.emit(new_seed)
 	
 	if debug_mode:
 		print("SeedManager: Seed changed from GameSettings to ", new_seed)
 
-# Get the current seed from GameSettings
+# Get the current seed from internal storage
 func get_seed() -> int:
-	if game_settings:
-		return game_settings.get_seed()
-	return DEFAULT_SEED
+	return _current_seed
+
+# Set the seed directly (used by external systems)
+func set_seed(new_seed: int) -> void:
+	if _current_seed == new_seed:
+		return  # No change needed
+		
+	_current_seed = new_seed
+	_clear_caches()
+	
+	# Emit change signal
+	seed_changed.emit(new_seed)
+	
+	if debug_mode:
+		print("SeedManager: Set seed to ", new_seed)
 
 # Get the hash representation of the current seed
 func get_seed_hash() -> String:
 	if game_settings:
 		return game_settings.seed_hash
-	return _generate_seed_hash(DEFAULT_SEED)
+	return _generate_seed_hash(_current_seed)
 
 # Get a consistent random value between min and max for a given object ID
 # Use object_subid for different values from same object
@@ -87,7 +108,7 @@ func get_random_value(object_id: int, min_val: float, max_val: float, object_sub
 		return _value_cache[cache_key]
 	
 	# Create a deterministic random value based on the seed and object ID
-	var hash_seed = _hash_combine(get_seed(), object_id + object_subid)
+	var hash_seed = _hash_combine(_current_seed, object_id + object_subid)
 	var temp_rng = RandomNumberGenerator.new()
 	temp_rng.seed = hash_seed
 	
@@ -107,7 +128,7 @@ func get_random_int(object_id: int, min_val: int, max_val: int, object_subid: in
 	if enable_cache and _value_cache.has(cache_key):
 		return _value_cache[cache_key]
 	
-	var hash_seed = _hash_combine(get_seed(), object_id + object_subid)
+	var hash_seed = _hash_combine(_current_seed, object_id + object_subid)
 	var temp_rng = RandomNumberGenerator.new()
 	temp_rng.seed = hash_seed
 	
@@ -127,7 +148,7 @@ func get_random_point_in_circle(object_id: int, radius: float, object_subid: int
 	if enable_cache and _value_cache.has(cache_key):
 		return _value_cache[cache_key]
 	
-	var hash_seed = _hash_combine(get_seed(), object_id + object_subid)
+	var hash_seed = _hash_combine(_current_seed, object_id + object_subid)
 	var temp_rng = RandomNumberGenerator.new()
 	temp_rng.seed = hash_seed
 	
@@ -149,7 +170,7 @@ func get_2d_noise(x: float, y: float, scale: float = 1.0, octaves: int = 4, obje
 	var noise = _get_noise_generator(object_id)
 	
 	# Configure noise properties
-	noise.seed = get_seed() + object_id
+	noise.seed = _current_seed + object_id
 	noise.octaves = octaves
 	noise.persistence = 0.5
 	noise.lacunarity = 2.0
@@ -190,7 +211,7 @@ func get_weighted_element(object_id: int, elements: Array, weights: Array = []) 
 func _get_noise_generator(object_id: int) -> FastNoiseLite:
 	if not _noise_generators.has(object_id):
 		var noise = FastNoiseLite.new()
-		noise.seed = get_seed() + object_id
+		noise.seed = _current_seed + object_id
 		_noise_generators[object_id] = noise
 	
 	return _noise_generators[object_id]
@@ -199,6 +220,17 @@ func _get_noise_generator(object_id: int) -> FastNoiseLite:
 func _clear_caches() -> void:
 	_value_cache.clear()
 	_noise_generators.clear()
+	
+	if debug_mode:
+		print("SeedManager: Cleared caches due to seed change")
+	
+	# Also trigger a clear of the texture cache in PlanetSpawnerBase
+	if get_tree().root.has_node("Main"):
+		# Wait one frame to ensure everything is loaded
+		await get_tree().process_frame
+		
+		# Call the static method to clear the texture cache
+		PlanetSpawnerBase.clear_texture_cache()
 
 # Helper to clean cache if it gets too big
 func _clean_cache_if_needed() -> void:

@@ -44,6 +44,7 @@ var atmosphere_data: Dictionary = {}
 # Moon scene cache
 var _moon_scenes = {}
 var _initialized: bool = false
+var _init_params: Dictionary = {}
 
 # Moon Type Parameters (configurable through subclasses)
 var _moon_params = {
@@ -77,6 +78,11 @@ const DEFAULT_Z_INDEX: int = -7
 func _ready() -> void:
 	z_index = -10  # Explicitly set planet z-index to -10
 	_load_moon_scenes()
+	
+	# Connect to seed changes from SeedManager
+	if has_node("/root/SeedManager"):
+		if SeedManager.has_signal("seed_changed") and not SeedManager.is_connected("seed_changed", _on_seed_changed):
+			SeedManager.connect("seed_changed", _on_seed_changed)
 
 func _process(delta: float) -> void:
 	queue_redraw()
@@ -87,7 +93,10 @@ func _process(delta: float) -> void:
 func initialize(params: Dictionary) -> void:
 	if _initialized:
 		return
-		
+	
+	# Store initialization parameters for potential regeneration on seed change
+	_init_params = params.duplicate()
+	
 	# Core parameters
 	seed_value = params.seed_value
 	grid_x = params.get("grid_x", 0)
@@ -107,6 +116,28 @@ func initialize(params: Dictionary) -> void:
 	call_deferred("_create_moons")
 	
 	_initialized = true
+
+# Handle seed changes - regenerate planet and moons
+func _on_seed_changed(new_seed: int) -> void:
+	if not _initialized or _init_params.is_empty():
+		return
+	
+	print("Planet %s: Detected seed change to %d, regenerating..." % [planet_name, new_seed])
+	
+	# Update the seed value in init params to reflect new global seed
+	if has_node("/root/SeedManager"):
+		var base_seed = SeedManager.get_seed()
+		var seed_offset = seed_value % 1000  # Preserve the unique part of the seed
+		_init_params.seed_value = base_seed + seed_offset
+	
+	# Clear existing moons
+	for moon in moons:
+		if is_instance_valid(moon):
+			moon.queue_free()
+	moons.clear()
+	
+	# Reinitialize with updated parameters
+	initialize(_init_params)
 
 func _load_moon_scenes() -> void:
 	var scenes = {

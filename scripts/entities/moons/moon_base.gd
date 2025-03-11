@@ -25,6 +25,9 @@ var orbit_indicator_size: float = 4.0         # Size of the orbit indicator in d
 var orbital_inclination: float = 1.0  # For 3D orbit projection (1.0 = circular)
 var orbit_vertical_offset: float = 0.0  # Offset from the equatorial plane
 
+# Reference to initialization parameters for seed updates
+var _init_params: Dictionary = {}
+
 func _ready() -> void:
 	# Set z-index appropriately - will be adjusted dynamically based on moon type
 	# for gaseous planets to ensure consistent visual hierarchy
@@ -32,6 +35,11 @@ func _ready() -> void:
 	
 	# Set orbit color based on moon type
 	_set_orbit_color()
+	
+	# Connect to SeedManager for seed changes
+	if has_node("/root/SeedManager"):
+		if SeedManager.has_signal("seed_changed") and not SeedManager.is_connected("seed_changed", _on_seed_changed):
+			SeedManager.connect("seed_changed", _on_seed_changed)
 
 func _process(_delta) -> void:
 	queue_redraw()
@@ -46,7 +54,31 @@ func _draw() -> void:
 			var indicator_color = _get_type_color()
 			draw_circle(Vector2.ZERO, orbit_indicator_size, indicator_color)
 
+# Handle seed changes - reinitialize with updated seed
+func _on_seed_changed(new_seed: int) -> void:
+	if _init_params.is_empty():
+		return  # Can't reinitialize without initial parameters
+	
+	# Update our seed based on the new global seed
+	if has_node("/root/SeedManager"):
+		# Preserve relative seed offset but use new base seed
+		var base_seed = SeedManager.get_seed()
+		var seed_offset = seed_value % 1000  # Preserve the unique part
+		seed_value = base_seed + seed_offset
+		
+		# Update init params with new seed
+		_init_params.seed_value = seed_value
+		
+		# Regenerate moon texture
+		_generate_moon_texture()
+		
+		# Optionally log the update
+		print("Moon %s: Updated seed to %d" % [moon_name, seed_value])
+
 func initialize(params: Dictionary) -> void:
+	# Store initialization parameters for potential regeneration on seed change
+	_init_params = params.duplicate()
+	
 	seed_value = params.seed_value
 	parent_planet = params.parent_planet
 	distance = params.distance

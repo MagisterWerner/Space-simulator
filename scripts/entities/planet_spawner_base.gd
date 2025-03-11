@@ -56,6 +56,11 @@ static var cache_cleanup_counter: int = 0
 const MAX_CACHE_SIZE = 30
 
 func _ready() -> void:
+	# Connect to SeedManager for seed changes
+	if has_node("/root/SeedManager"):
+		if SeedManager.has_signal("seed_changed") and not SeedManager.is_connected("seed_changed", _on_seed_changed):
+			SeedManager.connect("seed_changed", _on_seed_changed)
+	
 	# Connect to the main scene's GameSettings
 	call_deferred("_find_game_settings")
 
@@ -66,8 +71,24 @@ func _find_game_settings() -> void:
 	var main_scene = get_tree().current_scene
 	game_settings = main_scene.get_node_or_null("GameSettings")
 	
+	# Connect to GameSettings seed changes
+	if game_settings and game_settings.has_signal("seed_changed") and not game_settings.is_connected("seed_changed", _on_seed_changed):
+		game_settings.connect("seed_changed", _on_seed_changed)
+	
 	# Continue initialization
 	_initialize()
+
+# Handle seed changes
+func _on_seed_changed(_new_seed: int) -> void:
+	if game_settings and game_settings.debug_mode:
+		print("%s: Detected seed change, updating..." % get_spawner_type())
+	
+	# Update seed value
+	_update_seed_value()
+	
+	# Regenerate the planet
+	if _initialized:
+		spawn_planet()
 
 func _initialize() -> void:
 	if _initialized:
@@ -246,6 +267,16 @@ static func _check_and_clean_cache() -> void:
 		for i in range(int(float(MAX_CACHE_SIZE) / 3.0)):  # Fixed integer division
 			if i < keys.size():
 				texture_cache.moons.erase(keys[i])
+
+# [NEW] Static method to clear the entire texture cache when the seed changes
+static func clear_texture_cache() -> void:
+	texture_cache = {
+		"planets": {},
+		"atmospheres": {},
+		"moons": {}
+	}
+	cache_cleanup_counter = 0
+	print("PlanetSpawnerBase: Texture cache cleared due to seed change")
 
 # The following methods ensure compatibility with the original PlanetSpawner API
 

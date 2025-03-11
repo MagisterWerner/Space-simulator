@@ -3,6 +3,7 @@
 extends Node
 
 signal player_cell_changed(old_cell, new_cell)
+signal seed_initialized
 
 var game_settings: GameSettings = null
 var world_grid: Node2D = null
@@ -15,6 +16,7 @@ var _player_current_cell: Vector2i = Vector2i(-1, -1)
 var _player_last_check_position: Vector2 = Vector2.ZERO
 var _grid_initialized: bool = false
 var _seed_ready: bool = false
+var _seed_value: int = 12345  # Default seed value
 
 func _ready() -> void:
 	# Process mode to keep working during pause
@@ -31,8 +33,13 @@ func _find_game_systems() -> void:
 	var main_scene = get_tree().current_scene
 	game_settings = main_scene.get_node_or_null("GameSettings")
 	
-	# Check for SeedManager dependency
-	_seed_ready = has_node("/root/SeedManager")
+	# Connect to GameSettings for seed changes if available
+	if game_settings and game_settings.has_signal("seed_changed"):
+		if not game_settings.is_connected("seed_changed", _on_seed_changed):
+			game_settings.connect("seed_changed", _on_seed_changed)
+	
+	# Connect to SeedManager for seed changes
+	_connect_to_seed_manager()
 	
 	if game_settings:
 		# Update our local variables from settings
@@ -47,10 +54,43 @@ func _find_game_systems() -> void:
 	_find_world_grid()
 	
 	_grid_initialized = true
+	seed_initialized.emit()
 
 func _process(_delta: float) -> void:
 	# Check player position and update cell information
 	_update_player_cell()
+
+func _connect_to_seed_manager() -> void:
+	# Check for SeedManager dependency
+	if has_node("/root/SeedManager"):
+		# Connect to seed changes if not already connected
+		if SeedManager.has_signal("seed_changed") and not SeedManager.is_connected("seed_changed", _on_seed_changed):
+			SeedManager.connect("seed_changed", _on_seed_changed)
+		
+		# Wait for SeedManager to be initialized if needed
+		if SeedManager.has_method("is_initialized") and not SeedManager.is_initialized:
+			if SeedManager.has_signal("seed_initialized"):
+				SeedManager.seed_initialized.connect(_on_seed_manager_initialized)
+		else:
+			# SeedManager is already initialized
+			_seed_ready = true
+			_seed_value = SeedManager.get_seed()
+	else:
+		# No SeedManager found, use GameSettings directly
+		_seed_ready = false
+		if game_settings:
+			_seed_value = game_settings.get_seed()
+
+func _on_seed_manager_initialized() -> void:
+	_seed_ready = true
+	if has_node("/root/SeedManager"):
+		_seed_value = SeedManager.get_seed()
+		print("GridManager: SeedManager initialized, seed set to ", _seed_value)
+
+func _on_seed_changed(new_seed: int) -> void:
+	_seed_value = new_seed
+	_seed_ready = true
+	print("GridManager: Seed updated to ", new_seed)
 
 func _find_world_grid() -> void:
 	# Try to find the grid in various ways
@@ -210,6 +250,10 @@ func get_cell_distance(from_cell: Vector2i, to_cell: Vector2i) -> int:
 # Generate a deterministic value for a cell
 # This is useful for procedural generation that needs to be consistent
 func get_cell_value(cell_coords: Vector2i, min_val: float, max_val: float, parameter_id: int = 0) -> float:
+	# Ensure SeedManager is initialized before using it
+	if not _seed_ready:
+		_connect_to_seed_manager()
+		
 	# Always try to use SeedManager first for consistency
 	if _seed_ready and has_node("/root/SeedManager"):
 		# Create a deterministic object ID from cell coordinates
@@ -222,11 +266,15 @@ func get_cell_value(cell_coords: Vector2i, min_val: float, max_val: float, param
 	else:
 		# Last resort - create a simple hash-based random value
 		var rng = RandomNumberGenerator.new()
-		rng.seed = hash(str(cell_coords) + str(parameter_id))
+		rng.seed = hash(str(_seed_value) + str(cell_coords) + str(parameter_id))
 		return min_val + rng.randf() * (max_val - min_val)
 
 # Get a deterministic integer for a cell
 func get_cell_int(cell_coords: Vector2i, min_val: int, max_val: int, parameter_id: int = 0) -> int:
+	# Ensure SeedManager is initialized before using it
+	if not _seed_ready:
+		_connect_to_seed_manager()
+		
 	# Always try to use SeedManager first for consistency
 	if _seed_ready and has_node("/root/SeedManager"):
 		# Create a deterministic object ID from cell coordinates
@@ -239,5 +287,5 @@ func get_cell_int(cell_coords: Vector2i, min_val: int, max_val: int, parameter_i
 	else:
 		# Last resort - create a simple hash-based random value
 		var rng = RandomNumberGenerator.new()
-		rng.seed = hash(str(cell_coords) + str(parameter_id))
+		rng.seed = hash(str(_seed_value) + str(cell_coords) + str(parameter_id))
 		return rng.randi_range(min_val, max_val)
