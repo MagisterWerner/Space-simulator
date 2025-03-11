@@ -1,379 +1,461 @@
-# autoload/world_chunk_manager.gd
-# World Chunk Manager refactored with dependency injection
-
+# world_chunk_manager.gd
+# An enhanced world chunk manager that handles asynchronous loading and unloading
+# of world chunks as the player moves through the game world.
 extends "res://autoload/base_service.gd"
 
-signal chunk_loaded(chunk_coords: Vector2i)
+signal chunk_loaded(chunk_coords: Vector2i, chunk: Node)
 signal chunk_unloaded(chunk_coords: Vector2i)
+signal low_detail_chunk_loaded(chunk_coords: Vector2i, chunk: Node)
+signal player_entered_chunk(old_chunk: Vector2i, new_chunk: Vector2i)
 
-#------------------------------------------------------------------
-# Configuration Properties
-#------------------------------------------------------------------
+# Configuration
+@export_category("Chunk Configuration")
+@export var chunk_size: int = 1024  # Size of each chunk in world units
+@export var active_chunk_distance: int = 2  # Full detail chunks to load around player
+@export var preload_chunk_distance: int = 4  # Distance for low detail preloading
+@export var despawn_distance: int = 5  # Distance at which to completely unload chunks
 
-# Chunk configuration
-@export var chunk_size: int = 1000  # Size of each chunk in world units
-@export var view_distance: int = 2  # How many chunks to load in each direction
-@export var preload_distance: int = 3  # Chunks to preload but with lower detail
+@export_category("Performance")
+@export var thread_count: int = 2  # Number of generation threads
+@export var generation_budget_ms: float = 5.0  # Max ms per frame for generation
+@export var entity_budget_per_frame: int = 10  # Max entities to create per frame
+@export var max_concurrent_loads: int = 3  # Max chunks loading at once
+@export var min_wait_between_loads_ms: int = 50  # Prevent bursts of loading
 
-# Performance configuration
-@export var thread_count: int = 2  # Number of worker threads for async loading
-@export var entities_per_frame: int = 5  # Max entities to generate per frame
-@export var max_entities_per_chunk: int = 50  # Limit entities per chunk
-@export var generation_budget_ms: float = 5.0  # Max milliseconds per frame for generation
-
-# Scene references 
-@export var chunk_scene: PackedScene
-@export var entity_scenes: Dictionary = {
-	"asteroid": null,
-	"enemy_ship": null,
-	"station": null
-}
+@export_category("References")
+@export var chunk_scene: PackedScene  # Basic chunk scene
 
 # Service references
 var seed_manager = null
 var entity_manager = null
-
-#------------------------------------------------------------------
-# Internal State
-#------------------------------------------------------------------
+var grid_manager = null
+var event_manager = null
+var world_generator = null
+var game_settings = null
 
 # Chunk tracking
-var _loaded_chunks: Dictionary = {}  # Chunks that are fully loaded
-var _preloaded_chunks: Dictionary = {}  # Chunks that are preloaded with minimal content
-var _loading_queue: Array = []  # Queue of chunks to load
-var _unloading_queue: Array = []  # Queue of chunks to unload
-var _player_chunk: Vector2i = Vector2i.ZERO  # Current chunk the player is in
+var _loaded_chunks: Dictionary = {}  # chunk_key -> chunk_node
+var _low_detail_chunks: Dictionary = {}  # chunk_key -> chunk_node
+var _chunk_states: Dictionary = {}  # chunk_key -> generation state
+var _loading_queue: Array = []  # Priority sorted queue
+var _generation_threads: Array = []
+var _chunk_data_cache: Dictionary = {}  # Cached chunk data awaiting instantiation
+var _player_chunk: Vector2i = Vector2i.ZERO
+var _last_player_pos: Vector2 = Vector2.ZERO
 
-# Threading
-var _generation_thread_pool: Array = []
+# Thread synchronization
 var _thread_mutex: Mutex
 var _thread_semaphore: Semaphore
+var _thread_task_queue: Array = []
 var _exit_thread: bool = false
+var _last_load_time: int = 0
 
-# Object pools
+# Entity pools for reuse
 var _entity_pools: Dictionary = {}
 
+enum ChunkState {
+	UNLOADED,
+	QUEUED,
+	GENERATING,
+	LOW_DETAIL,
+	FULL_DETAIL
+}
+
 func _ready() -> void:
-	# Register self with ServiceLocator
+	# Register self as service
 	call_deferred("register_self")
-	
-	# Skip in editor
-	if Engine.is_editor_hint():
-		return
-		
-	# Initialize object pools
-	for entity_type in entity_scenes:
-		_entity_pools[entity_type] = []
 	
 	# Initialize threading components
 	_thread_mutex = Mutex.new()
-	_thread_semaphore = Semaphore.new()
 	
-	# Try to load entity scenes if they exist
-	_try_load_entity_scenes()
+	# Set up for continued processing during pause
+	process_mode = Node.PROCESS_MODE_ALWAYS
 
 # Return dependencies required by this service
 func get_dependencies() -> Array:
-	return ["SeedManager"] # Required dependency
+	return ["SeedManager", "EntityManager", "GridManager"]
 
 # Initialize this service
 func initialize_service() -> void:
-	# Get SeedManager dependency
+	# Get required dependencies
 	seed_manager = get_dependency("SeedManager")
+	entity_manager = get_dependency("EntityManager") 
+	grid_manager = get_dependency("GridManager")
 	
 	# Connect to SeedManager signals
 	connect_to_dependency("SeedManager", "seed_changed", _on_seed_changed)
 	
-	# Get optional EntityManager dependency
-	if has_dependency("EntityManager"):
-		entity_manager = get_dependency("EntityManager")
+	# Get optional dependencies
+	if has_dependency("EventManager"):
+		event_manager = get_dependency("EventManager")
+	
+	if has_dependency("GameSettings"):
+		game_settings = get_dependency("GameSettings")
+		_apply_game_settings()
+	
+	# Find or load chunk scene if not set
+	if chunk_scene == null:
+		_find_chunk_scene()
 	
 	# Start worker threads
-	for i in range(thread_count):
-		var thread = Thread.new()
-		thread.start(_thread_worker)
-		_generation_thread_pool.append(thread)
+	_start_generation_threads()
+	
+	# Register to receive player position updates
+	if grid_manager:
+		grid_manager.connect("player_cell_changed", _on_player_cell_changed)
 	
 	# Mark as initialized
 	_service_initialized = true
 	print("WorldChunkManager: Service initialized successfully")
 
-# Try to load entity scenes if they exist in the project
-func _try_load_entity_scenes():
-	var paths = {
-		"asteroid": "res://scenes/entities/asteroid.tscn",
-		"enemy_ship": "res://scenes/entities/enemy_ship.tscn",
-		"station": "res://scenes/entities/station.tscn"
-	}
-	
-	for type in paths:
-		var path = paths[type]
-		if ResourceLoader.exists(path):
-			entity_scenes[type] = load(path)
-		else:
-			print("Scene file not found: %s - will need to be set manually" % path)
-
-#------------------------------------------------------------------
-# Public Configuration Methods
-#------------------------------------------------------------------
-
-# Public method to configure and initialize the manager
-func configure(config: Dictionary = {}):
-	if config.has("chunk_scene") and config.chunk_scene != null:
-		chunk_scene = config.chunk_scene
-	
-	if config.has("entity_scenes") and config.entity_scenes != null:
-		# Update entity scenes
-		for type in config.entity_scenes:
-			if config.entity_scenes[type] != null:
-				entity_scenes[type] = config.entity_scenes[type]
-				# Ensure we have a pool for this type
-				if not _entity_pools.has(type):
-					_entity_pools[type] = []
-	
-	if config.has("view_distance"):
-		view_distance = config.view_distance
-	
-	if config.has("preload_distance"):
-		preload_distance = config.preload_distance
-		
-	if config.has("chunk_size"):
-		chunk_size = config.chunk_size
-	
-	print("WorldChunkManager configured with:")
-	print("- Chunk scene: ", chunk_scene)
-	print("- Entity scenes: ", entity_scenes.keys())
-	
-	# Return self for method chaining
-	return self
-
-# Check if the system is properly configured
-func is_ready_to_use() -> bool:
-	# Check if we have a chunk scene
-	if not chunk_scene:
-		return false
-		
-	# Check if we have at least one valid entity type
-	var has_valid_entity = false
-	for type in entity_scenes:
-		if entity_scenes[type] != null:
-			has_valid_entity = true
-			break
-			
-	return has_valid_entity
-
-# Helper method to create a minimal placeholder chunk scene
-func create_debug_chunk_scene() -> PackedScene:
-	# Create a simple chunk scene for debugging
-	var node = Node2D.new()
-	var script = load("res://scripts/world/world_chunk.gd")
-	if script:
-		node.set_script(script)
-	
-	# Create a scene from this node
-	var packed_scene = PackedScene.new()
-	packed_scene.pack(node)
-	
-	return packed_scene
-
-#------------------------------------------------------------------
-# Coordinate Conversion Methods
-#------------------------------------------------------------------
-
-# Convert world position to chunk coordinates
-func world_to_chunk(world_pos: Vector2) -> Vector2i:
-	var x = int(floor(world_pos.x / chunk_size))
-	var y = int(floor(world_pos.y / chunk_size))
-	return Vector2i(x, y)
-
-# Convert chunk coordinates to world position (chunk center)
-func chunk_to_world(chunk_coords: Vector2i) -> Vector2:
-	var x = (chunk_coords.x * chunk_size) + (chunk_size / 2)
-	var y = (chunk_coords.y * chunk_size) + (chunk_size / 2)
-	return Vector2(x, y)
-
-#------------------------------------------------------------------
-# Main Processing
-#------------------------------------------------------------------
-
-func _process(delta):
-	# Skip processing if not properly configured
-	if not is_ready_to_use():
+func _apply_game_settings() -> void:
+	if not game_settings:
 		return
 		
-	# Process chunk loading/unloading queue
-	_process_chunk_queues(delta)
+	# Get chunk size from game settings
+	if "grid_cell_size" in game_settings:
+		chunk_size = game_settings.grid_cell_size
 	
-	# Update player position and manage chunks
+	# Apply debug toggle if available
+	if "debug_mode" in game_settings and "debug_world_chunks" in game_settings:
+		var debug_enabled = game_settings.debug_mode and game_settings.debug_world_chunks
+		if debug_enabled:
+			print("WorldChunkManager: Debug mode enabled")
+
+func _find_chunk_scene() -> void:
+	var chunk_path = "res://scenes/world/world_chunk.tscn"
+	if ResourceLoader.exists(chunk_path):
+		chunk_scene = load(chunk_path)
+	else:
+		# If not found, try to create a minimal chunk dynamically
+		var script = load("res://scripts/world/world_chunk.gd")
+		if script:
+			var scene = PackedScene.new()
+			var node = Node2D.new()
+			node.set_script(script)
+			var result = scene.pack(node)
+			if result == OK:
+				chunk_scene = scene
+				print("WorldChunkManager: Created dynamic chunk scene")
+
+func _start_generation_threads() -> void:
+	# Initialize semaphore for thread synchronization
+	_thread_semaphore = Semaphore.new()
+	
+	# Start worker threads
+	for i in range(thread_count):
+		var thread = Thread.new()
+		thread.start(_thread_worker)
+		_generation_threads.append(thread)
+	
+	print("WorldChunkManager: Started %d generation threads" % thread_count)
+
+func _process(delta: float) -> void:
+	# Skip if not initialized
+	if not _service_initialized:
+		return
+	
+	# Update player position if grid manager not available
+	if not grid_manager:
+		_update_player_position()
+	
+	# Process loading queue with time budget
+	var budget_start = Time.get_ticks_msec()
+	var entities_processed = 0
+	
+	# First process any fully generated chunk data waiting to be instantiated
+	while _chunk_data_cache and (Time.get_ticks_msec() - budget_start) < generation_budget_ms:
+		# Process one chunk's data at a time
+		var next_chunk_key = _chunk_data_cache.keys()[0]
+		var chunk_data = _chunk_data_cache[next_chunk_key]
+		
+		# Create the chunk in the main thread
+		var chunk_coords = str_to_vector2i(next_chunk_key)
+		_instantiate_chunk(chunk_coords, chunk_data)
+		
+		# Remove from cache
+		_chunk_data_cache.erase(next_chunk_key)
+		
+		# Count entities for budget
+		entities_processed += chunk_data.entities.size()
+		
+		# Break if we've hit our entity budget
+		if entities_processed >= entity_budget_per_frame:
+			break
+	
+	# Update distance-based detail levels for existing chunks
+	_update_chunk_detail_levels()
+	
+	# Start new chunk loads if we have capacity
+	var current_loads = 0
+	for state in _chunk_states.values():
+		if state == ChunkState.GENERATING:
+			current_loads += 1
+	
+	# Check if minimum wait time has passed
+	var now = Time.get_ticks_msec()
+	var can_load = (now - _last_load_time) >= min_wait_between_loads_ms
+	
+	# Process loading queue if we have capacity and enough time has passed
+	if current_loads < max_concurrent_loads and can_load and not _loading_queue.is_empty():
+		var next_in_queue = _loading_queue.pop_front()
+		var chunk_coords = next_in_queue.coords
+		var chunk_key = vector2i_to_str(chunk_coords)
+		
+		# Start generation
+		_thread_mutex.lock()
+		_chunk_states[chunk_key] = ChunkState.GENERATING
+		_thread_mutex.unlock()
+		
+		# Add task to thread queue
+		_thread_mutex.lock()
+		_thread_task_queue.append({
+			"coords": chunk_coords
+		})
+		_thread_mutex.unlock()
+		
+		# Signal to a thread that there's work
+		_thread_semaphore.post()
+		
+		# Remember when we last started a load
+		_last_load_time = now
+
+func _update_player_position() -> void:
+	# Find player in entity manager or scene tree
 	var player = null
 	
-	# Try to get player through EntityManager first
 	if entity_manager:
 		player = entity_manager.get_nearest_entity(Vector2.ZERO, "player")
 	else:
-		# Fallback to direct scene tree query
-		var player_ships = get_tree().get_nodes_in_group("player")
-		if not player_ships.is_empty():
-			player = player_ships[0]
+		var players = get_tree().get_nodes_in_group("player")
+		if not players.is_empty():
+			player = players[0]
 	
-	if player:
-		var new_player_chunk = world_to_chunk(player.global_position)
-		if new_player_chunk != _player_chunk:
-			_player_chunk = new_player_chunk
-			_update_chunk_priorities()
-
-# Process chunk loading/unloading queues with time budget
-func _process_chunk_queues(delta):
-	var start_time = Time.get_ticks_msec()
-	var time_budget = generation_budget_ms
-	
-	# Process unloading queue first (frees resources)
-	while _unloading_queue.size() > 0 and (Time.get_ticks_msec() - start_time) < time_budget:
-		var coords = _unloading_queue.pop_front()
-		unload_chunk(coords)
-	
-	# Process loading queue with remaining time budget
-	var entities_processed = 0
-	while _loading_queue.size() > 0 and entities_processed < entities_per_frame and (Time.get_ticks_msec() - start_time) < time_budget:
-		var item = _loading_queue[0]
+	if player and is_instance_valid(player):
+		var player_pos = player.global_position
 		
-		# If worker threads available, use them for distant chunks
-		var distance_to_player = (_player_chunk - item.coords).length()
-		if distance_to_player > 1 and thread_count > 0:
-			# Signal worker thread to handle this chunk
-			_thread_mutex.lock()
-			var task = _loading_queue.pop_front()
-			_thread_mutex.unlock()
-			_thread_semaphore.post()
-		else:
-			# Load chunk on main thread for nearby chunks
-			var coords = _loading_queue.pop_front().coords
-			load_chunk(coords)
-			entities_processed += 1
+		# Only update if position changed significantly
+		if player_pos.distance_to(_last_player_pos) > chunk_size / 4.0:
+			_last_player_pos = player_pos
+			
+			# Calculate new chunk coordinates
+			var new_chunk = world_to_chunk(player_pos)
+			
+			# If player moved to a new chunk
+			if new_chunk != _player_chunk:
+				var old_chunk = _player_chunk
+				_player_chunk = new_chunk
+				
+				# Emit signal
+				player_entered_chunk.emit(old_chunk, new_chunk)
+				
+				# Update chunk priorities
+				_update_chunk_priorities()
 
-#------------------------------------------------------------------
-# Chunk Priority Management
-#------------------------------------------------------------------
-
-# Update which chunks should be loaded/unloaded based on player position
-func _update_chunk_priorities():
-	var chunks_to_load = []
-	var chunks_to_preload = []
+func _update_chunk_priorities() -> void:
+	# Clear current loading queue
+	_loading_queue.clear()
 	
-	# Determine which chunks should be loaded (full detail)
-	for x in range(_player_chunk.x - view_distance, _player_chunk.x + view_distance + 1):
-		for y in range(_player_chunk.y - view_distance, _player_chunk.y + view_distance + 1):
+	# Collect all chunk coordinates that should be loaded
+	var active_chunks = []
+	var preload_chunks = []
+	
+	# First determine which chunks should be loaded (full detail)
+	for x in range(_player_chunk.x - active_chunk_distance, _player_chunk.x + active_chunk_distance + 1):
+		for y in range(_player_chunk.y - active_chunk_distance, _player_chunk.y + active_chunk_distance + 1):
 			var coords = Vector2i(x, y)
-			chunks_to_load.append(coords)
+			active_chunks.append(coords)
 	
-	# Determine which chunks should be preloaded (minimal detail)
-	for x in range(_player_chunk.x - preload_distance, _player_chunk.x + preload_distance + 1):
-		for y in range(_player_chunk.y - preload_distance, _player_chunk.y + preload_distance + 1):
+	# Then determine which chunks should be preloaded (low detail)
+	for x in range(_player_chunk.x - preload_chunk_distance, _player_chunk.x + preload_chunk_distance + 1):
+		for y in range(_player_chunk.y - preload_chunk_distance, _player_chunk.y + preload_chunk_distance + 1):
 			var coords = Vector2i(x, y)
-			if not coords in chunks_to_load:
-				chunks_to_preload.append(coords)
+			if not coords in active_chunks:
+				preload_chunks.append(coords)
 	
-	# Queue chunks for loading if not already loaded
-	for coords in chunks_to_load:
-		if not coords in _loaded_chunks and not coords in _loading_queue:
-			_loading_queue.append({"coords": coords, "priority": 0, "full_detail": true})
+	# Queue active chunks for loading if they're not already loaded
+	for coords in active_chunks:
+		var chunk_key = vector2i_to_str(coords)
+		
+		if not _chunk_states.has(chunk_key) or _chunk_states[chunk_key] == ChunkState.UNLOADED:
+			_loading_queue.append({
+				"coords": coords,
+				"priority": 0,  # Highest priority
+				"full_detail": true
+			})
+			_chunk_states[chunk_key] = ChunkState.QUEUED
+		elif _chunk_states[chunk_key] == ChunkState.LOW_DETAIL:
+			# Upgrade low detail to full detail
+			_loading_queue.append({
+				"coords": coords,
+				"priority": 1,  # Medium priority
+				"full_detail": true
+			})
+			_chunk_states[chunk_key] = ChunkState.QUEUED
 	
-	# Queue chunks for preloading if not already loaded or preloaded
-	for coords in chunks_to_preload:
-		if not coords in _loaded_chunks and not coords in _preloaded_chunks and not coords in _loading_queue:
-			_loading_queue.append({"coords": coords, "priority": 1, "full_detail": false})
+	# Queue preload chunks for loading if they're not already loaded or preloaded
+	for coords in preload_chunks:
+		var chunk_key = vector2i_to_str(coords)
+		
+		if not _chunk_states.has(chunk_key) or _chunk_states[chunk_key] == ChunkState.UNLOADED:
+			_loading_queue.append({
+				"coords": coords,
+				"priority": 2,  # Lowest priority
+				"full_detail": false
+			})
+			_chunk_states[chunk_key] = ChunkState.QUEUED
 	
-	# Queue chunks for unloading if they're too far away
-	for coords in _loaded_chunks.keys():
-		if not coords in chunks_to_load and not coords in chunks_to_preload:
-			_unloading_queue.append(coords)
+	# Find chunks to unload (beyond despawn distance)
+	var unload_keys = []
+	for chunk_key in _loaded_chunks.keys():
+		var chunk_coords = str_to_vector2i(chunk_key)
+		var distance = (_player_chunk - chunk_coords).length()
+		
+		if distance > despawn_distance:
+			unload_keys.append(chunk_key)
 	
-	for coords in _preloaded_chunks.keys():
-		if not coords in chunks_to_preload:
-			_unloading_queue.append(coords)
+	# Unload distant chunks
+	for chunk_key in unload_keys:
+		var chunk_coords = str_to_vector2i(chunk_key)
+		unload_chunk(chunk_coords)
 	
-	# Sort loading queue by priority
+	# Also check low detail chunks
+	unload_keys = []
+	for chunk_key in _low_detail_chunks.keys():
+		var chunk_coords = str_to_vector2i(chunk_key)
+		var distance = (_player_chunk - chunk_coords).length()
+		
+		if distance > despawn_distance:
+			unload_keys.append(chunk_key)
+	
+	# Unload distant low detail chunks
+	for chunk_key in unload_keys:
+		var chunk_coords = str_to_vector2i(chunk_key)
+		unload_low_detail_chunk(chunk_coords)
+	
+	# Sort loading queue by priority (then by distance)
 	_sort_loading_queue()
 
-# Sort the loading queue by priority
-func _sort_loading_queue():
-	_loading_queue.sort_custom(func(a, b): 
-		# Lower priority number = higher actual priority
+func _update_chunk_detail_levels() -> void:
+	# Check full detail chunks that might need to be downgraded
+	var chunks_to_downgrade = []
+	
+	for chunk_key in _loaded_chunks.keys():
+		var chunk_coords = str_to_vector2i(chunk_key)
+		var distance = (_player_chunk - chunk_coords).length()
+		
+		# If chunk is now beyond active distance but within preload distance
+		if distance > active_chunk_distance and distance <= preload_chunk_distance:
+			chunks_to_downgrade.append(chunk_coords)
+	
+	# Downgrade chunks to low detail
+	for coords in chunks_to_downgrade:
+		_downgrade_chunk_to_low_detail(coords)
+	
+	# Check low detail chunks that might need to be upgraded
+	var chunks_to_upgrade = []
+	
+	for chunk_key in _low_detail_chunks.keys():
+		var chunk_coords = str_to_vector2i(chunk_key)
+		var distance = (_player_chunk - chunk_coords).length()
+		
+		# If chunk is now within active distance
+		if distance <= active_chunk_distance:
+			chunks_to_upgrade.append(chunk_coords)
+	
+	# Upgrade chunks to full detail
+	for coords in chunks_to_upgrade:
+		_upgrade_chunk_to_full_detail(coords)
+
+func _downgrade_chunk_to_low_detail(coords: Vector2i) -> void:
+	var chunk_key = vector2i_to_str(coords)
+	
+	# Skip if not loaded or already low detail
+	if not _loaded_chunks.has(chunk_key):
+		return
+	
+	var chunk = _loaded_chunks[chunk_key]
+	
+	# Mark chunk as low detail
+	if chunk.has_method("set_detail_level"):
+		chunk.set_detail_level(false)
+	
+	# Move to low detail dictionary
+	_low_detail_chunks[chunk_key] = chunk
+	_loaded_chunks.erase(chunk_key)
+	_chunk_states[chunk_key] = ChunkState.LOW_DETAIL
+	
+	print("Downgraded chunk %s to low detail" % coords)
+
+func _upgrade_chunk_to_full_detail(coords: Vector2i) -> void:
+	var chunk_key = vector2i_to_str(coords)
+	
+	# Skip if not in low detail
+	if not _low_detail_chunks.has(chunk_key):
+		return
+	
+	var chunk = _low_detail_chunks[chunk_key]
+	
+	# Mark chunk as full detail
+	if chunk.has_method("set_detail_level"):
+		chunk.set_detail_level(true)
+	
+	# Move to full detail dictionary
+	_loaded_chunks[chunk_key] = chunk
+	_low_detail_chunks.erase(chunk_key)
+	_chunk_states[chunk_key] = ChunkState.FULL_DETAIL
+	
+	print("Upgraded chunk %s to full detail" % coords)
+
+func _sort_loading_queue() -> void:
+	# Sort by priority first, then by distance to player
+	_loading_queue.sort_custom(func(a, b):
+		# First compare priority
 		if a.priority != b.priority:
 			return a.priority < b.priority
-			
-		# If same priority, sort by distance to player
-		var a_distance = (_player_chunk - a.coords).length()
-		var b_distance = (_player_chunk - b.coords).length()
-		return a_distance < b_distance
+		
+		# If same priority, compare distance to player
+		var a_dist = (_player_chunk - a.coords).length()
+		var b_dist = (_player_chunk - b.coords).length()
+		
+		return a_dist < b_dist
 	)
 
-#------------------------------------------------------------------
-# Chunk Loading and Unloading
-#------------------------------------------------------------------
-
-# Load a chunk at given coordinates
-func load_chunk(coords: Vector2i):
-	# Check if already loaded
-	if coords in _loaded_chunks:
-		return
+func _thread_worker() -> void:
+	while true:
+		# Wait for a task to be available
+		_thread_semaphore.wait()
 		
-	# Check if chunk_scene is set
-	if not chunk_scene:
-		push_error("Cannot load chunk: chunk_scene is not set")
-		return
-	
-	# Generate chunk data
-	var chunk_data = _generate_chunk_data(coords, true)
-	
-	# Create chunk node
-	var chunk = chunk_scene.instantiate()
-	chunk.initialize(coords, chunk_data, true)
-	add_child(chunk)
-	
-	# Spawn entities from pool
-	for entity_data in chunk_data.entities:
-		var entity = _get_entity_from_pool(entity_data.type)
-		if entity:
-			entity.global_position = entity_data.position
-			entity.rotation = entity_data.rotation
-			# Only set entity_id if the property exists
-			if entity.get("entity_id") != null:
-				entity.entity_id = entity_data.id
-			else:
-				entity.set_meta("entity_id", entity_data.id)
-			chunk.add_entity(entity)
-	
-	_loaded_chunks[coords] = chunk
-	emit_signal("chunk_loaded", coords)
-
-# Unload a chunk at given coordinates
-func unload_chunk(coords: Vector2i):
-	if coords in _loaded_chunks:
-		var chunk = _loaded_chunks[coords]
+		# Check if we should exit
+		_thread_mutex.lock()
+		if _exit_thread:
+			_thread_mutex.unlock()
+			break
 		
-		# Return entities to pool
-		for entity in chunk.get_entities():
-			_return_entity_to_pool(entity)
+		# Get a task from the queue
+		var task = null
+		if not _thread_task_queue.is_empty():
+			task = _thread_task_queue.pop_front()
+		_thread_mutex.unlock()
 		
-		# Remove chunk
-		_loaded_chunks.erase(coords)
-		chunk.queue_free()
-		emit_signal("chunk_unloaded", coords)
+		# If no task, continue waiting
+		if not task:
+			continue
 		
-	elif coords in _preloaded_chunks:
-		var chunk = _preloaded_chunks[coords]
-		_preloaded_chunks.erase(coords)
-		chunk.queue_free()
-		emit_signal("chunk_unloaded", coords)
+		# Process the task
+		var chunk_coords = task.coords
+		
+		# Generate chunk data
+		var chunk_data = _generate_chunk_data(chunk_coords)
+		
+		# Queue the data for the main thread to instantiate
+		var chunk_key = vector2i_to_str(chunk_coords)
+		_thread_mutex.lock()
+		_chunk_data_cache[chunk_key] = chunk_data
+		_thread_mutex.unlock()
 
-#------------------------------------------------------------------
-# Chunk Data Generation
-#------------------------------------------------------------------
-
-# Generate chunk data (deterministic based on seed)
-func _generate_chunk_data(coords: Vector2i, full_detail: bool) -> Dictionary:
-	# Create a consistent chunk ID
+func _generate_chunk_data(coords: Vector2i) -> Dictionary:
+	# Generate a deterministic seed for this chunk
 	var chunk_id = _get_chunk_id(coords)
 	
 	var data = {
@@ -384,208 +466,469 @@ func _generate_chunk_data(coords: Vector2i, full_detail: bool) -> Dictionary:
 		}
 	}
 	
-	# Use SeedManager for deterministic generation
+	# Use SeedManager for deterministic generation if available
 	if seed_manager:
 		data.background.type = seed_manager.get_random_int(chunk_id, 0, 3)
 		data.background.density = seed_manager.get_random_value(chunk_id + 1, 0.1, 1.0)
+		
+		# Determine entity count (asteroids, debris, etc)
+		var entity_count = seed_manager.get_random_int(chunk_id + 2, 5, 20)
+		
+		# Generate entities
+		for i in range(entity_count):
+			var entity_id = chunk_id + (i * 100)
+			
+			# Entity type determination
+			var entity_type = "asteroid"
+			var type_roll = seed_manager.get_random_value(entity_id, 0, 1)
+			
+			if type_roll > 0.9:
+				entity_type = "enemy_ship"
+			elif type_roll > 0.8:
+				entity_type = "debris"
+			
+			# Entity position within chunk
+			var pos_x = seed_manager.get_random_value(entity_id + 1, 0, chunk_size)
+			var pos_y = seed_manager.get_random_value(entity_id + 2, 0, chunk_size)
+			
+			var world_x = (coords.x * chunk_size) + pos_x
+			var world_y = (coords.y * chunk_size) + pos_y
+			
+			# Entity rotation
+			var rotation = seed_manager.get_random_value(entity_id + 3, 0, TAU)
+			
+			# Entity size/scale variation
+			var scale = seed_manager.get_random_value(entity_id + 4, 0.5, 1.5)
+			
+			# Add to entity list
+			data.entities.append({
+				"type": entity_type,
+				"id": entity_id,
+				"position": Vector2(world_x, world_y),
+				"rotation": rotation,
+				"scale": scale
+			})
 	else:
-		# Fallback if SeedManager not available
+		# Fallback to simpler randomization if SeedManager not available
 		var rng = RandomNumberGenerator.new()
 		rng.seed = chunk_id
+		
 		data.background.type = rng.randi_range(0, 3)
 		data.background.density = rng.randf_range(0.1, 1.0)
-	
-	# For preloaded chunks, only generate the minimum needed data
-	if not full_detail:
-		return data
-	
-	# Determine what entities should be in this chunk
-	var entity_count = 15  # Default
-	if seed_manager:
-		entity_count = min(max_entities_per_chunk, seed_manager.get_random_int(chunk_id + 2, 5, 25))
-	
-	# Generate entities
-	for i in range(entity_count):
-		var entity_id = chunk_id + (i * 100)
 		
-		# Determine entity type
-		var entity_type_roll = 0.0
-		if seed_manager:
-			entity_type_roll = seed_manager.get_random_value(entity_id, 0, 1)
-		else:
-			var rng = RandomNumberGenerator.new()
-			rng.seed = entity_id
-			entity_type_roll = rng.randf()
+		# Basic entity generation
+		var entity_count = rng.randi_range(5, 20)
+		for i in range(entity_count):
+			var entity_id = chunk_id + (i * 100)
 			
-		var entity_type = "asteroid"
-		if entity_type_roll > 0.8:
-			entity_type = "enemy_ship"
-		elif entity_type_roll > 0.95:
-			entity_type = "station"
-		
-		# Skip if we don't have this entity type configured
-		if not entity_scenes.has(entity_type) or entity_scenes[entity_type] == null:
-			continue
-		
-		# Determine entity position within chunk
-		var pos_x = 0.0
-		var pos_y = 0.0
-		
-		if seed_manager:
-			pos_x = seed_manager.get_random_value(entity_id + 1, 0, chunk_size)
-			pos_y = seed_manager.get_random_value(entity_id + 2, 0, chunk_size)
-		else:
-			var rng = RandomNumberGenerator.new()
-			rng.seed = entity_id
-			pos_x = rng.randf() * chunk_size
-			pos_y = rng.randf() * chunk_size
+			# Simple entity data
+			var entity_type = "asteroid"
+			if rng.randf() > 0.8:
+				entity_type = "enemy_ship"
 			
-		var world_x = (coords.x * chunk_size) + pos_x
-		var world_y = (coords.y * chunk_size) + pos_y
-		
-		var rotation = 0.0
-		if seed_manager:
-			rotation = seed_manager.get_random_value(entity_id + 3, 0, TAU)
-		else:
-			var rng = RandomNumberGenerator.new()
-			rng.seed = entity_id + 3
-			rotation = rng.randf() * TAU
-		
-		data.entities.append({
-			"type": entity_type,
-			"id": entity_id,
-			"position": Vector2(world_x, world_y),
-			"rotation": rotation
-		})
+			var pos_x = rng.randf() * chunk_size
+			var pos_y = rng.randf() * chunk_size
+			
+			var world_x = (coords.x * chunk_size) + pos_x
+			var world_y = (coords.y * chunk_size) + pos_y
+			
+			data.entities.append({
+				"type": entity_type,
+				"id": entity_id,
+				"position": Vector2(world_x, world_y),
+				"rotation": rng.randf() * TAU,
+				"scale": rng.randf_range(0.5, 1.5)
+			})
 	
 	return data
 
-# Get a consistent chunk ID for deterministic generation
-func _get_chunk_id(coords: Vector2i) -> int:
-	# Create a base chunk ID using the coordinate
-	# We use prime multipliers to avoid grid patterns
-	return 12347 + (coords.x * 7919) + (coords.y * 6837)
-
-#------------------------------------------------------------------
-# Threading
-#------------------------------------------------------------------
-
-# Thread worker function
-func _thread_worker():
-	while true:
-		_thread_semaphore.wait()
-		
-		# Check if we're exiting
-		if _exit_thread:
-			break
-			
-		# Get a task from the queue
-		_thread_mutex.lock()
-		var task = null
-		if _loading_queue.size() > 0:
-			task = _loading_queue.pop_front()
-		_thread_mutex.unlock()
-		
-		if task:
-			# Prepare chunk data but don't instantiate scenes
-			var chunk_data = _generate_chunk_data(task.coords, task.full_detail)
-			
-			# Send back to main thread for actual scene creation
-			call_deferred("_finish_chunk_generation", task.coords, chunk_data, task.full_detail)
-
-# Called from thread to finish chunk generation on main thread
-func _finish_chunk_generation(coords: Vector2i, chunk_data: Dictionary, full_detail: bool):
-	# Make sure chunk scene is available
-	if not chunk_scene:
-		push_error("Cannot create chunk: chunk_scene is not set")
+func _instantiate_chunk(coords: Vector2i, chunk_data: Dictionary) -> void:
+	var chunk_key = vector2i_to_str(coords)
+	
+	# Skip if already loaded
+	if _loaded_chunks.has(chunk_key) or _low_detail_chunks.has(chunk_key):
 		return
-		
+	
+	# Create chunk instance
 	var chunk = chunk_scene.instantiate()
-	chunk.initialize(coords, chunk_data, full_detail)
 	add_child(chunk)
 	
-	if full_detail:
-		_loaded_chunks[coords] = chunk
-	else:
-		_preloaded_chunks[coords] = chunk
+	# Setup coordinates and data
+	var full_detail = _get_chunk_full_detail_state(coords)
+	chunk.initialize(coords, chunk_data, full_detail)
 	
-	emit_signal("chunk_loaded", coords)
-
-#------------------------------------------------------------------
-# Object Pooling
-#------------------------------------------------------------------
-
-# Get a reusable entity from the object pool
-func _get_entity_from_pool(entity_type: String) -> Node:
-	# Check if we have this entity type configured
-	if not entity_scenes.has(entity_type) or entity_scenes[entity_type] == null:
-		push_warning("Entity type %s not configured in WorldChunkManager" % entity_type)
-		# Return a placeholder node instead of null
-		var placeholder = Node2D.new()
-		placeholder.name = "Placeholder_%s" % entity_type
-		placeholder.set_meta("entity_type", entity_type)
-		placeholder.set_meta("is_placeholder", true)
-		return placeholder
-		
-	if _entity_pools[entity_type].size() > 0:
-		return _entity_pools[entity_type].pop_back()
+	# Set position based on coordinates
+	chunk.global_position = Vector2(coords.x * chunk_size, coords.y * chunk_size)
+	
+	# Instantiate entities
+	for entity_data in chunk_data.entities:
+		_instantiate_entity(entity_data, chunk)
+	
+	# Store in the appropriate dictionary
+	if full_detail:
+		_loaded_chunks[chunk_key] = chunk
+		_chunk_states[chunk_key] = ChunkState.FULL_DETAIL
+		chunk_loaded.emit(coords, chunk)
 	else:
-		var entity = entity_scenes[entity_type].instantiate()
+		_low_detail_chunks[chunk_key] = chunk
+		_chunk_states[chunk_key] = ChunkState.LOW_DETAIL
+		low_detail_chunk_loaded.emit(coords, chunk)
+	
+	print("Instantiated chunk at %s" % coords)
+
+func _instantiate_entity(entity_data: Dictionary, chunk: Node) -> void:
+	var entity_type = entity_data.type
+	var entity_id = entity_data.id
+	var position = entity_data.position
+	var rotation = entity_data.rotation
+	var scale_factor = entity_data.get("scale", 1.0)
+	
+	# Get entity from pool or create new
+	var entity = _get_entity_from_pool(entity_type)
+	
+	if entity:
+		# Configure the entity
+		entity.global_position = position
+		entity.rotation = rotation
+		
+		# Set scale if supported
+		if entity.has_method("set_scale"):
+			entity.set_scale(Vector2(scale_factor, scale_factor))
+		elif entity is Node2D:
+			entity.scale = Vector2(scale_factor, scale_factor)
+		
+		# Set entity ID if supported
+		if entity.get("entity_id") != null:
+			entity.entity_id = entity_id
+		else:
+			entity.set_meta("entity_id", entity_id)
+		
+		# Add entity to chunk
+		chunk.add_entity(entity)
+		
 		# Register with EntityManager if available
 		if entity_manager and entity_manager.has_method("register_entity"):
 			entity_manager.register_entity(entity, entity_type)
-		return entity
 
-# Return an entity to the object pool
-func _return_entity_to_pool(entity: Node):
-	var entity_type = entity.get_meta("entity_type", "asteroid")
+func _get_entity_from_pool(entity_type: String) -> Node:
+	# Create pools if they don't exist
+	if not _entity_pools.has(entity_type):
+		_entity_pools[entity_type] = []
 	
-	# Don't pool placeholder entities
+	# Check if we have a free entity in the pool
+	if not _entity_pools[entity_type].is_empty():
+		return _entity_pools[entity_type].pop_back()
+	
+	# Otherwise create a new entity
+	var entity_scene = _get_entity_scene(entity_type)
+	if entity_scene:
+		var entity = entity_scene.instantiate()
+		entity.set_meta("entity_type", entity_type)
+		return entity
+	
+	# Fallback to a simple placeholder if scene not found
+	var placeholder = Sprite2D.new()
+	placeholder.name = "Placeholder_%s" % entity_type
+	placeholder.set_meta("entity_type", entity_type)
+	placeholder.set_meta("is_placeholder", true)
+	
+	# Try to set a basic texture
+	var texture_path = "res://assets/placeholder_%s.png" % entity_type
+	if ResourceLoader.exists(texture_path):
+		placeholder.texture = load(texture_path)
+	
+	return placeholder
+
+func _get_entity_scene(entity_type: String) -> PackedScene:
+	# Try to find the entity scene
+	var potential_paths = [
+		"res://scenes/entities/%s.tscn" % entity_type,
+		"res://scenes/entities/%ss/%s.tscn" % [entity_type, entity_type],
+		"res://scenes/world/%s.tscn" % entity_type
+	]
+	
+	for path in potential_paths:
+		if ResourceLoader.exists(path):
+			return load(path)
+	
+	return null
+
+func _return_entity_to_pool(entity: Node) -> void:
+	# Skip if entity not valid
+	if not is_instance_valid(entity):
+		return
+	
+	# Get entity type
+	var entity_type = entity.get_meta("entity_type", "unknown")
+	
+	# Skip placeholders
 	if entity.get_meta("is_placeholder", false):
 		entity.queue_free()
 		return
-		
-	# Check if entity still has a parent
+	
+	# Create pool if it doesn't exist
+	if not _entity_pools.has(entity_type):
+		_entity_pools[entity_type] = []
+	
+	# Remove from current parent
 	if entity.get_parent():
 		entity.get_parent().remove_child(entity)
 	
-	# Reset entity state
+	# Reset entity state if it has a reset method
 	if entity.has_method("reset"):
 		entity.reset()
 	
+	# Add to pool
 	_entity_pools[entity_type].append(entity)
 
-#------------------------------------------------------------------
-# Event Handlers
-#------------------------------------------------------------------
+# Public API methods
 
-# Handle seed changes
-func _on_seed_changed(new_seed):
-	# Regenerate all loaded chunks
-	var loaded_chunks_copy = _loaded_chunks.keys().duplicate()
-	for chunk_coords in loaded_chunks_copy:
-		unload_chunk(chunk_coords)
-		load_chunk(chunk_coords)
-
-#------------------------------------------------------------------
-# Cleanup
-#------------------------------------------------------------------
-
-# Clean up threads
-func _exit_tree():
-	_exit_thread = true
+# Load a chunk at specified coordinates
+func load_chunk(coords: Vector2i, full_detail: bool = true) -> void:
+	var chunk_key = vector2i_to_str(coords)
 	
-	# Signal all threads to exit
-	for i in range(_generation_thread_pool.size()):
+	# Skip if already loaded or in process
+	if _loaded_chunks.has(chunk_key) or _low_detail_chunks.has(chunk_key) or \
+	   (_chunk_states.has(chunk_key) and (_chunk_states[chunk_key] == ChunkState.QUEUED or _chunk_states[chunk_key] == ChunkState.GENERATING)):
+		return
+	
+	# Add to loading queue with appropriate priority
+	var priority = 0 if full_detail else 2
+	_loading_queue.append({
+		"coords": coords,
+		"priority": priority,
+		"full_detail": full_detail
+	})
+	
+	# Mark as queued
+	_chunk_states[chunk_key] = ChunkState.QUEUED
+	
+	# Resort queue
+	_sort_loading_queue()
+
+# Unload a chunk at specified coordinates
+func unload_chunk(coords: Vector2i) -> void:
+	var chunk_key = vector2i_to_str(coords)
+	
+	# Skip if not loaded
+	if not _loaded_chunks.has(chunk_key):
+		return
+	
+	var chunk = _loaded_chunks[chunk_key]
+	
+	# Return entities to pool
+	var entities = chunk.get_entities()
+	for entity in entities:
+		# Deregister from EntityManager if available
+		if entity_manager and entity_manager.has_method("deregister_entity"):
+			entity_manager.deregister_entity(entity)
+		
+		# Return to pool
+		_return_entity_to_pool(entity)
+	
+	# Remove chunk
+	_loaded_chunks.erase(chunk_key)
+	chunk.queue_free()
+	
+	# Update state
+	_chunk_states[chunk_key] = ChunkState.UNLOADED
+	
+	# Emit signal
+	chunk_unloaded.emit(coords)
+	
+	print("Unloaded chunk at %s" % coords)
+
+# Unload a low detail chunk
+func unload_low_detail_chunk(coords: Vector2i) -> void:
+	var chunk_key = vector2i_to_str(coords)
+	
+	# Skip if not in low detail
+	if not _low_detail_chunks.has(chunk_key):
+		return
+	
+	var chunk = _low_detail_chunks[chunk_key]
+	
+	# Return entities to pool
+	var entities = chunk.get_entities()
+	for entity in entities:
+		# Deregister from EntityManager if available
+		if entity_manager and entity_manager.has_method("deregister_entity"):
+			entity_manager.deregister_entity(entity)
+		
+		# Return to pool
+		_return_entity_to_pool(entity)
+	
+	# Remove chunk
+	_low_detail_chunks.erase(chunk_key)
+	chunk.queue_free()
+	
+	# Update state
+	_chunk_states[chunk_key] = ChunkState.UNLOADED
+	
+	# Emit signal
+	chunk_unloaded.emit(coords)
+	
+	print("Unloaded low detail chunk at %s" % coords)
+
+# Check if a chunk is loaded (either full or low detail)
+func is_chunk_loaded(coords: Vector2i) -> bool:
+	var chunk_key = vector2i_to_str(coords)
+	return _loaded_chunks.has(chunk_key) or _low_detail_chunks.has(chunk_key)
+
+# Get the chunk node at coordinates
+func get_chunk(coords: Vector2i) -> Node:
+	var chunk_key = vector2i_to_str(coords)
+	
+	if _loaded_chunks.has(chunk_key):
+		return _loaded_chunks[chunk_key]
+	
+	if _low_detail_chunks.has(chunk_key):
+		return _low_detail_chunks[chunk_key]
+	
+	return null
+
+# Get the current state of a chunk
+func get_chunk_state(coords: Vector2i) -> int:
+	var chunk_key = vector2i_to_str(coords)
+	
+	if not _chunk_states.has(chunk_key):
+		return ChunkState.UNLOADED
+	
+	return _chunk_states[chunk_key]
+
+# Load world chunks around a given position
+func load_chunks_around_position(position: Vector2, full_detail_range: int = 2, low_detail_range: int = 4) -> void:
+	var center_chunk = world_to_chunk(position)
+	
+	# Queue chunks for loading
+	for x in range(center_chunk.x - low_detail_range, center_chunk.x + low_detail_range + 1):
+		for y in range(center_chunk.y - low_detail_range, center_chunk.y + low_detail_range + 1):
+			var coords = Vector2i(x, y)
+			var distance = (center_chunk - coords).length()
+			
+			if distance <= full_detail_range:
+				load_chunk(coords, true)  # Full detail
+			elif distance <= low_detail_range:
+				load_chunk(coords, false)  # Low detail
+
+# Reset the chunk manager
+func reset() -> void:
+	# Unload all chunks
+	var loaded_keys = _loaded_chunks.keys()
+	for chunk_key in loaded_keys:
+		var coords = str_to_vector2i(chunk_key)
+		unload_chunk(coords)
+	
+	var low_detail_keys = _low_detail_chunks.keys()
+	for chunk_key in low_detail_keys:
+		var coords = str_to_vector2i(chunk_key)
+		unload_low_detail_chunk(coords)
+	
+	# Clear all tracking
+	_loading_queue.clear()
+	_chunk_states.clear()
+	_chunk_data_cache.clear()
+	
+	# Reset player position tracking
+	_player_chunk = Vector2i.ZERO
+	_last_player_pos = Vector2.ZERO
+	
+	print("WorldChunkManager: Reset complete")
+
+# Utility functions
+
+# Convert world position to chunk coordinates
+func world_to_chunk(world_pos: Vector2) -> Vector2i:
+	return Vector2i(
+		int(floor(world_pos.x / chunk_size)),
+		int(floor(world_pos.y / chunk_size))
+	)
+
+# Convert chunk coordinates to world position (chunk center)
+func chunk_to_world(chunk_coords: Vector2i) -> Vector2:
+	return Vector2(
+		(chunk_coords.x * chunk_size) + (chunk_size / 2),
+		(chunk_coords.y * chunk_size) + (chunk_size / 2)
+	)
+
+# Convert Vector2i to string key
+func vector2i_to_str(vec: Vector2i) -> String:
+	return "%d,%d" % [vec.x, vec.y]
+
+# Convert string key to Vector2i
+func str_to_vector2i(str_key: String) -> Vector2i:
+	var parts = str_key.split(",")
+	return Vector2i(int(parts[0]), int(parts[1]))
+
+# Generate a deterministic chunk ID based on coordinates
+func _get_chunk_id(coords: Vector2i) -> int:
+	# Base seed from SeedManager or GameSettings
+	var base_seed = 0
+	if seed_manager:
+		base_seed = seed_manager.get_seed()
+	elif game_settings and game_settings.has_method("get_seed"):
+		base_seed = game_settings.get_seed()
+	else:
+		base_seed = 12345  # Fallback
+	
+	# Use prime multipliers to avoid patterns
+	return base_seed + (coords.x * 7919) + (coords.y * 6337)
+
+# Determine if a chunk should be full detail based on distance from player
+func _get_chunk_full_detail_state(coords: Vector2i) -> bool:
+	var distance = (_player_chunk - coords).length()
+	return distance <= active_chunk_distance
+
+# Handle player cell changes from GridManager
+func _on_player_cell_changed(old_cell: Vector2i, new_cell: Vector2i) -> void:
+	_player_chunk = new_cell
+	_update_chunk_priorities()
+
+# Handle seed changes from SeedManager
+func _on_seed_changed(new_seed: int) -> void:
+	# Regenerate all loaded chunks
+	# This is resource intensive but ensures world consistency
+	
+	# Stop all current loading
+	_loading_queue.clear()
+	_chunk_data_cache.clear()
+	
+	# Remember which chunks were loaded
+	var loaded_chunks = _loaded_chunks.keys().duplicate()
+	var low_detail_chunks = _low_detail_chunks.keys().duplicate()
+	
+	# Unload all chunks
+	for chunk_key in loaded_chunks:
+		var coords = str_to_vector2i(chunk_key)
+		unload_chunk(coords)
+	
+	for chunk_key in low_detail_chunks:
+		var coords = str_to_vector2i(chunk_key)
+		unload_low_detail_chunk(coords)
+	
+	# Reload the chunks
+	for chunk_key in loaded_chunks:
+		var coords = str_to_vector2i(chunk_key)
+		load_chunk(coords, true)
+	
+	for chunk_key in low_detail_chunks:
+		var coords = str_to_vector2i(chunk_key)
+		load_chunk(coords, false)
+	
+	print("WorldChunkManager: Regenerating all chunks due to seed change")
+
+# Clean up threads when scene exits
+func _exit_tree() -> void:
+	# Signal threads to exit
+	_thread_mutex.lock()
+	_exit_thread = true
+	_thread_mutex.unlock()
+	
+	# Post to semaphore for each thread to ensure they all wake up
+	for i in range(_generation_threads.size()):
 		_thread_semaphore.post()
 	
-	# Wait for all threads to finish
-	for thread in _generation_thread_pool:
-		thread.wait_to_finish()
-		
-	# Clear all chunks
-	for coords in _loaded_chunks.keys():
-		unload_chunk(coords)
-		
-	for coords in _preloaded_chunks.keys():
-		unload_chunk(coords)
+	# Wait for threads to finish
+	for thread in _generation_threads:
+		if thread is Thread and thread.is_started():
+			thread.wait_to_finish()
