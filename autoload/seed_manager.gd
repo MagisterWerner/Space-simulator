@@ -23,7 +23,7 @@ var enable_cache: bool = true  # Can be toggled for memory optimization
 var is_initialized: bool = false
 
 # Default seed to use if GameSettings is not available
-const DEFAULT_SEED = 12345
+const DEFAULT_SEED = 0
 var _current_seed: int = DEFAULT_SEED
 
 func _ready() -> void:
