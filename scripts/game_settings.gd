@@ -35,9 +35,9 @@ var seed_hash: String = ""
 
 # ---- PLAYER SETTINGS ----
 @export_category("Player Settings")
-## Starting planet type for the player
-@export_enum("Arid", "Ice", "Lava", "Lush", "Desert", "Alpine", "Ocean") 
-var player_starting_planet_type: int = 3  # Default to Lush (index 3)
+## Starting planet type for the player - added "Random" option
+@export_enum("Random", "Arid", "Ice", "Lava", "Lush", "Desert", "Alpine", "Ocean") 
+var player_starting_planet_type: int = 0  # Default to Random (index 0)
 ## Starting credits for the player
 @export var player_starting_credits: int = 1000
 ## Starting fuel for the player
@@ -73,7 +73,7 @@ func _ready() -> void:
 	if debug_mode:
 		print("GameSettings initialized with seed: ", game_seed)
 		print("Grid size: ", grid_size, "x", grid_size, " (", grid_cell_size, " pixels per cell)")
-		print("Player starting planet type: ", get_planet_type_name(player_starting_planet_type))
+		print("Player starting planet type: ", get_planet_type_description())
 	
 	_initialized = true
 	settings_initialized.emit()
@@ -140,6 +140,30 @@ func is_valid_cell(cell_coords: Vector2i) -> bool:
 		cell_coords.x >= 0 and cell_coords.x < grid_size and
 		cell_coords.y >= 0 and cell_coords.y < grid_size
 	)
+
+# ---- PLANET TYPE METHODS ----
+
+# Check if player planet type should be random
+func is_random_player_planet() -> bool:
+	return player_starting_planet_type == 0  # 0 = Random
+
+# Get the effective planet type (accounting for Random selection)
+func get_effective_planet_type(seed_value: int = 0) -> int:
+	if is_random_player_planet():
+		# Generate a random planet type based on seed
+		var rng = RandomNumberGenerator.new()
+		rng.seed = seed_value if seed_value != 0 else game_seed
+		return rng.randi_range(0, 6)  # 0-6 for the 7 planet types
+	else:
+		# Adjust for the "Random" option at index 0
+		return player_starting_planet_type - 1
+
+# Get a description of the selected planet type for debugging
+func get_planet_type_description() -> String:
+	if is_random_player_planet():
+		return "Random (seed-based)"
+	else:
+		return get_planet_type_name(player_starting_planet_type - 1)
 
 # ---- DETERMINISTIC RANDOMIZATION ----
 
