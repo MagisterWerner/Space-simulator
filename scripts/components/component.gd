@@ -58,6 +58,18 @@ func _ready() -> void:
 	if Engine.has_singleton("Logger"):
 		_logger = Engine.get_singleton("Logger")
 	
+	# Connect to GameSettings debug toggles
+	var main_scene = get_tree().current_scene
+	var game_settings = main_scene.get_node_or_null("GameSettings")
+	
+	if game_settings:
+		# Set initial debug state
+		debug_mode = game_settings.debug_mode and game_settings.debug_components
+		
+		# Connect to debug settings changes
+		if not game_settings.is_connected("debug_settings_changed", _on_debug_settings_changed):
+			game_settings.connect("debug_settings_changed", _on_debug_settings_changed)
+	
 	await owner.ready
 	owner_entity = owner
 	
@@ -71,8 +83,11 @@ func _ready() -> void:
 	component_ready.emit()
 	
 	# Log component initialization
-	if debug_mode and _logger:
-		_logger.debug(name, "Component initialized on " + owner.name)
+	debug_print("Component initialized on " + owner.name)
+
+# Handle debug settings changes
+func _on_debug_settings_changed(debug_settings: Dictionary) -> void:
+	debug_mode = debug_settings.get("master", false) and debug_settings.get("components", false)
 
 # Cleaner enable/disable functions
 func enable() -> void:
@@ -124,8 +139,8 @@ func physics_process_component(_delta: float) -> void:
 # Clean debug logging
 func debug_print(message: String) -> void:
 	if debug_mode:
-		if _logger:
-			_logger.debug(name, message)
+		if Engine.has_singleton("DebugLogger"):
+			DebugLogger.debug(name, message)
 		else:
 			print("[Component:%s] %s" % [name, message])
 
@@ -136,8 +151,8 @@ func set_property(property_name: String, value) -> void:
 		set(property_name, value)
 		property_changed.emit(property_name, old_value, value)
 		
-		if debug_mode and _logger:
-			_logger.verbose(name, "Property changed: " + property_name + 
+		if debug_mode:
+			debug_print("Property changed: " + property_name + 
 				" from " + str(old_value) + " to " + str(value))
 
 # Helper method to check if an object has a property

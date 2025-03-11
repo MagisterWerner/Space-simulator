@@ -4,12 +4,14 @@
 #   Centralized configuration node for all game-wide settings
 #   Handles seed management, grid configuration, planet generation
 #   Provides consistent access to game parameters for all systems
+#   Now includes detailed debug options for each system
 
 extends Node
 class_name GameSettings
 
 signal settings_initialized
 signal seed_changed(new_seed)
+signal debug_settings_changed(debug_settings)
 
 # ---- SEED SETTINGS ----
 @export_category("Seed Settings")
@@ -56,18 +58,66 @@ var player_starting_planet_type: int = 0  # Default to Random (index 0)
 
 # ---- DEBUG OPTIONS ----
 @export_category("Debug Options")
-## Enable debug output and visualizations
+## Enable debug output and visualizations (master toggle)
 @export var debug_mode: bool = false
 ## Draw additional debug info for generation
 @export var draw_debug_grid: bool = false
 
+# ---- DETAILED DEBUG OPTIONS ----
+@export_category("Detailed Debug Options")
+## Enable SeedManager debug logging
+@export var debug_seed_manager: bool = false:
+	set(value):
+		debug_seed_manager = value
+		_notify_debug_change("seed_manager", value)
+
+## Enable world generator debug
+@export var debug_world_generator: bool = false:
+	set(value):
+		debug_world_generator = value
+		_notify_debug_change("world_generator", value)
+
+## Enable entity generation debug visualization
+@export var debug_entity_generation: bool = false:
+	set(value):
+		debug_entity_generation = value
+		_notify_debug_change("entity_generation", value)
+
+## Enable physics debug visualization
+@export var debug_physics: bool = false:
+	set(value):
+		debug_physics = value
+		_notify_debug_change("physics", value)
+
+## Enable UI debug information
+@export var debug_ui: bool = false:
+	set(value):
+		debug_ui = value
+		_notify_debug_change("ui", value)
+
+## Enable component system debug
+@export var debug_components: bool = false:
+	set(value):
+		debug_components = value
+		_notify_debug_change("components", value)
+
+## Enable detailed error logging
+@export var debug_logging: bool = false:
+	set(value):
+		debug_logging = value
+		_notify_debug_change("logging", value)
+
 # ---- INTERNAL VARIABLES ----
 var _initialized: bool = false
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
+var _debug_settings: Dictionary = {}
 
 func _ready() -> void:
 	# Initialize seed if needed
 	_initialize_seed()
+	
+	# Initialize debug settings dictionary
+	_initialize_debug_settings()
 	
 	# Log settings if debug mode is on
 	if debug_mode:
@@ -77,6 +127,110 @@ func _ready() -> void:
 	
 	_initialized = true
 	settings_initialized.emit()
+	
+	# Apply initial debug settings
+	_apply_debug_settings()
+
+# Initialize debug settings dictionary
+func _initialize_debug_settings() -> void:
+	_debug_settings = {
+		"master": debug_mode,
+		"grid": draw_debug_grid,
+		"seed_manager": debug_seed_manager,
+		"world_generator": debug_world_generator,
+		"entity_generation": debug_entity_generation,
+		"physics": debug_physics,
+		"ui": debug_ui,
+		"components": debug_components,
+		"logging": debug_logging
+	}
+
+# Apply debug settings to systems
+func _apply_debug_settings() -> void:
+	# Update SeedManager
+	if Engine.has_singleton("SeedManager"):
+		SeedManager.set_debug_mode(debug_mode and debug_seed_manager)
+	
+	# Emit signal with all current debug settings
+	debug_settings_changed.emit(_debug_settings)
+
+# Notify systems when a specific debug setting changes
+func _notify_debug_change(setting_name: String, value: bool) -> void:
+	if not _initialized:
+		return
+		
+	# Update the debug settings dictionary
+	_debug_settings[setting_name] = value
+	
+	# Special handling for certain systems
+	if setting_name == "seed_manager" and Engine.has_singleton("SeedManager"):
+		SeedManager.set_debug_mode(debug_mode and value)
+		
+	# Notify all systems about the changes
+	debug_settings_changed.emit(_debug_settings)
+
+# Set a debug option by name
+func set_debug_option(option_name: String, value: bool) -> void:
+	# Convert from system name to property name if needed
+	var property_name = "debug_" + option_name
+	if option_name == "master":
+		property_name = "debug_mode"
+	elif option_name == "grid":
+		property_name = "draw_debug_grid"
+	
+	# Only set if property exists
+	if has_property(self, property_name):
+		set(property_name, value)
+		
+		# Update main debug_mode as needed
+		if option_name != "master":
+			_debug_settings[option_name] = value
+		else:
+			# If master toggle changes, apply to all settings dictionary
+			_debug_settings["master"] = value
+			
+		# Notify systems
+		debug_settings_changed.emit(_debug_settings)
+
+# Toggle a debug option by name
+func toggle_debug_option(option_name: String) -> bool:
+	# Convert from system name to property name if needed
+	var property_name = "debug_" + option_name
+	if option_name == "master":
+		property_name = "debug_mode"
+	elif option_name == "grid":
+		property_name = "draw_debug_grid"
+	
+	# Only toggle if property exists
+	if has_property(self, property_name):
+		var current_value = get(property_name)
+		set(property_name, not current_value)
+		return not current_value
+	
+	return false
+
+# Get debug status for a system
+func get_debug_status(system_name: String) -> bool:
+	# First check if we have this in our settings dictionary
+	if _debug_settings.has(system_name):
+		# Debug is on only if both master and specific toggle are on
+		return debug_mode and _debug_settings[system_name]
+	
+	# Handle special cases
+	if system_name == "master":
+		return debug_mode
+	elif system_name == "grid":
+		return debug_mode and draw_debug_grid
+	
+	# Default to false for unknown systems
+	return false
+
+# Helper function to check if an object has a property
+static func has_property(object: Object, property_name: String) -> bool:
+	for property in object.get_property_list():
+		if property.name == property_name:
+			return true
+	return false
 
 # ---- SEED MANAGEMENT ----
 

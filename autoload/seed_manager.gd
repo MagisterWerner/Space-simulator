@@ -26,6 +26,14 @@ var is_initialized: bool = false
 const DEFAULT_SEED = 0
 var _current_seed: int = DEFAULT_SEED
 
+# Statistics for debugging and profiling
+var _stats = {
+	"cache_hits": 0,
+	"cache_misses": 0,
+	"total_requests": 0,
+	"last_cache_clear": 0  # Time of last cache clear
+}
+
 func _ready() -> void:
 	# Find GameSettings after a frame delay
 	call_deferred("_find_game_settings")
@@ -43,12 +51,16 @@ func _find_game_settings() -> void:
 		if not game_settings.is_connected("seed_changed", _on_game_settings_seed_changed):
 			game_settings.connect("seed_changed", _on_game_settings_seed_changed)
 		
+		# Connect to debug settings changes
+		if not game_settings.is_connected("debug_settings_changed", _on_debug_settings_changed):
+			game_settings.connect("debug_settings_changed", _on_debug_settings_changed)
+		
 		# Wait for GameSettings to be fully initialized if needed
 		if not game_settings._initialized:
 			await game_settings.settings_initialized
 		
-		# Use debug mode from settings
-		debug_mode = game_settings.debug_mode
+		# Use debug mode from settings - check both master and specific toggle
+		debug_mode = game_settings.debug_mode and game_settings.debug_seed_manager
 		
 		# Get the seed from GameSettings
 		_current_seed = game_settings.get_seed()
@@ -62,6 +74,18 @@ func _find_game_settings() -> void:
 	# Mark as initialized and emit signal
 	is_initialized = true
 	seed_initialized.emit()
+	
+	# Record startup time for stats
+	_stats.last_cache_clear = Time.get_ticks_msec()
+
+# Handle debug setting changes
+func _on_debug_settings_changed(debug_settings: Dictionary) -> void:
+	# Update debug mode based on both master toggle and specific toggle
+	debug_mode = debug_settings.get("master", false) and debug_settings.get("seed_manager", false)
+	
+	if debug_mode:
+		print("SeedManager: Debug mode enabled")
+		print_cache_stats()
 
 # Called when GameSettings seed changes
 func _on_game_settings_seed_changed(new_seed: int) -> void:
@@ -99,13 +123,51 @@ func get_seed_hash() -> String:
 		return game_settings.seed_hash
 	return _generate_seed_hash(_current_seed)
 
+# Toggle debug mode
+func set_debug_mode(enable: bool) -> void:
+	debug_mode = enable
+	
+	if debug_mode:
+		# Print cache statistics when enabling debug mode
+		print_cache_stats()
+
+# Print cache statistics - useful for debugging and optimization
+func print_cache_stats() -> void:
+	debug_print("Cache Statistics:")
+	debug_print("- Cache size: " + str(_value_cache.size()) + "/" + str(_max_cache_size))
+	debug_print("- Total requests: " + str(_stats.total_requests))
+	
+	var hit_percent = 0
+	if _stats.total_requests > 0:
+		hit_percent = int(_stats.cache_hits * 100 / _stats.total_requests)
+	
+	debug_print("- Cache hits: " + str(_stats.cache_hits) + " (" + str(hit_percent) + "%)")
+	debug_print("- Cache misses: " + str(_stats.cache_misses) + " (" + str(100 - hit_percent) + "%)")
+	
+	var uptime = (Time.get_ticks_msec() - _stats.last_cache_clear) / 1000.0
+	debug_print("- Time since last cache clear: " + str(int(uptime)) + " seconds")
+
+# Utility debug print
+func debug_print(message: String) -> void:
+	if debug_mode:
+		if Engine.has_singleton("DebugLogger"):
+			DebugLogger.debug("SeedManager", message)
+		else:
+			print("SeedManager: " + message)
+
 # Get a consistent random value between min and max for a given object ID
 # Use object_subid for different values from same object
 func get_random_value(object_id: int, min_val: float, max_val: float, object_subid: int = 0) -> float:
+	# Update stats
+	_stats.total_requests += 1
+	
 	# Try to get from cache first
 	var cache_key = "value_%d_%d_%f_%f" % [object_id, object_subid, min_val, max_val]
 	if enable_cache and _value_cache.has(cache_key):
+		_stats.cache_hits += 1
 		return _value_cache[cache_key]
+	
+	_stats.cache_misses += 1
 	
 	# Create a deterministic random value based on the seed and object ID
 	var hash_seed = _hash_combine(_current_seed, object_id + object_subid)
@@ -123,10 +185,16 @@ func get_random_value(object_id: int, min_val: float, max_val: float, object_sub
 
 # Get a random integer in a given range for an object
 func get_random_int(object_id: int, min_val: int, max_val: int, object_subid: int = 0) -> int:
+	# Update stats
+	_stats.total_requests += 1
+	
 	# Try to get from cache first
 	var cache_key = "int_%d_%d_%d_%d" % [object_id, object_subid, min_val, max_val]
 	if enable_cache and _value_cache.has(cache_key):
+		_stats.cache_hits += 1
 		return _value_cache[cache_key]
+	
+	_stats.cache_misses += 1
 	
 	var hash_seed = _hash_combine(_current_seed, object_id + object_subid)
 	var temp_rng = RandomNumberGenerator.new()
@@ -143,10 +211,16 @@ func get_random_int(object_id: int, min_val: int, max_val: int, object_subid: in
 
 # Get a random boolean based on probability
 func get_random_bool(object_id: int, probability: float = 0.5, object_subid: int = 0) -> bool:
+	# Update stats
+	_stats.total_requests += 1
+	
 	# Try to get from cache first
 	var cache_key = "bool_%d_%d_%f" % [object_id, object_subid, probability]
 	if enable_cache and _value_cache.has(cache_key):
+		_stats.cache_hits += 1
 		return _value_cache[cache_key]
+	
+	_stats.cache_misses += 1
 	
 	var hash_seed = _hash_combine(_current_seed, object_id + object_subid)
 	var temp_rng = RandomNumberGenerator.new()
@@ -163,10 +237,16 @@ func get_random_bool(object_id: int, probability: float = 0.5, object_subid: int
 
 # Get a random point in a circle with given radius
 func get_random_point_in_circle(object_id: int, radius: float, object_subid: int = 0) -> Vector2:
+	# Update stats
+	_stats.total_requests += 1
+	
 	# Try to get from cache first
 	var cache_key = "circle_%d_%d_%f" % [object_id, object_subid, radius]
 	if enable_cache and _value_cache.has(cache_key):
+		_stats.cache_hits += 1
 		return _value_cache[cache_key]
+	
+	_stats.cache_misses += 1
 	
 	var hash_seed = _hash_combine(_current_seed, object_id + object_subid)
 	var temp_rng = RandomNumberGenerator.new()
@@ -272,8 +352,14 @@ func _clear_caches() -> void:
 	_value_cache.clear()
 	_noise_generators.clear()
 	
+	# Reset cache statistics
+	_stats.cache_hits = 0
+	_stats.cache_misses = 0
+	_stats.total_requests = 0
+	_stats.last_cache_clear = Time.get_ticks_msec()
+	
 	if debug_mode:
-		print("SeedManager: Cleared caches due to seed change")
+		debug_print("Cleared caches due to seed change")
 	
 	# Also trigger a clear of the texture cache in PlanetSpawnerBase
 	if get_tree().root.has_node("Main"):
@@ -289,6 +375,11 @@ func _clean_cache_if_needed() -> void:
 		# Simple approach: just clear the cache when it gets too big
 		# A more sophisticated approach would be to implement an LRU cache
 		_value_cache.clear()
+		
+		if debug_mode:
+			debug_print("Cache size limit reached, cleared cache")
+		
+		_stats.last_cache_clear = Time.get_ticks_msec()
 
 # Helper function to combine seed and object ID into a new hash
 func _hash_combine(seed_value: int, object_id: int) -> int:

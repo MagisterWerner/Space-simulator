@@ -38,11 +38,30 @@ var _planet_spawners: Dictionary = {}  # cell_key -> planet_spawner
 var _planet_cells: Array[Vector2i] = []  # Cells containing planets
 var _proximity_excluded_cells: Dictionary = {}  # Cell coords (string) -> bool
 
+# Debug mode
+var debug_mode: bool = false
+
+# Seed offset constants - used to ensure different entity types get different seeds
+const PLANET_SEED_OFFSET = 1000000  # Base offset for planets
+const ASTEROID_SEED_OFFSET = 2000000  # Base offset for asteroid fields
+const STATION_SEED_OFFSET = 3000000  # Base offset for stations
+const TERRAN_TYPE_OFFSET = 10000  # Offset for terran planet types
+const GASEOUS_TYPE_OFFSET = 20000  # Offset for gas giant types
+
 # Initialization
 func _ready() -> void:
 	# Find GameSettings in the main scene
 	var main_scene = get_tree().current_scene
 	game_settings = main_scene.get_node_or_null("GameSettings")
+	
+	# Check debug status
+	if game_settings:
+		# Connect to debug settings changes
+		if not game_settings.is_connected("debug_settings_changed", _on_debug_settings_changed):
+			game_settings.connect("debug_settings_changed", _on_debug_settings_changed)
+		
+		# Set initial debug state
+		debug_mode = game_settings.debug_mode and game_settings.debug_world_generator
 	
 	# Get a reference to SeedManager
 	if Engine.has_singleton("SeedManager"):
@@ -56,8 +75,24 @@ func _ready() -> void:
 	_initialize_scenes()
 	
 	# Debug output
-	if game_settings and game_settings.debug_mode:
-		print("WorldGenerator: Initialized with game seed ", game_settings.get_seed())
+	debug_print("Initialized with game seed " + str(game_settings.get_seed() if game_settings else "N/A"))
+
+# Handler for debug settings changes
+func _on_debug_settings_changed(debug_settings: Dictionary) -> void:
+	debug_mode = debug_settings.get("master", false) and debug_settings.get("world_generator", false)
+	
+	if debug_mode:
+		debug_print("Debug mode enabled")
+		# Print current state
+		debug_print("Current world state: " + str(_entity_counts))
+
+# Utility debug print
+func debug_print(message: String) -> void:
+	if debug_mode:
+		if Engine.has_singleton("DebugLogger"):
+			DebugLogger.debug("WorldGenerator", message)
+		else:
+			print("WorldGenerator: " + message)
 
 # Initialize required scenes
 func _initialize_scenes() -> void:
@@ -125,8 +160,7 @@ func generate_starter_world() -> Dictionary:
 		if _entity_counts.terran_planet + _entity_counts.gaseous_planet < max_planets:
 			generate_random_terran_planet(1)
 		else:
-			if game_settings and game_settings.debug_mode:
-				print("WorldGenerator: Maximum planet limit reached, stopping planet generation.")
+			debug_print("Maximum planet limit reached, stopping planet generation.")
 			break
 	
 	# Generate asteroid fields
@@ -143,14 +177,15 @@ func generate_starter_world() -> Dictionary:
 	world_generation_completed.emit()
 	
 	# Debug output
-	if game_settings and game_settings.debug_mode:
-		print("WorldGenerator: Starter world generation complete")
-		print("- Player planet at cell: ", player_planet_cell)
-		print("- Total terran planets: ", _entity_counts.terran_planet, "/", total_terran_planets)
-		print("- Total gaseous planets: ", _entity_counts.gaseous_planet, "/", total_gaseous_planets)
-		print("- Maximum possible planets: ", max_planets)
-		print("- Total asteroid fields: ", _entity_counts.asteroid_field)
-		print("- Total stations: ", _entity_counts.station)
+	debug_print("Starter world generation complete")
+	debug_print("- Player planet at cell: " + str(player_planet_cell))
+	debug_print("- Total terran planets: " + str(_entity_counts.terran_planet) + 
+				"/" + str(total_terran_planets))
+	debug_print("- Total gaseous planets: " + str(_entity_counts.gaseous_planet) + 
+				"/" + str(total_gaseous_planets))
+	debug_print("- Maximum possible planets: " + str(max_planets))
+	debug_print("- Total asteroid fields: " + str(_entity_counts.asteroid_field))
+	debug_print("- Total stations: " + str(_entity_counts.station))
 	
 	# Return the cells where the planets were generated
 	return {
@@ -169,7 +204,61 @@ func calculate_max_planets() -> int:
 	
 	# Return planets already placed plus available cell count
 	return _entity_counts.terran_planet + _entity_counts.gaseous_planet + available_cells
+
+# Generate consistent seed for a cell and entity type
+# Standardized approach for deterministic object ID generation
+func _generate_entity_seed(cell: Vector2i, entity_type: String, subtype_index: int = 0) -> int:
+	# Base seed comes from GameSettings or SeedManager
+	var base_seed = 0
+	if game_settings:
+		base_seed = game_settings.get_seed()
+	elif seed_manager:
+		base_seed = seed_manager.get_seed()
+	else:
+		base_seed = get_instance_id()  # Last resort fallback
 	
+	# Apply entity type offset to ensure different types get different seeds
+	var type_offset = 0
+	match entity_type:
+		"terran_planet":
+			type_offset = PLANET_SEED_OFFSET + TERRAN_TYPE_OFFSET
+		"gaseous_planet":
+			type_offset = PLANET_SEED_OFFSET + GASEOUS_TYPE_OFFSET
+		"asteroid_field":
+			type_offset = ASTEROID_SEED_OFFSET
+		"station":
+			type_offset = STATION_SEED_OFFSET
+		_:
+			type_offset = 0
+	
+	# Cell position is encoded with different multipliers for x and y
+	# This ensures different cells get different seeds
+	var cell_offset = (cell.x * 1000) + (cell.y * 100)
+	
+	# Subtype index allows for generating multiple entities of same type in same cell
+	var subtype_offset = subtype_index * 10
+	
+	# Combine all factors to create a unique but deterministic seed
+	return base_seed + type_offset + cell_offset + subtype_offset
+
+# Deterministically shuffle candidate cells
+func _shuffle_candidates(candidate_cells: Array) -> void:
+	if seed_manager:
+		# Use SeedManager for consistent shuffling
+		seed_manager.shuffle_array(candidate_cells, get_instance_id())
+	else:
+		# Fallback to deterministic local shuffling
+		var seed_value = game_settings.get_seed() if game_settings else get_instance_id()
+		var temp_rng = RandomNumberGenerator.new()
+		temp_rng.seed = seed_value
+		
+		# Manual Fisher-Yates shuffle
+		for i in range(candidate_cells.size() - 1, 0, -1):
+			var j = temp_rng.randi_range(0, i)
+			var temp = candidate_cells[i]
+			candidate_cells[i] = candidate_cells[j]
+			candidate_cells[j] = temp
+
 # Generate a gaseous planet in a random grid cell
 func generate_gaseous_planet(proximity: int = 2) -> Vector2i:
 	# Check if we have the required scene
@@ -207,25 +296,18 @@ func generate_gaseous_planet(proximity: int = 2) -> Vector2i:
 		if is_cell_generated(cell):
 			continue
 		
-		# Set up the cell seed
-		var cell_seed = 0
-		if game_settings:
-			cell_seed = game_settings.get_seed() + (cell.x * 1000) + (cell.y * 100)
-		else:
-			# Use SeedManager for consistency if available
-			if seed_manager:
-				cell_seed = seed_manager.get_random_int(get_instance_id() + (cell.x * 100) + cell.y, 0, 1000000)
-			else:
-				cell_seed = randi()  # Fallback
-		
+		# Generate a deterministic seed for this cell and entity type
+		var cell_seed = _generate_entity_seed(cell, "gaseous_planet")
 		var seed_offset = cell_seed - (game_settings.get_seed() if game_settings else 0)
 		
 		# Create a planet spawner for this cell
 		var planet_spawner = planet_spawner_gaseous_scene.instantiate()
-			
-		# Randomize the gas giant type
+		
+		# Randomize the gas giant type using our standardized approach
 		var gas_giant_type = 0
 		if seed_manager:
+			# Generate a random int using the cell seed
+			# This ensures the same cell always generates the same planet type
 			gas_giant_type = seed_manager.get_random_int(cell_seed, 0, 3)  # 0-3 are gas giant types
 		else:
 			# Fallback deterministic approach
@@ -280,8 +362,7 @@ func generate_gaseous_planet(proximity: int = 2) -> Vector2i:
 		# Emit signal
 		entity_generated.emit(planet, "gaseous_planet", cell)
 		
-		if game_settings and game_settings.debug_mode:
-			print("WorldGenerator: Generated gaseous planet at cell ", cell)
+		debug_print("Generated gaseous planet at cell " + str(cell))
 		
 		return cell
 	
@@ -326,17 +407,8 @@ func generate_random_terran_planet(proximity: int = 1) -> Vector2i:
 		if is_cell_generated(cell):
 			continue
 		
-		# Set up the cell seed
-		var cell_seed = 0
-		if game_settings:
-			cell_seed = game_settings.get_seed() + (cell.x * 1000) + (cell.y * 100)
-		else:
-			# Use SeedManager for consistency if available
-			if seed_manager:
-				cell_seed = seed_manager.get_random_int(get_instance_id() + (cell.x * 100) + cell.y, 0, 1000000)
-			else:
-				cell_seed = randi()  # Fallback
-				
+		# Generate a deterministic seed for this cell and entity type
+		var cell_seed = _generate_entity_seed(cell, "terran_planet")
 		var seed_offset = cell_seed - (game_settings.get_seed() if game_settings else 0)
 		
 		# Create a planet spawner for this cell
@@ -407,10 +479,10 @@ func generate_random_terran_planet(proximity: int = 1) -> Vector2i:
 		# Emit signal
 		entity_generated.emit(planet, "terran_planet", cell)
 		
-		if game_settings and game_settings.debug_mode:
-			print("WorldGenerator: Generated terran planet at cell ", cell)
-			if _entity_counts.terran_planet == 1:
-				print("WorldGenerator: This is the player's starting planet (", game_settings.get_planet_type_name(terran_type), ")")
+		debug_print("Generated terran planet at cell " + str(cell))
+		if _entity_counts.terran_planet == 1:
+			debug_print("This is the player's starting planet (" + 
+					  game_settings.get_planet_type_name(terran_type) + ")")
 		
 		return cell
 	
@@ -445,6 +517,9 @@ func generate_asteroid_field() -> Vector2i:
 	
 	# Try to place an asteroid field in one of the shuffled cells
 	for cell in candidate_cells:
+		# Generate a deterministic seed for this asteroid field
+		var field_seed = _generate_entity_seed(cell, "asteroid_field")
+		
 		# Create an asteroid field
 		var asteroid_field = asteroid_field_scene.instantiate()
 		add_child(asteroid_field)
@@ -460,21 +535,15 @@ func generate_asteroid_field() -> Vector2i:
 		# Configure the asteroid field if it has the appropriate methods
 		if asteroid_field.has_method("generate"):
 			# Add some randomization to density and size using SeedManager
-			var field_seed = 0
 			var density = 1.0
 			var size = 1.0
 			
 			if seed_manager:
-				field_seed = seed_manager.get_seed() + (cell.x * 10000) + (cell.y * 1000)
+				# Use standardized seed generation
 				density = seed_manager.get_random_value(field_seed, 0.5, 1.5)
 				size = seed_manager.get_random_value(field_seed + 1, 0.7, 1.3)
 			else:
 				# Fallback to local deterministic RNG
-				if game_settings:
-					field_seed = game_settings.get_seed() + (cell.x * 10000) + (cell.y * 1000)
-				else:
-					field_seed = get_instance_id() + (cell.x * 10000) + (cell.y * 1000)
-				
 				var temp_rng = RandomNumberGenerator.new()
 				temp_rng.seed = field_seed
 				density = temp_rng.randf_range(0.5, 1.5)
@@ -500,8 +569,7 @@ func generate_asteroid_field() -> Vector2i:
 		# Emit signal
 		entity_generated.emit(asteroid_field, "asteroid_field", cell)
 		
-		if game_settings and game_settings.debug_mode:
-			print("WorldGenerator: Generated asteroid field at cell ", cell)
+		debug_print("Generated asteroid field at cell " + str(cell))
 		
 		return cell
 	
@@ -536,6 +604,9 @@ func generate_station() -> Vector2i:
 	
 	# Try to place a station in one of the shuffled cells
 	for cell in candidate_cells:
+		# Generate a deterministic seed for this station
+		var station_seed = _generate_entity_seed(cell, "station")
+		
 		# Create a station
 		var station = station_scene.instantiate()
 		add_child(station)
@@ -553,19 +624,13 @@ func generate_station() -> Vector2i:
 		var offset = Vector2.ZERO
 		
 		if seed_manager:
-			var station_seed = get_instance_id() + (cell.x * 10000) + (cell.y * 1000)
+			# Use standardized seed generation with small variations for position x/y
 			offset = Vector2(
 				seed_manager.get_random_value(station_seed, -cell_size/4.0, cell_size/4.0),
 				seed_manager.get_random_value(station_seed + 1, -cell_size/4.0, cell_size/4.0)
 			)
 		else:
 			# Fallback to local deterministic RNG
-			var station_seed = 0
-			if game_settings:
-				station_seed = game_settings.get_seed() + (cell.x * 100000) + (cell.y * 10000)
-			else:
-				station_seed = get_instance_id() + (cell.x * 100000) + (cell.y * 10000)
-				
 			var temp_rng = RandomNumberGenerator.new()
 			temp_rng.seed = station_seed
 			offset = Vector2(
@@ -577,14 +642,6 @@ func generate_station() -> Vector2i:
 		
 		# Configure the station if it has an initialize method
 		if station.has_method("initialize"):
-			var station_seed = 0
-			if game_settings:
-				station_seed = game_settings.get_seed() + (cell.x * 100000) + (cell.y * 10000)
-			elif seed_manager:
-				station_seed = seed_manager.get_random_int(get_instance_id() + (cell.x * 100000) + (cell.y * 10000), 0, 1000000)
-			else:
-				station_seed = get_instance_id() + (cell.x * 100000) + (cell.y * 10000)
-				
 			station.initialize(station_seed)
 		
 		# Track this station
@@ -605,32 +662,13 @@ func generate_station() -> Vector2i:
 		# Emit signal
 		entity_generated.emit(station, "station", cell)
 		
-		if game_settings and game_settings.debug_mode:
-			print("WorldGenerator: Generated station at cell ", cell)
+		debug_print("Generated station at cell " + str(cell))
 		
 		return cell
 	
 	# If we reach here, we couldn't place a station
 	push_warning("WorldGenerator: Failed to generate station - no valid cells available")
 	return Vector2i(-1, -1)
-
-# Deterministically shuffle candidate cells
-func _shuffle_candidates(candidate_cells: Array) -> void:
-	if seed_manager:
-		# Use SeedManager for consistent shuffling
-		seed_manager.shuffle_array(candidate_cells, get_instance_id())
-	else:
-		# Fallback to deterministic local shuffling
-		var seed_value = game_settings.get_seed() if game_settings else get_instance_id()
-		var temp_rng = RandomNumberGenerator.new()
-		temp_rng.seed = seed_value
-		
-		# Manual Fisher-Yates shuffle
-		for i in range(candidate_cells.size() - 1, 0, -1):
-			var j = temp_rng.randi_range(0, i)
-			var temp = candidate_cells[i]
-			candidate_cells[i] = candidate_cells[j]
-			candidate_cells[j] = temp
 
 # Callback for planet spawner signals
 func _on_planet_spawned(planet_instance) -> void:
@@ -693,8 +731,7 @@ func clear_world() -> void:
 	_planet_spawners.clear()
 	
 	# Debug output
-	if game_settings and game_settings.debug_mode:
-		print("WorldGenerator: World cleared")
+	debug_print("World cleared")
 
 # Check if a cell is valid (within grid bounds)
 func is_valid_cell(cell_coords: Vector2i) -> bool:
