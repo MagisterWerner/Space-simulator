@@ -12,11 +12,12 @@ script = ExtResource("1_txjaf")
 
 [node name="GameSettings" type="Node" parent="."]
 script = ExtResource("7_yyfjg_1")
-game_seed = 1
+game_seed = 855937
 use_random_seed = false
 grid_cell_size = 768
 grid_size = 6
-player_starting_planet_type = 2
+terran_planets = 1
+gaseous_planets = 0
 show_tutorials = false
 debug_mode = true
 debug_seed_manager = true

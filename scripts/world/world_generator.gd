@@ -241,7 +241,9 @@ func _generate_planet(planet_type: String, cell: Vector2i, cell_seed: int, is_pl
 	var planet_type_value
 	
 	if planet_type == ENTITY_TYPES.TERRAN_PLANET and is_player_starting and game_settings:
-		planet_type_value = game_settings.player_starting_planet_type
+		# FIXED: Use get_effective_planet_type() instead of player_starting_planet_type directly
+		# This properly converts UI dropdown index to PlanetTheme enum value
+		planet_type_value = game_settings.get_effective_planet_type()
 	else:
 		# Create deterministic planet type based on cell and seed
 		var planet_type_seed = cell_seed * 10 + (1 if planet_type == ENTITY_TYPES.TERRAN_PLANET else 2)
@@ -254,7 +256,7 @@ func _generate_planet(planet_type: String, cell: Vector2i, cell_seed: int, is_pl
 			planet_type_value = rng.randi_range(0, 6 if planet_type == ENTITY_TYPES.TERRAN_PLANET else 3)
 			
 		# Avoid duplicating player starting planet type
-		if planet_type == ENTITY_TYPES.TERRAN_PLANET and game_settings and planet_type_value == game_settings.player_starting_planet_type:
+		if planet_type == ENTITY_TYPES.TERRAN_PLANET and game_settings and planet_type_value == game_settings.get_effective_planet_type():
 			planet_type_value = (planet_type_value + 1) % 7
 	
 	# Add to planet_spawners group for cache clearing
