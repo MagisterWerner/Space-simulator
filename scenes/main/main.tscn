@@ -14,10 +14,9 @@ script = ExtResource("1_txjaf")
 script = ExtResource("7_yyfjg_1")
 use_random_seed = false
 grid_cell_size = 768
-grid_size = 4
-grid_line_width = 0.5
-grid_opacity = 0.25
-terran_planets = 1
+grid_size = 5
+player_starting_planet_type = 7
+terran_planets = 2
 
 [node name="DebugPanel" parent="." instance=ExtResource("3_ow5a4")]
 
@@ -33,4 +32,5 @@ position_smoothing_speed = 3.0
 
 [node name="BackGroundMusicController" type="Node" parent="."]
 script = ExtResource("5_6q06x")
+start_music_on_ready = false
 enable_debug_log = true
