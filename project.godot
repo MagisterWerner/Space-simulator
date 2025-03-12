@@ -24,7 +24,7 @@ buses/default_bus_layout=""
 [autoload]
 
 GameManager="*res://autoload/game_manager.gd"
-DebugLogger="*res://scripts/utils/debug_logger.gd"
+Logger="*res://scripts/utils/debug_logger.gd"
 SeedManager="*res://autoload/seed_manager.gd"
 GridManager="*res://autoload/grid_manager.gd"
 EntityManager="*res://autoload/entity_manager.gd"

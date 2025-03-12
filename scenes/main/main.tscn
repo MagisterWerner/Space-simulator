@@ -19,6 +19,7 @@ grid_size = 6
 terran_planets = 1
 gaseous_planets = 0
 show_tutorials = false
+master_volume = 0.0
 debug_mode = true
 debug_seed_manager = true
 debug_world_generator = true
