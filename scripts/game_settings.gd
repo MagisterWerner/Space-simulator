@@ -234,14 +234,6 @@ var player_starting_planet_type: int = 0:
 			_update_debug_settings()
 			_notify_setting_changed(SettingCategory.DEBUG, "debug_mode", value)
 
-## Show debug panel
-@export var debug_panel: bool = false:
-	set(value):
-		if debug_panel != value:
-			debug_panel = value
-			_update_debug_settings()
-			_notify_setting_changed(SettingCategory.DEBUG, "debug_panel", value)
-
 ## Specific debug systems (only active when debug_mode is true)
 @export_subgroup("Debug Systems")
 
@@ -313,7 +305,6 @@ var player_starting_planet_type: int = 0:
 var _initialized: bool = false
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var _debug_settings: Dictionary = {}
-var _debug_panel = null
 
 func _ready() -> void:
 	# Initialize seed if needed
@@ -336,9 +327,6 @@ func _ready() -> void:
 	
 	# Apply initial audio settings
 	_apply_audio_settings()
-	
-	# Setup debug panel if needed
-	call_deferred("_setup_debug_panel")
 
 # ---- SEED MANAGEMENT ----
 
@@ -388,7 +376,6 @@ func _generate_seed_hash(seed_value: int) -> String:
 func _initialize_debug_settings() -> void:
 	_debug_settings = {
 		"master": debug_mode,
-		"panel": debug_panel,
 		"logging": debug_logging,
 		"grid": debug_grid,
 		"seed_manager": debug_seed_manager,
@@ -403,7 +390,6 @@ func _update_debug_settings() -> void:
 	# Update debug settings dictionary
 	_debug_settings = {
 		"master": debug_mode,
-		"panel": debug_panel,
 		"logging": debug_logging,
 		"grid": debug_grid,
 		"seed_manager": debug_seed_manager,
@@ -417,9 +403,6 @@ func _update_debug_settings() -> void:
 	# Update SeedManager if available
 	if Engine.has_singleton("SeedManager"):
 		SeedManager.set_debug_mode(debug_mode and debug_seed_manager)
-	
-	# Update debug panel visibility
-	_update_debug_panel_visibility()
 	
 	# Emit signal with all current debug settings
 	debug_settings_changed.emit(_debug_settings)
@@ -451,60 +434,6 @@ func _apply_audio_settings() -> void:
 		# Apply positional audio setting
 		if audio_manager.has_method("set_positional_audio"):
 			audio_manager.set_positional_audio(positional_audio)
-
-# ---- DEBUG PANEL MANAGEMENT ----
-
-func _setup_debug_panel() -> void:
-	# Find or create a CanvasLayer for the debug panel
-	var debug_canvas = get_node_or_null("/root/DebugCanvas")
-	
-	if not debug_canvas:
-		var main_loop = Engine.get_main_loop()
-		if main_loop != null:
-			debug_canvas = CanvasLayer.new()
-			debug_canvas.name = "DebugCanvas"
-			debug_canvas.layer = 100  # Put it on top
-			main_loop.root.add_child(debug_canvas)
-		else:
-			push_warning("GameSettings: Cannot create DebugCanvas, Engine.get_main_loop() is null")
-			return
-	
-	# Load debug panel scene if it exists
-	var debug_panel_path = "res://scenes/ui/debug_panel.tscn"
-	if ResourceLoader.exists(debug_panel_path):
-		var debug_panel_scene = load(debug_panel_path)
-		_debug_panel = debug_panel_scene.instantiate()
-		_debug_panel.name = "DebugPanel"
-		debug_canvas.add_child(_debug_panel)
-		
-		# Set initial visibility
-		_update_debug_panel_visibility()
-	
-	# Register keyboard shortcut for toggling panel
-	set_process_input(true)
-
-# Input handling for debug panel toggle
-func _input(event: InputEvent) -> void:
-	# Toggle debug panel with F3 key
-	if OS.is_debug_build() and event is InputEventKey:
-		if event.pressed and event.keycode == KEY_F3:
-			debug_panel = !debug_panel
-
-# Update the debug panel visibility
-func _update_debug_panel_visibility() -> void:
-	# Find debug panel if we don't have a reference
-	if not _debug_panel:
-		var main_loop = Engine.get_main_loop()
-		if main_loop != null:
-			_debug_panel = main_loop.root.find_child("DebugPanel", true, false)
-		else:
-			return
-	
-	# Update visibility if we found it
-	if _debug_panel:
-		_debug_panel.visible = debug_panel
-		if debug_mode and debug_logging:
-			print("Debug panel visibility: " + str(debug_panel))
 
 # ---- SETTING CHANGE NOTIFICATION ----
 
@@ -632,8 +561,6 @@ func set_debug_option(option_name: String, value: bool) -> void:
 		property_name = "debug_mode"
 	elif option_name == "grid":
 		property_name = "debug_grid"
-	elif option_name == "panel":
-		property_name = "debug_panel"
 	
 	# Only set if property exists
 	if has_property(self, property_name):
@@ -651,8 +578,6 @@ func get_debug_status(system_name: String) -> bool:
 		return debug_mode
 	elif system_name == "grid":
 		return debug_mode and debug_grid
-	elif system_name == "panel":
-		return debug_panel
 	
 	# Default to false for unknown systems
 	return false
@@ -707,7 +632,6 @@ func save_settings(filepath: String = "user://game_settings.cfg") -> bool:
 	
 	# Save debug settings
 	config.set_value("debug", "debug_mode", debug_mode)
-	config.set_value("debug", "debug_panel", debug_panel)
 	config.set_value("debug", "debug_logging", debug_logging)
 	config.set_value("debug", "debug_grid", debug_grid)
 	config.set_value("debug", "debug_seed_manager", debug_seed_manager)
@@ -798,8 +722,6 @@ func load_settings(filepath: String = "user://game_settings.cfg") -> bool:
 	# Load debug settings
 	if config.has_section_key("debug", "debug_mode"):
 		debug_mode = config.get_value("debug", "debug_mode")
-	if config.has_section_key("debug", "debug_panel"):
-		debug_panel = config.get_value("debug", "debug_panel")
 	if config.has_section_key("debug", "debug_logging"):
 		debug_logging = config.get_value("debug", "debug_logging")
 	if config.has_section_key("debug", "debug_grid"):
@@ -858,7 +780,6 @@ func reset_to_defaults() -> void:
 	screen_shake = true
 	
 	debug_mode = false
-	debug_panel = false
 	debug_logging = false
 	debug_grid = false
 	debug_seed_manager = false

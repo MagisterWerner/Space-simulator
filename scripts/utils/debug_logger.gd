@@ -1,236 +1,260 @@
+# scripts/debug_logger.gd
+# =========================
+# Purpose:
+#   Provides logging functionality with different log levels
+#   Works in conjunction with GameSettings to enable/disable debug logs
 extends Node
 
+# Log levels
 enum LogLevel {
-	VERBOSE = 0,
-	DEBUG = 1,
+	ERROR = 0,
+	WARNING = 1,
 	INFO = 2,
-	WARNING = 3,
-	ERROR = 4,
-	NONE = 5
+	DEBUG = 3,
+	TRACE = 4
 }
+
+# Colorize console output
+const COLOR_ERROR = "ff5555"
+const COLOR_WARNING = "ffff55"
+const COLOR_INFO = "55ffff"
+const COLOR_DEBUG = "aaaaaa"
+const COLOR_TRACE = "555555"
 
 # Configuration
-var enabled := OS.is_debug_build()
-var log_level := LogLevel.INFO
-var log_to_file := false
-var log_file_path := "user://debug_log.txt"
-var _log_file = null
-var _game_settings = null
-var _auto_id_counter := 0
+@export var enabled: bool = true
+@export var log_level: LogLevel = LogLevel.INFO
+@export var include_stack_trace: bool = true
+@export var include_timestamp: bool = true
+@export var log_to_file: bool = false
+@export var log_file_path: String = "user://debug_log.txt"
 
-# Convenience strings for log levels
-const LEVEL_ICONS := ["🔍", "🐞", "ℹ️", "⚠️", "❌"]
+# Internals
+var _initialized: bool = false
+var _file: FileAccess = null
+var _log_file_enabled: bool = false
+var _log_buffer: Array = []
+var _buffer_max_size: int = 1000
+var _systems_enabled: Dictionary = {}
 
-# System mapping with optimized lookups
-var _system_map := {
-	"seedmanager": "seed_manager",
-	"seed": "seed_manager",
-	"worldgen": "world_generator",
-	"world": "world_generator",
-	"entities": "entity_generation",
-	"entity": "entity_generation",
-	"physics": "physics",
-	"ui": "ui",
-	"components": "components",
-	"component": "components",
-	"input": "ui",
-	"audio": "audio"
-}
-
-# Cached level strings for faster logging
-var _level_strings := ["VERBOSE", "DEBUG", "INFO", "WARNING", "ERROR"]
-
-# Call site caching to reduce string operations
-var _last_call_sites := {}
-var _call_site_counter := 0
-const MAX_CALL_SITES := 100
-
-func _init() -> void:
-	_auto_id_counter = 0
+func _ready() -> void:
+	# Initialize logging
+	_initialized = true
+	
+	# Check if GameSettings exists
+	if not Engine.has_singleton("GameSettings"):
+		push_warning("DebugLogger: GameSettings singleton not found. Logging configuration not applied.")
+		return
+	
+	# Connect to GameSettings for debug configuration changes
+	var settings = get_node("/root/GameSettings")
+	if settings:
+		settings.connect("debug_settings_changed", _on_debug_settings_changed)
+		_update_from_settings(settings)
+		
+		# Log initialization
+		info("DebugLogger", "Debug logger initialized.")
+	else:
+		push_warning("DebugLogger: Failed to get GameSettings node. Logging configuration not applied.")
+	
+	# Initialize log file if configured
 	if log_to_file:
 		_open_log_file()
 
-func _ready() -> void:
-	# Find GameSettings in a more robust way
-	await get_tree().process_frame
-	_find_game_settings()
+# Connect to GameSettings
+func _update_from_settings(settings) -> void:
+	# Update from GameSettings
+	enabled = settings.debug_mode and settings.debug_logging
 	
-	info("Logger", "Logger initialized with level: %s" % LogLevel.keys()[log_level])
-	debug("Logger", "Debug systems available: %s" % _system_map.values().filter(func(x): return _system_map.values().count(x) == 1))
-
-func _find_game_settings() -> void:
-	var main_scene = get_tree().current_scene
-	_game_settings = main_scene.get_node_or_null("GameSettings")
+	# Get enabled systems
+	_systems_enabled = {
+		"master": settings.debug_mode,
+		"logging": settings.debug_logging,
+		"grid": settings.debug_grid,
+		"seed_manager": settings.debug_seed_manager,
+		"world_generator": settings.debug_world_generator,
+		"entity_generation": settings.debug_entity_generation,
+		"physics": settings.debug_physics,
+		"ui": settings.debug_ui,
+		"components": settings.debug_components
+	}
 	
-	if _game_settings:
-		if not _game_settings.is_connected("debug_settings_changed", _on_debug_settings_changed):
-			_game_settings.connect("debug_settings_changed", _on_debug_settings_changed)
-		_update_from_settings(_game_settings)
-	else:
-		push_warning("Logger: GameSettings not found!")
+	# Debug message
+	if enabled:
+		trace("DebugLogger", "Debug logging enabled. Log level: %s" % _get_level_name(log_level))
 
-func _open_log_file() -> void:
-	_log_file = FileAccess.open(log_file_path, FileAccess.WRITE)
-	if _log_file:
-		_log_file.store_line("=== Log started at %s ===" % Time.get_datetime_string_from_system())
-	else:
-		push_error("Failed to open log file: %s" % log_file_path)
-
+# Handle debug settings changed
 func _on_debug_settings_changed(debug_settings: Dictionary) -> void:
-	_update_from_settings(_game_settings)
-
-func _update_from_settings(game_settings: Node) -> void:
-	enabled = game_settings.debug_mode
-	log_level = LogLevel.DEBUG if game_settings.debug_logging else LogLevel.INFO
+	enabled = debug_settings.master and debug_settings.logging
+	_systems_enabled = debug_settings
 	
 	if enabled:
-		info("Logger", "Logging settings updated, level: %s" % LogLevel.keys()[log_level])
+		trace("DebugLogger", "Debug settings updated.")
 
-# Core logging methods
-func verbose(source: String, message: String, data = null) -> void:
-	_log(LogLevel.VERBOSE, source, message, data)
+# PUBLIC METHODS
 
-func debug(source: String, message: String, data = null) -> void:
-	_log(LogLevel.DEBUG, source, message, data)
+# Check if logging is enabled for a system
+func is_system_logging_enabled(system_name: String) -> bool:
+	if not enabled:
+		return false
+		
+	# Special case - "logging" system is always enabled if debug_mode is on
+	if system_name == "logging":
+		return _systems_enabled.master
+		
+	# Check if system exists and is enabled
+	if _systems_enabled.has(system_name):
+		return _systems_enabled.master and _systems_enabled[system_name]
+	
+	# Unknown system (default is disabled)
+	return false
 
-func info(source: String, message: String, data = null) -> void:
-	_log(LogLevel.INFO, source, message, data)
+# Log error message with optional context data
+func error(system: String, message: String, context = null) -> void:
+	_log(LogLevel.ERROR, system, message, context)
 
-func warning(source: String, message: String, data = null) -> void:
-	_log(LogLevel.WARNING, source, message, data)
+# Log warning message with optional context data
+func warning(system: String, message: String, context = null) -> void:
+	_log(LogLevel.WARNING, system, message, context)
 
-func error(source: String, message: String, data = null) -> void:
-	_log(LogLevel.ERROR, source, message, data)
+# Log info message with optional context data
+func info(system: String, message: String, context = null) -> void:
+	_log(LogLevel.INFO, system, message, context)
 
-# Common use case helper methods
-func debug_value(source: String, value_name: String, value) -> void:
-	debug(source, "%s = %s" % [value_name, value])
+# Log debug message with optional context data
+func debug(system: String, message: String, context = null) -> void:
+	_log(LogLevel.DEBUG, system, message, context)
 
-func debug_method(source: String, method_name: String, params = null) -> int:
-	var call_id = _get_auto_id()
-	debug(source, "→ %s(%s) [%d]" % [method_name, params if params != null else "", call_id])
-	return call_id
+# Log trace message with optional context data
+func trace(system: String, message: String, context = null) -> void:
+	_log(LogLevel.TRACE, system, message, context)
 
-func debug_method_result(source: String, call_id: int, result = null) -> void:
-	debug(source, "← [%d] returned %s" % [call_id, result])
+# PRIVATE METHODS
 
-func debug_if(source: String, message: String, condition: bool) -> void:
-	if condition:
-		debug(source, message)
-
-# Component helper methods
-func component_state_change(component: Node, property: String, old_value, new_value) -> void:
-	debug(component.name, "State changed: %s: %s → %s" % [property, old_value, new_value])
-
-func component_enabled(component: Node) -> void:
-	debug(component.name, "Component enabled")
-
-func component_disabled(component: Node) -> void:
-	debug(component.name, "Component disabled")
-
-# Main log implementation
-func _log(level: int, source: String, message: String, data = null) -> void:
-	# Early exit for performance
-	if not enabled or level < log_level:
+# Core logging function
+func _log(level: LogLevel, system: String, message: String, context = null) -> void:
+	if not _initialized or not enabled or level > log_level:
 		return
 		
-	# Special logic for non-warning/error levels
-	if level < LogLevel.WARNING and not _is_system_enabled(source):
+	# Check if the system has logging enabled
+	if not is_system_logging_enabled(system):
 		return
 	
-	var time_str := Time.get_time_string_from_system()
-	var log_message := "%s %s [%s] %s" % [
-		time_str, 
-		LEVEL_ICONS[level],
-		source, 
-		message
-	]
+	# Format timestamp
+	var timestamp = ""
+	if include_timestamp:
+		var datetime = Time.get_datetime_dict_from_system()
+		timestamp = "[%02d:%02d:%02d] " % [datetime.hour, datetime.minute, datetime.second]
 	
-	# Add extra data if provided
-	if data != null:
-		match typeof(data):
-			TYPE_DICTIONARY, TYPE_ARRAY:
-				log_message += "\n    Data: " + JSON.stringify(data)
-			TYPE_OBJECT:
-				if data.has_method("to_string"):
-					log_message += "\n    Data: " + data.to_string()
-				else:
-					log_message += "\n    Data: [Object]"
-			_:
-				log_message += "\n    Data: " + str(data)
+	# Choose color based on level
+	var color = _get_level_color(level)
 	
-	# Output based on level
-	match level:
-		LogLevel.WARNING: push_warning(log_message)
-		LogLevel.ERROR: push_error(log_message)
-		_: print(log_message)
+	# Format log entry
+	var log_entry = "%s[%s] [%s] %s" % [timestamp, _get_level_name(level), system, message]
+	
+	# Print to console with color
+	print_rich("[color=%s]%s[/color]" % [color, log_entry])
+	
+	# Add context data if provided
+	if context != null:
+		print_rich("[color=%s]  Context: %s[/color]" % [color, str(context)])
+	
+	# Print stack trace if needed
+	if include_stack_trace and level <= LogLevel.ERROR:
+		print_rich("[color=%s]  Stack Trace: %s[/color]" % [color, get_stack()])
+	
+	# Add to buffer
+	_add_to_buffer(log_entry)
 	
 	# Write to file if enabled
-	if log_to_file and _log_file:
-		_log_file.store_line(log_message)
+	if _log_file_enabled:
+		_write_to_file(log_entry)
+		if context != null:
+			_write_to_file("  Context: " + str(context))
 
-# Get a simplified stack trace (up to 3 levels)
-func get_stack_trace() -> String:
-	var stack := get_stack()
-	if stack.size() <= 2:  # Skip the Logger's own frames
-		return ""
+# Add log entry to internal buffer
+func _add_to_buffer(entry: String) -> void:
+	_log_buffer.append(entry)
+	
+	# Trim buffer if it gets too large
+	if _log_buffer.size() > _buffer_max_size:
+		_log_buffer.pop_front()
+
+# Open log file
+func _open_log_file() -> void:
+	if not log_to_file:
+		return
 		
-	var trace := ""
-	var start_frame := 2  # Skip this method and _log
-	# Fixed type inference by explicitly typing end_frame as int
-	var end_frame: int = min(5, stack.size())
+	# Create or open the log file
+	_file = FileAccess.open(log_file_path, FileAccess.WRITE)
 	
-	for i in range(start_frame, end_frame):
-		var frame = stack[i]
-		trace += "%s:%d in %s" % [frame.source.get_file(), frame.line, frame.function]
-		if i < end_frame - 1:
-			trace += " ← "
-			
-	return trace
-
-# Check if debugging is enabled for a specific system
-func _is_system_enabled(system_name: String) -> bool:
-	if not _game_settings:
-		return false
-	
-	# Convert system name to lowercase and without spaces for mapping
-	var key: String = system_name.to_lower().replace(" ", "")
-	
-	# Return result without storing the dictionary value in a variable
-	if _system_map.has(key):
-		return _game_settings.get_debug_status(_system_map[key])
+	if _file:
+		_log_file_enabled = true
+		
+		# Add header
+		var datetime = Time.get_datetime_dict_from_system()
+		var date_str = "%04d-%02d-%02d %02d:%02d:%02d" % [
+			datetime.year, datetime.month, datetime.day,
+			datetime.hour, datetime.minute, datetime.second
+		]
+		
+		_file.store_line("=== DEBUG LOG STARTED: " + date_str + " ===")
 	else:
-		return _game_settings.get_debug_status(key)
+		push_error("DebugLogger: Failed to open log file at: " + log_file_path)
+		_log_file_enabled = false
 
-# Generate a sequential ID for tracking method calls
-func _get_auto_id() -> int:
-	_auto_id_counter += 1
-	return _auto_id_counter
+# Write entry to log file
+func _write_to_file(entry: String) -> void:
+	if _file and _log_file_enabled:
+		_file.store_line(entry)
 
-# Close the log file when shutting down
-func close() -> void:
-	if _log_file:
-		_log_file.close()
-		_log_file = null
+# Close log file
+func _close_log_file() -> void:
+	if _file:
+		# Add footer
+		var datetime = Time.get_datetime_dict_from_system()
+		var date_str = "%04d-%02d-%02d %02d:%02d:%02d" % [
+			datetime.year, datetime.month, datetime.day,
+			datetime.hour, datetime.minute, datetime.second
+		]
+		
+		_file.store_line("=== DEBUG LOG ENDED: " + date_str + " ===")
+		_file.close()
+		_file = null
+		_log_file_enabled = false
 
-# Save/restore current log state
-func get_current_config() -> Dictionary:
-	return {
-		"enabled": enabled,
-		"log_level": log_level,
-		"log_to_file": log_to_file
-	}
+# Get the string name of a log level
+func _get_level_name(level: LogLevel) -> String:
+	match level:
+		LogLevel.ERROR:
+			return "ERROR"
+		LogLevel.WARNING:
+			return "WARNING"
+		LogLevel.INFO:
+			return "INFO"
+		LogLevel.DEBUG:
+			return "DEBUG"
+		LogLevel.TRACE:
+			return "TRACE"
+		_:
+			return "UNKNOWN"
 
-func restore_config(config: Dictionary) -> void:
-	if config.has("enabled"):
-		enabled = config.enabled
-	if config.has("log_level"):
-		log_level = config.log_level
-	if config.has("log_to_file"):
-		log_to_file = config.log_to_file
-		if log_to_file and not _log_file:
-			_open_log_file()
-	
-	info("Logger", "Config restored: level=%s, enabled=%s" % [
-		LogLevel.keys()[log_level], enabled
-	])
+# Get the color for a log level
+func _get_level_color(level: LogLevel) -> String:
+	match level:
+		LogLevel.ERROR:
+			return COLOR_ERROR
+		LogLevel.WARNING:
+			return COLOR_WARNING
+		LogLevel.INFO:
+			return COLOR_INFO
+		LogLevel.DEBUG:
+			return COLOR_DEBUG
+		LogLevel.TRACE:
+			return COLOR_TRACE
+		_:
+			return COLOR_INFO
+
+# Cleanup on exit
+func _exit_tree() -> void:
+	_close_log_file()
