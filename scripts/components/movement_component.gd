@@ -41,6 +41,8 @@ signal boost_recharged
 @export var rotation_thruster_volume_db: float = -6.0
 @export var backward_thruster_volume_db: float = -3.0
 @export var boost_sound_name: String = "boost"
+@export var rotation_thruster_pitch: float = 1.0
+@export var backward_thruster_pitch: float = 1.0
 
 # Input state - using bitflags for better performance
 const INPUT_FORWARD = 1
@@ -335,7 +337,7 @@ func _start_rotation_thruster_sound() -> void:
 	_rotation_thruster_player = _audio_manager.play_sfx(
 		main_thruster_sound_name, 
 		owner_entity.global_position, 
-		1.1,
+		rotation_thruster_pitch,
 		rotation_thruster_volume_db
 	)
 
@@ -357,7 +359,7 @@ func _start_backward_thruster_sound() -> void:
 	_backward_thruster_player = _audio_manager.play_sfx(
 		main_thruster_sound_name, 
 		owner_entity.global_position, 
-		0.9,
+		backward_thruster_pitch,
 		backward_thruster_volume_db
 	)
 
