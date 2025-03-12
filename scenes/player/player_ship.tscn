@@ -1,4 +1,4 @@
-[gd_scene load_steps=16 format=3 uid="uid://rhas31gnv33u"]
+[gd_scene load_steps=20 format=3 uid="uid://rhas31gnv33u"]
 
 [ext_resource type="Script" uid="uid://qr734f4toeq1" path="res://scripts/entities/player_ship.gd" id="1_a8k2q"]
 [ext_resource type="Texture2D" uid="uid://rmbujdpioval" path="res://assets/sprites/player_ship.png" id="2_n7prj"]
@@ -14,6 +14,10 @@
 [ext_resource type="Script" uid="uid://bvvuopeli2pre" path="res://scripts/states/ship_damaged_state.gd" id="12_b76de"]
 [ext_resource type="Script" uid="uid://bh4cto0ljym5" path="res://scripts/states/ship_dead_state.gd" id="13_n8si1"]
 [ext_resource type="Script" uid="uid://c3mjoiwlmmmcn" path="res://scripts/states/ship_respawning_state.gd" id="14_7dcri"]
+[ext_resource type="Script" uid="uid://byvtw0qsgex73" path="res://scripts/components/weapons/laser_weapon_component.gd" id="15_2s2q7"]
+[ext_resource type="Script" uid="uid://cl0jtieouhwli" path="res://scripts/components/weapons/missile_launcher_component.gd" id="16_qd4s4"]
+[ext_resource type="PackedScene" uid="uid://b34rtd6fv2w5" path="res://scenes/projectiles/laser_projectile.tscn" id="16_yjlin"]
+[ext_resource type="PackedScene" uid="uid://i17v7l2g88dp" path="res://scenes/projectiles/missile_projectile.tscn" id="18_nfb6c"]
 
 [sub_resource type="Gradient" id="Gradient_u2vx4"]
 offsets = PackedFloat32Array(0, 0.486667, 0.846667, 1)
@@ -127,13 +131,9 @@ left_thruster_rear_path = NodePath("../ThrusterPositions/Left/RearThruster")
 left_thruster_front_path = NodePath("../ThrusterPositions/Left/FrontThruster")
 right_thruster_rear_path = NodePath("../ThrusterPositions/Right/RearThruster")
 right_thruster_front_path = NodePath("../ThrusterPositions/Right/FrontThruster")
-left_position_path = NodePath("../ThrusterPositions/Left")
-right_position_path = NodePath("../ThrusterPositions/Right")
 main_thruster_volume_db = -10.0
 rotation_thruster_volume_db = -20.0
 backward_thruster_volume_db = -20.0
-rotation_thruster_pitch = 1.0
-backward_thruster_pitch = 1.0
 
 [node name="WeaponComponent" type="Node" parent="."]
 script = ExtResource("6_mndbk")
@@ -161,5 +161,13 @@ script = ExtResource("13_n8si1")
 
 [node name="RespawningState" type="Node" parent="StateMachine"]
 script = ExtResource("14_7dcri")
+
+[node name="LaserWeaponComponent" type="Node" parent="."]
+script = ExtResource("15_2s2q7")
+projectile_scene = ExtResource("16_yjlin")
+
+[node name="MissileWeaponComponent" type="Node" parent="."]
+script = ExtResource("16_qd4s4")
+projectile_scene = ExtResource("18_nfb6c")
 
 [connection signal="body_entered" from="." to="." method="_on_body_entered"]
