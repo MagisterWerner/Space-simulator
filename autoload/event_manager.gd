@@ -39,6 +39,78 @@ var _dynamic_signals = []
 func _ready():
 	process_mode = Node.PROCESS_MODE_ALWAYS
 
+# PLAYER EVENT EMITTERS
+
+func emit_player_position_changed(position: Vector2) -> void:
+	player_position_changed.emit(position)
+
+func emit_player_damaged(amount: float, source = null) -> void:
+	player_damaged.emit(amount, source)
+
+func emit_player_died() -> void:
+	player_died.emit()
+
+func emit_player_respawned(position: Vector2) -> void:
+	player_respawned.emit(position)
+
+# GAMEPLAY EVENT EMITTERS
+
+func emit_game_started() -> void:
+	game_started.emit()
+
+func emit_game_paused() -> void:
+	game_paused.emit()
+
+func emit_game_resumed() -> void:
+	game_resumed.emit()
+
+func emit_game_over() -> void:
+	game_over.emit()
+
+func emit_game_restarted() -> void:
+	game_restarted.emit()
+
+# ENTITY EVENT EMITTERS
+
+func emit_entity_spawned(entity: Node, entity_type: String) -> void:
+	entity_spawned.emit(entity, entity_type)
+
+func emit_entity_despawned(entity: Node, entity_type: String) -> void:
+	entity_despawned.emit(entity, entity_type)
+
+func emit_enemy_destroyed(enemy: Node, destroyer: Node) -> void:
+	enemy_destroyed.emit(enemy, destroyer)
+
+func emit_asteroid_mined(asteroid: Node, player: Node) -> void:
+	asteroid_mined.emit(asteroid, player)
+
+# RESOURCE EVENT EMITTERS
+
+func emit_credits_changed(new_amount: int) -> void:
+	credits_changed.emit(new_amount)
+
+func emit_resource_collected(resource_id: int, amount: int) -> void:
+	resource_collected.emit(resource_id, amount)
+
+func emit_trade_completed(station: Node, resources_bought: Dictionary, resources_sold: Dictionary, total_cost: float) -> void:
+	trade_completed.emit(station, resources_bought, resources_sold, total_cost)
+
+# UPGRADE EVENT EMITTERS
+
+func emit_upgrade_purchased(upgrade, component, cost: float = 0.0) -> void:
+	upgrade_purchased.emit(upgrade, component, cost)
+
+func emit_upgrade_removed(upgrade, component) -> void:
+	upgrade_removed.emit(upgrade, component)
+
+# UI EVENT EMITTERS
+
+func emit_ui_opened(ui_type: String) -> void:
+	ui_opened.emit(ui_type)
+
+func emit_ui_closed(ui_type: String) -> void:
+	ui_closed.emit(ui_type)
+
 # HELPER METHODS
 
 # Safe connect with error checking
