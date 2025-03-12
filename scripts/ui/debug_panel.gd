@@ -101,7 +101,7 @@ func _initialize_toggle_states() -> void:
 	ui_toggle.button_pressed = game_settings.debug_ui
 	components_toggle.button_pressed = game_settings.debug_components
 	logging_toggle.button_pressed = game_settings.debug_logging
-	grid_toggle.button_pressed = game_settings.draw_debug_grid
+	grid_toggle.button_pressed = game_settings.debug_grid
 	
 	# Update toggle enabled states based on master toggle
 	_update_toggle_enabled_states()
@@ -221,7 +221,7 @@ func _on_grid_toggle(toggled: bool) -> void:
 	if _updating_toggles or not game_settings:
 		return
 	
-	game_settings.draw_debug_grid = toggled
+	game_settings.debug_grid = toggled
 
 # Toggle all button handler
 func _on_toggle_all_pressed() -> void:
@@ -239,7 +239,7 @@ func _on_toggle_all_pressed() -> void:
 		game_settings.debug_ui or
 		game_settings.debug_components or
 		game_settings.debug_logging or
-		game_settings.draw_debug_grid
+		game_settings.debug_grid
 	)
 	
 	var new_state = not any_on
@@ -268,7 +268,7 @@ func _on_toggle_all_pressed() -> void:
 	game_settings.debug_ui = new_state
 	game_settings.debug_components = new_state
 	game_settings.debug_logging = new_state
-	game_settings.draw_debug_grid = new_state
+	game_settings.debug_grid = new_state
 	
 	# Update enabled states
 	_update_toggle_enabled_states()

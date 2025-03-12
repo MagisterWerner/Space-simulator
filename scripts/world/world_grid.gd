@@ -48,7 +48,7 @@ func _initialize_settings() -> void:
 		_line_color = game_settings.grid_color
 		_line_width = game_settings.grid_line_width
 		_opacity = game_settings.grid_opacity
-		_draw_debug = game_settings.draw_debug_grid
+		_draw_debug = game_settings.debug_grid
 		
 		# Calculate total grid size
 		grid_total_size = Vector2(_cell_size, _cell_size) * _grid_size
@@ -57,8 +57,12 @@ func _initialize_settings() -> void:
 		position = -grid_total_size / 2.0
 		
 		# Connect to settings changes if available
-		if game_settings.has_signal("settings_changed") and not game_settings.is_connected("settings_changed", _on_settings_changed):
-			game_settings.connect("settings_changed", _on_settings_changed)
+		if game_settings.has_signal("setting_changed") and not game_settings.is_connected("setting_changed", _on_settings_changed):
+			game_settings.connect("setting_changed", _on_settings_changed)
+			
+		# Connect to debug settings changes
+		if game_settings.has_signal("debug_settings_changed") and not game_settings.is_connected("debug_settings_changed", _on_debug_settings_changed):
+			game_settings.connect("debug_settings_changed", _on_debug_settings_changed)
 	else:
 		# Default settings
 		_cell_size = 1024
@@ -66,24 +70,46 @@ func _initialize_settings() -> void:
 		grid_total_size = Vector2(_cell_size, _cell_size) * _grid_size
 		position = -grid_total_size / 2.0
 
-func _on_settings_changed() -> void:
-	if game_settings:
-		# Update cached settings
-		_cell_size = game_settings.grid_cell_size
-		_grid_size = game_settings.grid_size
-		_line_color = game_settings.grid_color
-		_line_width = game_settings.grid_line_width
-		_opacity = game_settings.grid_opacity
-		_draw_debug = game_settings.draw_debug_grid
+func _on_settings_changed(category, key, value) -> void:
+	if not game_settings:
+		return
 		
-		# Update grid size
-		grid_total_size = Vector2(_cell_size, _cell_size) * _grid_size
-		position = -grid_total_size / 2.0
+	# Update cached settings based on the specific setting that changed
+	match key:
+		"grid_cell_size":
+			_cell_size = value
+			# Update grid size
+			grid_total_size = Vector2(_cell_size, _cell_size) * _grid_size
+			position = -grid_total_size / 2.0
+			# Recalculate grid positions
+			_precalculate_grid_positions()
+			
+		"grid_size":
+			_grid_size = value
+			# Update grid size
+			grid_total_size = Vector2(_cell_size, _cell_size) * _grid_size
+			position = -grid_total_size / 2.0
+			# Recalculate grid positions
+			_precalculate_grid_positions()
+			
+		"grid_color":
+			_line_color = value
+			
+		"grid_line_width":
+			_line_width = value
+			
+		"grid_opacity":
+			_opacity = value
+	
+	_redraw_needed = true
+
+func _on_debug_settings_changed(debug_settings: Dictionary) -> void:
+	if not game_settings:
+		return
 		
-		# Recalculate grid positions
-		_precalculate_grid_positions()
-		
-		_redraw_needed = true
+	# Update debug state
+	_draw_debug = game_settings.debug_mode and debug_settings.get("grid", false)
+	_redraw_needed = true
 
 func _precalculate_grid_positions() -> void:
 	_cell_world_positions.clear()
