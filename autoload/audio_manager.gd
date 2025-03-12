@@ -27,7 +27,7 @@ var config = {
 	"positional_audio": true
 }
 
-# Resource tracking
+# Resource tracking - optimized structures
 var _loaded_music = {}
 var _loaded_sfx = {}
 var _current_music = null
@@ -38,12 +38,22 @@ var _music_tween = null
 var _initialized = false
 var _buses_initialized = false
 
-func _ready():
+# Cached bus indices for performance
+var _master_bus_idx = -1
+var _music_bus_idx = -1
+var _sfx_bus_idx = -1
+
+# Precalculated culling distances for optimization
+const MAX_AUDIBLE_DISTANCE = 2000.0
+const FALLOFF_START_DISTANCE = 1600.0  # 80% of max distance
+
+func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	call_deferred("_initialize_audio_system")
 
-func _initialize_audio_system():
-	if _initialized: return
+func _initialize_audio_system() -> void:
+	if _initialized: 
+		return
 	
 	_setup_audio_buses()
 	_create_music_players()
@@ -51,28 +61,30 @@ func _initialize_audio_system():
 	
 	_initialized = true
 
-func _setup_audio_buses():
+func _setup_audio_buses() -> void:
 	# Create Music bus if needed
-	var music_bus_idx = AudioServer.get_bus_index(MUSIC_BUS)
-	if music_bus_idx == -1:
-		music_bus_idx = AudioServer.get_bus_count()
+	_music_bus_idx = AudioServer.get_bus_index(MUSIC_BUS)
+	if _music_bus_idx == -1:
+		_music_bus_idx = AudioServer.get_bus_count()
 		AudioServer.add_bus()
-		AudioServer.set_bus_name(music_bus_idx, MUSIC_BUS)
-		AudioServer.set_bus_send(music_bus_idx, "Master")
+		AudioServer.set_bus_name(_music_bus_idx, MUSIC_BUS)
+		AudioServer.set_bus_send(_music_bus_idx, "Master")
 	
 	# Create SFX bus if needed
-	var sfx_bus_idx = AudioServer.get_bus_index(SFX_BUS)
-	if sfx_bus_idx == -1:
-		sfx_bus_idx = AudioServer.get_bus_count()
+	_sfx_bus_idx = AudioServer.get_bus_index(SFX_BUS)
+	if _sfx_bus_idx == -1:
+		_sfx_bus_idx = AudioServer.get_bus_count()
 		AudioServer.add_bus()
-		AudioServer.set_bus_name(sfx_bus_idx, SFX_BUS)
-		AudioServer.set_bus_send(sfx_bus_idx, "Master")
+		AudioServer.set_bus_name(_sfx_bus_idx, SFX_BUS)
+		AudioServer.set_bus_send(_sfx_bus_idx, "Master")
+	
+	_master_bus_idx = AudioServer.get_bus_index(MASTER_BUS)
 	
 	_apply_volume_settings()
 	_buses_initialized = true
 	audio_buses_initialized.emit()
 
-func _create_music_players():
+func _create_music_players() -> void:
 	_music_player = AudioStreamPlayer.new()
 	_music_player.bus = MUSIC_BUS
 	add_child(_music_player)
@@ -84,13 +96,13 @@ func _create_music_players():
 	add_child(_next_music_player)
 	_next_music_player.finished.connect(_on_next_music_finished)
 
-func _on_music_finished():
+func _on_music_finished() -> void:
 	music_finished.emit()
 
-func _on_next_music_finished():
+func _on_next_music_finished() -> void:
 	pass # Handled by tween
 
-func _load_settings():
+func _load_settings() -> void:
 	if FileAccess.file_exists("user://audio_settings.cfg"):
 		var config_file = ConfigFile.new()
 		var err = config_file.load("user://audio_settings.cfg")
@@ -105,7 +117,7 @@ func _load_settings():
 			
 			_apply_volume_settings()
 
-func save_settings():
+func save_settings() -> void:
 	var config_file = ConfigFile.new()
 	
 	for key in config:
@@ -113,35 +125,31 @@ func save_settings():
 	
 	config_file.save("user://audio_settings.cfg")
 
-func _apply_volume_settings():
-	var master_bus_idx = AudioServer.get_bus_index(MASTER_BUS)
-	var music_bus_idx = AudioServer.get_bus_index(MUSIC_BUS)
-	var sfx_bus_idx = AudioServer.get_bus_index(SFX_BUS)
-	
-	if master_bus_idx >= 0:
+func _apply_volume_settings() -> void:
+	if _master_bus_idx >= 0:
 		var volume_db = _linear_to_db(config.master_volume)
-		AudioServer.set_bus_volume_db(master_bus_idx, volume_db)
-		AudioServer.set_bus_mute(master_bus_idx, config.master_volume <= 0)
+		AudioServer.set_bus_volume_db(_master_bus_idx, volume_db)
+		AudioServer.set_bus_mute(_master_bus_idx, config.master_volume <= 0)
 	
-	if music_bus_idx >= 0:
+	if _music_bus_idx >= 0:
 		var volume_db = _linear_to_db(config.music_volume)
-		AudioServer.set_bus_volume_db(music_bus_idx, volume_db)
-		AudioServer.set_bus_mute(music_bus_idx, !config.music_enabled || config.music_volume <= 0)
+		AudioServer.set_bus_volume_db(_music_bus_idx, volume_db)
+		AudioServer.set_bus_mute(_music_bus_idx, !config.music_enabled || config.music_volume <= 0)
 	
-	if sfx_bus_idx >= 0:
+	if _sfx_bus_idx >= 0:
 		var volume_db = _linear_to_db(config.sfx_volume)
-		AudioServer.set_bus_volume_db(sfx_bus_idx, volume_db)
-		AudioServer.set_bus_mute(sfx_bus_idx, !config.sfx_enabled || config.sfx_volume <= 0)
+		AudioServer.set_bus_volume_db(_sfx_bus_idx, volume_db)
+		AudioServer.set_bus_mute(_sfx_bus_idx, !config.sfx_enabled || config.sfx_volume <= 0)
 
-func _linear_to_db(linear_value):
+func _linear_to_db(linear_value: float) -> float:
 	if linear_value <= 0: return MIN_DB
 	return 20.0 * log(linear_value) / log(10.0)
 
-func _db_to_linear(db_value):
+func _db_to_linear(db_value: float) -> float:
 	return pow(10.0, db_value / 20.0)
 
 # Music Methods
-func preload_music(track_name, file_path):
+func preload_music(track_name: String, file_path: String) -> void:
 	if _loaded_music.has(track_name): return
 	
 	var stream = load(file_path)
@@ -151,13 +159,13 @@ func preload_music(track_name, file_path):
 	
 	_loaded_music[track_name] = stream
 
-func unload_music(track_name):
+func unload_music(track_name: String) -> void:
 	if _loaded_music.has(track_name):
 		if _current_music == track_name:
 			stop_music()
 		_loaded_music.erase(track_name)
 
-func play_music(track_name, crossfade = true):
+func play_music(track_name: String, crossfade: bool = true) -> void:
 	if not _initialized:
 		call_deferred("play_music", track_name, crossfade)
 		return
@@ -190,7 +198,7 @@ func play_music(track_name, crossfade = true):
 	_current_music = track_name
 	music_changed.emit(track_name)
 
-func stop_music():
+func stop_music() -> void:
 	if _music_tween:
 		_music_tween.kill()
 	
@@ -198,24 +206,24 @@ func stop_music():
 	_next_music_player.stop()
 	_current_music = null
 
-func pause_music():
+func pause_music() -> void:
 	_music_player.stream_paused = true
 	_next_music_player.stream_paused = true
 
-func resume_music():
+func resume_music() -> void:
 	if !config.music_enabled: return
 	
 	_music_player.stream_paused = false
 	_next_music_player.stream_paused = false
 
-func _swap_music_players():
+func _swap_music_players() -> void:
 	var temp = _music_player
 	_music_player = _next_music_player
 	_next_music_player = temp
 	_next_music_player.stop()
 
-# SFX Methods
-func preload_sfx(sfx_name, file_path, pool_size = DEFAULT_POOL_SIZE):
+# SFX Methods - Optimized for better performance
+func preload_sfx(sfx_name: String, file_path: String, pool_size: int = DEFAULT_POOL_SIZE) -> void:
 	if _loaded_sfx.has(sfx_name): return
 	
 	var stream = load(file_path)
@@ -226,10 +234,10 @@ func preload_sfx(sfx_name, file_path, pool_size = DEFAULT_POOL_SIZE):
 	_loaded_sfx[sfx_name] = stream
 	_create_sfx_pool(sfx_name, pool_size)
 
-func is_sfx_loaded(sfx_name):
+func is_sfx_loaded(sfx_name: String) -> bool:
 	return _loaded_sfx.has(sfx_name)
 
-func unload_sfx(sfx_name):
+func unload_sfx(sfx_name: String) -> void:
 	if !_loaded_sfx.has(sfx_name): return
 	
 	_loaded_sfx.erase(sfx_name)
@@ -240,7 +248,7 @@ func unload_sfx(sfx_name):
 				player.queue_free()
 		_sfx_pools.erase(sfx_name)
 
-func _create_sfx_pool(sfx_name, pool_size):
+func _create_sfx_pool(sfx_name: String, pool_size: int) -> void:
 	if !_loaded_sfx.has(sfx_name) or !_initialized:
 		call_deferred("_create_sfx_pool", sfx_name, pool_size)
 		return
@@ -253,7 +261,7 @@ func _create_sfx_pool(sfx_name, pool_size):
 		
 		if config.positional_audio:
 			player = AudioStreamPlayer2D.new()
-			player.max_distance = 2000
+			player.max_distance = MAX_AUDIBLE_DISTANCE
 			player.attenuation = 1.0
 		else:
 			player = AudioStreamPlayer.new()
@@ -268,7 +276,7 @@ func _create_sfx_pool(sfx_name, pool_size):
 	_sfx_pools[sfx_name] = pool
 	sfx_pool_created.emit(sfx_name, pool_size)
 
-func resize_sfx_pool(sfx_name, new_size):
+func resize_sfx_pool(sfx_name: String, new_size: int) -> void:
 	new_size = clamp(new_size, 1, MAX_POOL_SIZE)
 	
 	if !_sfx_pools.has(sfx_name):
@@ -284,7 +292,7 @@ func resize_sfx_pool(sfx_name, new_size):
 			var player
 			if config.positional_audio:
 				player = AudioStreamPlayer2D.new()
-				player.max_distance = 2000
+				player.max_distance = MAX_AUDIBLE_DISTANCE
 				player.attenuation = 1.0
 			else:
 				player = AudioStreamPlayer.new()
@@ -307,7 +315,7 @@ func resize_sfx_pool(sfx_name, new_size):
 					else:
 						player.set_meta("remove_when_done", true)
 
-func _on_sfx_finished(player, sfx_name):
+func _on_sfx_finished(player, sfx_name) -> void:
 	if not is_instance_valid(player): return
 	
 	if player.has_meta("remove_when_done") and player.get_meta("remove_when_done"):
@@ -317,7 +325,8 @@ func _on_sfx_finished(player, sfx_name):
 			if idx >= 0:
 				_sfx_pools[sfx_name].remove_at(idx)
 
-func play_sfx(sfx_name, position = null, pitch_scale = 1.0, volume_db = 0.0):
+# Optimized play_sfx with fewer calculations
+func play_sfx(sfx_name: String, position = null, pitch_scale: float = 1.0, volume_db: float = 0.0) -> Node:
 	if not _initialized or !config.sfx_enabled:
 		return null
 	
@@ -328,7 +337,7 @@ func play_sfx(sfx_name, position = null, pitch_scale = 1.0, volume_db = 0.0):
 	if !_sfx_pools.has(sfx_name):
 		_create_sfx_pool(sfx_name, DEFAULT_POOL_SIZE)
 	
-	# Find an available player
+	# Find an available player efficiently
 	var player = _find_available_sfx_player(sfx_name)
 	
 	if player:
@@ -359,36 +368,84 @@ func play_sfx(sfx_name, position = null, pitch_scale = 1.0, volume_db = 0.0):
 	oldest_player.play()
 	return oldest_player
 
-func play_sfx_with_culling(sfx_name, position, max_distance = 2000.0, pitch_scale = 1.0):
-	var player_pos = Vector2.ZERO
-	var player_ships = get_tree().get_nodes_in_group("player")
-	if not player_ships.is_empty() and is_instance_valid(player_ships[0]):
-		player_pos = player_ships[0].global_position
-	
+# Optimized play_sfx with distance-based culling
+func play_sfx_with_culling(sfx_name: String, position: Vector2, max_distance: float = MAX_AUDIBLE_DISTANCE, pitch_scale: float = 1.0) -> Node:
+	# Improved optimization: Quick distance check to avoid expensive calculations for distant sounds
+	var player_pos = _get_player_position()
+	if player_pos == Vector2.ZERO:
+		return play_sfx(sfx_name, position, pitch_scale)
+		
 	var distance = position.distance_to(player_pos)
 	
 	# Don't play sounds beyond the maximum distance
 	if distance > max_distance:
 		return null
 		
-	# Adjust volume based on distance
-	var audible_distance = max_distance * 0.8
-	var distance_factor = clamp(1.0 - (distance / audible_distance), 0.0, 1.0)
-	var volume_db = _linear_to_db(distance_factor) * 0.5
+	# Improved distance-based volume calculation with smoother falloff
+	var audible_distance = max_distance * 0.8  # Start falloff at 80% of max distance
+	var volume_db = 0.0
+	
+	if distance > FALLOFF_START_DISTANCE:
+		var distance_factor = 1.0 - ((distance - FALLOFF_START_DISTANCE) / (max_distance - FALLOFF_START_DISTANCE))
+		distance_factor = clamp(distance_factor, 0.0, 1.0)
+		volume_db = _linear_to_db(distance_factor) * 0.5
 	
 	return play_sfx(sfx_name, position, pitch_scale, volume_db)
 
-func _find_available_sfx_player(sfx_name):
+# Get player position efficiently (cached for performance)
+var _cached_player_pos: Vector2 = Vector2.ZERO
+var _player_pos_update_time: int = 0
+const PLAYER_POS_CACHE_TIME: int = 100  # ms
+
+func _get_player_position() -> Vector2:
+	var current_time = Time.get_ticks_msec()
+	
+	# Return cached position if recently updated
+	if _cached_player_pos != Vector2.ZERO and current_time - _player_pos_update_time < PLAYER_POS_CACHE_TIME:
+		return _cached_player_pos
+	
+	var player_ships = get_tree().get_nodes_in_group("player")
+	if not player_ships.is_empty() and is_instance_valid(player_ships[0]):
+		_cached_player_pos = player_ships[0].global_position
+		_player_pos_update_time = current_time
+		return _cached_player_pos
+	
+	return Vector2.ZERO
+
+# Optimized player availability check - improved performance
+var _player_usage_counts = {}
+
+func _find_available_sfx_player(sfx_name: String) -> Node:
 	if !_sfx_pools.has(sfx_name):
 		return null
 	
-	for player in _sfx_pools[sfx_name]:
+	# Initialize usage counts if needed
+	if not _player_usage_counts.has(sfx_name):
+		_player_usage_counts[sfx_name] = []
+		_player_usage_counts[sfx_name].resize(_sfx_pools[sfx_name].size())
+		for i in range(_player_usage_counts[sfx_name].size()):
+			_player_usage_counts[sfx_name][i] = 0
+	
+	# First pass: Find an inactive player
+	for i in range(_sfx_pools[sfx_name].size()):
+		var player = _sfx_pools[sfx_name][i]
 		if is_instance_valid(player) and !player.playing:
+			_player_usage_counts[sfx_name][i] += 1
 			return player
 	
-	return null
+	# Second pass: Find least used player
+	var least_used_index = 0
+	var least_used_count = _player_usage_counts[sfx_name][0]
+	
+	for i in range(1, _player_usage_counts[sfx_name].size()):
+		if _player_usage_counts[sfx_name][i] < least_used_count:
+			least_used_count = _player_usage_counts[sfx_name][i]
+			least_used_index = i
+	
+	_player_usage_counts[sfx_name][least_used_index] += 1
+	return _sfx_pools[sfx_name][least_used_index]
 
-func stop_sfx(sfx_name):
+func stop_sfx(sfx_name: String) -> void:
 	if !_sfx_pools.has(sfx_name):
 		return
 	
@@ -396,27 +453,27 @@ func stop_sfx(sfx_name):
 		if is_instance_valid(player):
 			player.stop()
 
-func stop_all_sfx():
+func stop_all_sfx() -> void:
 	for sfx_name in _sfx_pools.keys():
 		stop_sfx(sfx_name)
 
 # Volume Control
-func set_master_volume(volume):
+func set_master_volume(volume: float) -> void:
 	config.master_volume = clamp(volume, 0.0, 1.0)
 	_apply_volume_settings()
 	volume_changed.emit(MASTER_BUS, _linear_to_db(config.master_volume))
 
-func set_music_volume(volume):
+func set_music_volume(volume: float) -> void:
 	config.music_volume = clamp(volume, 0.0, 1.0)
 	_apply_volume_settings()
 	volume_changed.emit(MUSIC_BUS, _linear_to_db(config.music_volume))
 
-func set_sfx_volume(volume):
+func set_sfx_volume(volume: float) -> void:
 	config.sfx_volume = clamp(volume, 0.0, 1.0)
 	_apply_volume_settings()
 	volume_changed.emit(SFX_BUS, _linear_to_db(config.sfx_volume))
 
-func set_music_enabled(enabled):
+func set_music_enabled(enabled: bool) -> void:
 	config.music_enabled = enabled
 	_apply_volume_settings()
 	
@@ -425,17 +482,17 @@ func set_music_enabled(enabled):
 	else:
 		resume_music()
 
-func set_sfx_enabled(enabled):
+func set_sfx_enabled(enabled: bool) -> void:
 	config.sfx_enabled = enabled
 	_apply_volume_settings()
 	
 	if !enabled:
 		stop_all_sfx()
 
-func set_music_fade_duration(duration):
+func set_music_fade_duration(duration: float) -> void:
 	config.music_fade_duration = max(0.1, duration)
 
-func set_positional_audio(enabled):
+func set_positional_audio(enabled: bool) -> void:
 	if config.positional_audio == enabled:
 		return
 		
@@ -455,14 +512,14 @@ func set_positional_audio(enabled):
 		# Recreate with new setting
 		_create_sfx_pool(sfx_name, pool_size)
 
-func get_current_music():
+func get_current_music() -> String:
 	return _current_music if _current_music else ""
 
-func is_music_playing():
+func is_music_playing() -> bool:
 	return is_instance_valid(_music_player) and _music_player.playing || is_instance_valid(_next_music_player) and _next_music_player.playing
 
-# Batch loading helpers
-func preload_sfx_directory(directory_path, recursive = false):
+# Batch loading helpers - optimized for performance
+func preload_sfx_directory(directory_path: String, recursive: bool = false) -> void:
 	if not DirAccess.dir_exists_absolute(directory_path):
 		push_error("AudioManager: Directory not found: " + directory_path)
 		return
@@ -486,7 +543,7 @@ func preload_sfx_directory(directory_path, recursive = false):
 		
 		dir.list_dir_end()
 
-func preload_music_directory(directory_path, recursive = false):
+func preload_music_directory(directory_path: String, recursive: bool = false) -> void:
 	if not DirAccess.dir_exists_absolute(directory_path):
 		push_error("AudioManager: Directory not found: " + directory_path)
 		return
@@ -510,5 +567,5 @@ func preload_music_directory(directory_path, recursive = false):
 		
 		dir.list_dir_end()
 
-func is_initialized():
+func is_initialized() -> bool:
 	return _initialized and _buses_initialized

@@ -9,14 +9,14 @@ var _value_cache = {}
 var _max_cache_size = 1000
 
 # References and flags
-var game_settings = null
-var debug_mode = false
-var enable_cache = true
-var is_initialized = false
+var game_settings: GameSettings = null
+var debug_mode: bool = false
+var enable_cache: bool = true
+var is_initialized: bool = false
 
 # Seed management
-const DEFAULT_SEED = 0
-var _current_seed = DEFAULT_SEED
+const DEFAULT_SEED: int = 0
+var _current_seed: int = DEFAULT_SEED
 
 # Statistics
 var _stats = {
@@ -26,10 +26,10 @@ var _stats = {
 	"last_cache_clear": 0
 }
 
-func _ready():
+func _ready() -> void:
 	call_deferred("_find_game_settings")
 
-func _find_game_settings():
+func _find_game_settings() -> void:
 	await get_tree().process_frame
 	
 	var main_scene = get_tree().current_scene
@@ -54,19 +54,19 @@ func _find_game_settings():
 	_stats.last_cache_clear = Time.get_ticks_msec()
 
 # Setting handlers
-func _on_debug_settings_changed(debug_settings):
+func _on_debug_settings_changed(debug_settings: Dictionary) -> void:
 	debug_mode = debug_settings.get("master", false) and debug_settings.get("seed_manager", false)
 
-func _on_game_settings_seed_changed(new_seed):
+func _on_game_settings_seed_changed(new_seed: int) -> void:
 	_clear_caches()
 	_current_seed = new_seed
 	seed_changed.emit(new_seed)
 
 # Seed management
-func get_seed():
+func get_seed() -> int:
 	return _current_seed
 
-func set_seed(new_seed):
+func set_seed(new_seed: int) -> void:
 	if _current_seed == new_seed:
 		return
 		
@@ -74,18 +74,18 @@ func set_seed(new_seed):
 	_clear_caches()
 	seed_changed.emit(new_seed)
 
-func get_seed_hash():
+func get_seed_hash() -> String:
 	if game_settings:
 		return game_settings.seed_hash
 	return _generate_seed_hash(_current_seed)
 
 # Debug tools
-func set_debug_mode(enable):
+func set_debug_mode(enable: bool) -> void:
 	debug_mode = enable
 	if debug_mode:
 		print_cache_stats()
 
-func print_cache_stats():
+func print_cache_stats() -> void:
 	if not debug_mode:
 		return
 		
@@ -105,7 +105,7 @@ func print_cache_stats():
 # CORE RANDOM GENERATION METHODS
 
 # Get a consistent random float value
-func get_random_value(object_id, min_val, max_val, object_subid = 0):
+func get_random_value(object_id: int, min_val: float, max_val: float, object_subid: int = 0) -> float:
 	_stats.total_requests += 1
 	
 	# Simplified cache key
@@ -132,7 +132,7 @@ func get_random_value(object_id, min_val, max_val, object_subid = 0):
 	return result
 
 # Get a random integer in a given range
-func get_random_int(object_id, min_val, max_val, object_subid = 0):
+func get_random_int(object_id: int, min_val: int, max_val: int, object_subid: int = 0) -> int:
 	_stats.total_requests += 1
 	
 	var cache_key = str(object_id) + "_" + str(object_subid) + "_i_" + str(min_val) + "_" + str(max_val)
@@ -157,7 +157,7 @@ func get_random_int(object_id, min_val, max_val, object_subid = 0):
 	return result
 
 # Get a random boolean based on probability
-func get_random_bool(object_id, probability = 0.5, object_subid = 0):
+func get_random_bool(object_id: int, probability: float = 0.5, object_subid: int = 0) -> bool:
 	_stats.total_requests += 1
 	
 	var cache_key = str(object_id) + "_" + str(object_subid) + "_b_" + str(probability)
@@ -182,7 +182,7 @@ func get_random_bool(object_id, probability = 0.5, object_subid = 0):
 	return result
 
 # Get a random point in a circle with given radius
-func get_random_point_in_circle(object_id, radius, object_subid = 0):
+func get_random_point_in_circle(object_id: int, radius: float, object_subid: int = 0) -> Vector2:
 	_stats.total_requests += 1
 	
 	var cache_key = str(object_id) + "_" + str(object_subid) + "_c_" + str(radius)
@@ -210,7 +210,7 @@ func get_random_point_in_circle(object_id, radius, object_subid = 0):
 	return result
 
 # Get a 2D noise value for terrain generation
-func get_2d_noise(x, y, scale = 1.0, octaves = 4, object_id = 0):
+func get_2d_noise(x: float, y: float, scale: float = 1.0, octaves: int = 4, object_id: int = 0) -> float:
 	var noise = _get_noise_generator(object_id)
 	
 	noise.seed = _current_seed + object_id
@@ -223,7 +223,7 @@ func get_2d_noise(x, y, scale = 1.0, octaves = 4, object_id = 0):
 # UTILITY METHODS
 
 # Generate weighted random selection from array
-func get_weighted_element(object_id, elements, weights = []):
+func get_weighted_element(object_id: int, elements: Array, weights: Array = []) -> Variant:
 	if elements.is_empty():
 		return null
 		
@@ -248,12 +248,12 @@ func get_weighted_element(object_id, elements, weights = []):
 	return elements.back()
 
 # Get a random value for visual effects
-func get_visual_random_value(min_val, max_val):
+func get_visual_random_value(min_val: float, max_val: float) -> float:
 	var time_seed = (Time.get_ticks_msec() / 100) % 10000
 	return get_random_value(time_seed, min_val, max_val)
 
 # Get a visual random Vector2
-func get_visual_random_vector(min_val, max_val):
+func get_visual_random_vector(min_val: float, max_val: float) -> Vector2:
 	var time_seed = (Time.get_ticks_msec() / 100) % 10000
 	return Vector2(
 		get_random_value(time_seed, min_val, max_val),
@@ -261,7 +261,7 @@ func get_visual_random_vector(min_val, max_val):
 	)
 
 # Deterministically shuffle an array
-func shuffle_array(array, object_id = 0):
+func shuffle_array(array: Array, object_id: int = 0) -> void:
 	if array.size() <= 1:
 		return
 		
@@ -277,7 +277,7 @@ func shuffle_array(array, object_id = 0):
 # INTERNAL HELPERS
 
 # Get or create a noise generator
-func _get_noise_generator(object_id):
+func _get_noise_generator(object_id: int) -> FastNoiseLite:
 	if not _noise_generators.has(object_id):
 		var noise = FastNoiseLite.new()
 		noise.seed = _current_seed + object_id
@@ -286,7 +286,7 @@ func _get_noise_generator(object_id):
 	return _noise_generators[object_id]
 
 # Clear caches
-func _clear_caches():
+func _clear_caches() -> void:
 	_value_cache.clear()
 	_noise_generators.clear()
 	
@@ -316,7 +316,7 @@ func _clear_caches():
 					print("SeedManager: Found PlanetSpawnerBase class but couldn't clear texture cache (no instances)")
 
 # Generate a readable hash string from the seed
-func _generate_seed_hash(seed_value):
+func _generate_seed_hash(seed_value: int) -> String:
 	var characters = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 	var hash_string = ""
 	var temp_seed = seed_value
