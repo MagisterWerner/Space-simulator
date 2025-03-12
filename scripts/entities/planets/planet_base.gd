@@ -61,6 +61,8 @@ var _moon_params = {
 		MoonType.ICY: Color(0.5, 0.8, 1.0, 0.4)
 	},
 	"z_indices": {
+		# Ensure all moon z-indices are negative to stay behind the player
+		# but still allow for depth ordering between moons
 		MoonType.VOLCANIC: -6,
 		MoonType.ROCKY: -7,
 		MoonType.ICY: -8
@@ -188,11 +190,16 @@ func _update_moons(_delta: float) -> void:
 		
 		moon.position = orbit_position
 		
+		# Set z-index to keep moons behind player but respect planet orbit
 		if is_gaseous_planet:
-			moon.z_index = _get_moon_property(moon, "z_index")
+			# Keep the relative z-index for gaseous planets but ensure it's negative
+			var moon_z = _get_moon_property(moon, "z_index")
+			moon.z_as_relative = true
+			moon.z_index = moon_z
 		else:
-			moon.z_as_relative = false
-			moon.z_index = sin(moon_angle) > 0 if 50 else -50
+			# For terran planets, use a smaller z-index range to properly orbit
+			moon.z_as_relative = true  # Make z-index relative to parent
+			moon.z_index = sin(moon_angle) > 0 if -2 else -12  # Much smaller z-index values
 
 func calculate_orbit_position(moon, angle: float) -> Vector2:
 	if is_gaseous_planet:
