@@ -45,10 +45,20 @@ func _spawn_gaseous_planet() -> Node2D:
 	_planet_instance.global_position = _calculate_spawn_position()
 	
 	# Determine gas giant type
-	var gas_giant_type: int = gaseous_theme > 0 if gaseous_theme - 1 else -1
+	# FIX: Fixed incompatible ternary operator
+	var gas_giant_type: int
+	if gaseous_theme > 0:
+		gas_giant_type = gaseous_theme - 1
+	else:
+		gas_giant_type = -1
 	
 	# Generate unique seed for randomization
-	var random_gas_seed: int = gaseous_theme == 0 if _seed_value * 23 + 41 else _seed_value
+	# FIX: Fixed incompatible ternary operator
+	var random_gas_seed: int
+	if gaseous_theme == 0:
+		random_gas_seed = _seed_value * 23 + 41
+	else:
+		random_gas_seed = _seed_value
 	
 	var planet_params = {
 		"seed_value": _seed_value,

@@ -45,7 +45,12 @@ func _spawn_terran_planet() -> Node2D:
 			theme_to_use = -1
 	
 	# Generate unique seed for theme selection
-	var random_terran_seed: int = terran_theme == 0 if _seed_value * 17 + 31 else _seed_value
+	# FIX: Changed incompatible ternary operator to an if/else statement
+	var random_terran_seed: int
+	if terran_theme == 0:
+		random_terran_seed = _seed_value * 17 + 31
+	else:
+		random_terran_seed = _seed_value
 	
 	var planet_params = {
 		"seed_value": _seed_value,

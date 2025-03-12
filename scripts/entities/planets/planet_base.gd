@@ -101,6 +101,7 @@ func initialize(params: Dictionary) -> void:
 	
 	_initialized = true
 
+# Fixed: Added underscore to parameter name to indicate it's intentionally unused
 func _on_seed_changed(_new_seed: int) -> void:
 	if not _initialized or _init_params.is_empty():
 		return

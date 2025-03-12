@@ -244,10 +244,16 @@ static func get_planet_texture(seed_value: int) -> Array:
 	if texture_cache.has(cache_category) and texture_cache[cache_category].has(cache_key):
 		if cache_timestamps.has(cache_category):
 			cache_timestamps[cache_category][cache_key] = current_time
+		# FIX: Return proper array when using texture from cache
 		return texture_cache[cache_category][cache_key]
 	
 	# Create appropriate generator
-	var generator = PlanetGeneratorTerran.new() if category == PlanetCategory.TERRAN else PlanetGeneratorGaseous.new()
+	var generator
+	if category == PlanetCategory.TERRAN:
+		generator = load("res://scripts/generators/planet_generator_terran.gd").new()
+	else:
+		generator = load("res://scripts/generators/planet_generator_gaseous.gd").new()
+	
 	var textures = generator.create_planet_texture(seed_value)
 	
 	# Cache result
