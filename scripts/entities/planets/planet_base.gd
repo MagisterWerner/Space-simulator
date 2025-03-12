@@ -247,37 +247,43 @@ func _create_moons() -> void:
 
 func _calculate_moon_distribution(num_moons: int) -> Dictionary:
 	if is_gaseous_planet:
-		# Calculate better distribution based on number of moons
-		var volcanic_count = min(2, int(ceil(num_moons / 3.0)))
-		var rocky_count = min(2, int(ceil(num_moons / 3.0)))
-		var icy_count = min(2, int(ceil(num_moons / 3.0)))
+		var volcanic_count = 1
+		var rocky_count = 1
+		var icy_count = 1
 		
-		# Adjust to ensure total matches num_moons
-		var total = volcanic_count + rocky_count + icy_count
+		var remaining = num_moons - 3
 		
-		# If we have too many, reduce from least interesting moons first
-		while total > num_moons:
-			if icy_count > 1:
-				icy_count -= 1
-			elif rocky_count > 1:
-				rocky_count -= 1
-			elif volcanic_count > 1:
-				volcanic_count -= 1
-			else:
-				# Shouldn't reach here, but just in case
-				icy_count = max(0, icy_count - 1)
-			total = volcanic_count + rocky_count + icy_count
-		
-		# If we have too few, add to most visually interesting moons first
-		while total < num_moons:
-			if volcanic_count < 2:
-				volcanic_count += 1
-			elif rocky_count < 2:
-				rocky_count += 1
-			else:
-				icy_count += 1
-			total = volcanic_count + rocky_count + icy_count
+		if remaining > 0:
+			var rng = RandomNumberGenerator.new()
+			rng.seed = seed_value
 			
+			var types_to_increase = []
+			var priority_seed = (seed_value % 3)
+			
+			if priority_seed == 0:
+				types_to_increase = [MoonType.VOLCANIC, MoonType.ROCKY, MoonType.ICY]
+			elif priority_seed == 1:
+				types_to_increase = [MoonType.ROCKY, MoonType.ICY, MoonType.VOLCANIC]
+			else:
+				types_to_increase = [MoonType.ICY, MoonType.VOLCANIC, MoonType.ROCKY]
+			
+			for i in range(remaining):
+				var type = types_to_increase[i % 3]
+				
+				if type == MoonType.VOLCANIC and volcanic_count < 2:
+					volcanic_count += 1
+				elif type == MoonType.ROCKY and rocky_count < 2:
+					rocky_count += 1
+				elif type == MoonType.ICY and icy_count < 2:
+					icy_count += 1
+				else:
+					if volcanic_count < 2:
+						volcanic_count += 1
+					elif rocky_count < 2:
+						rocky_count += 1
+					elif icy_count < 2:
+						icy_count += 1
+		
 		return {
 			MoonType.VOLCANIC: volcanic_count,
 			MoonType.ROCKY: rocky_count,
@@ -434,54 +440,45 @@ func _create_moon(index: int, moon_type: int, params: Array, existing_orbits: Ar
 	
 	return moon_instance
 
+# Simple but effective orbit collision resolver
 func _resolve_orbit_collision(moon_params: Dictionary, existing_orbits: Array, 
-							 moon_type: int, rng: RandomNumberGenerator) -> bool:
-	var max_attempts = 15  # Increased from 10
+							  moon_type: int, rng: RandomNumberGenerator) -> bool:
+	var max_attempts = 10
 	
-	# Try systematic adjustments first
 	for attempt in range(max_attempts):
-		# Adjust distance more intelligently based on attempt number
-		var adjustment = (20 + attempt * 10) * (1.0 + (attempt / 8.0))
+		# Simple approach: Just move the orbit outwards
+		var adjustment = 30 + (attempt * 15)
+		moon_params.distance += adjustment
 		
-		# Alternate between moving outward and inward, but prefer outward
-		if attempt % 2 == 0 or existing_orbits.size() <= 1:
-			moon_params.distance += adjustment
-		else:
-			moon_params.distance -= adjustment
-			
-		# Adjust orbit parameters based on planet type
+		# For gas giants, limit to type-specific range but with relaxed upper bound
 		if is_gaseous_planet:
 			var distance_range = _moon_params.distance_ranges[moon_type]
-			moon_params.distance = clamp(moon_params.distance, 
-									  pixel_size/2.0 * distance_range.x * 0.8, 
-									  pixel_size/2.0 * distance_range.y * 1.5)
+			# Allow up to 2x the normal max distance for greater success
+			moon_params.distance = max(
+				pixel_size/2.0 * distance_range.x, 
+				min(moon_params.distance, pixel_size/2.0 * distance_range.y * 2.0)
+			)
 		else:
-			# Increase deviation with each attempt for terrestrial planets
-			moon_params.orbit_deviation = min(max_orbit_deviation * (1.0 + attempt * 0.15), 0.9)
-			
-			var min_distance = pixel_size/2.0 * min_moon_distance_factor * 0.8
-			var max_distance = pixel_size/2.0 * max_moon_distance_factor * 1.5
-			moon_params.distance = clamp(moon_params.distance, min_distance, max_distance)
+			# For terran planets, allow exceeding the normal range
+			var min_dist = pixel_size/2.0 * min_moon_distance_factor
+			var max_dist = pixel_size/2.0 * max_moon_distance_factor * 1.8  # Allow 80% further
+			moon_params.distance = clamp(moon_params.distance, min_dist, max_dist)
 		
-		# Try placing moons at optimal phases around orbit
-		if existing_orbits.size() > 0:
-			var optimal_phase_gap = TAU / (existing_orbits.size() + 1)
-			moon_params.phase_offset = optimal_phase_gap * (existing_orbits.size()) + rng.randf_range(-0.2, 0.2)
-		else:
-			moon_params.phase_offset = rng.randf() * TAU
+		# Try a different phase offset
+		moon_params.phase_offset = rng.randf() * TAU
 		
 		if not _check_orbit_collision(moon_params, existing_orbits):
 			return true
 	
-	# Last resort: Try extreme placements
+	# Last resort: Just try a much larger distance
 	if is_gaseous_planet:
 		var distance_range = _moon_params.distance_ranges[moon_type]
-		moon_params.distance = pixel_size/2.0 * distance_range.y * 2.0
+		moon_params.distance = pixel_size/2.0 * distance_range.y * 3.0
 	else:
-		moon_params.distance = pixel_size/2.0 * max_moon_distance_factor * 2.0
-		moon_params.orbit_deviation = max_orbit_deviation * 0.2
+		moon_params.distance = pixel_size/2.0 * max_moon_distance_factor * 3.0
 	
 	moon_params.phase_offset = rng.randf() * TAU
+	
 	return not _check_orbit_collision(moon_params, existing_orbits)
 
 func _check_orbit_collision(new_orbit: Dictionary, existing_orbits: Array) -> bool:
@@ -489,15 +486,10 @@ func _check_orbit_collision(new_orbit: Dictionary, existing_orbits: Array) -> bo
 		return false
 	
 	var new_moon_size = new_orbit.get("moon_size", 32)
-	var collision_tolerance = 1.0 - (0.05 * existing_orbits.size())  # More moons = more tolerance
 	
 	for orbit in existing_orbits:
 		var existing_moon_size = orbit.get("moon_size", 32)
-		var safe_distance = (new_moon_size + existing_moon_size) / 2.0 * ORBIT_COLLISION_MARGIN * collision_tolerance
-		
-		# Distance-based collision tolerance
-		if new_orbit.distance > orbit.distance * 1.5:
-			safe_distance *= 0.8  # Reduce required safe distance for distant moons
+		var safe_distance = (new_moon_size + existing_moon_size) / 2.0 + ORBIT_COLLISION_MARGIN
 		
 		if is_gaseous_planet:
 			var radii_difference = abs(new_orbit.distance - orbit.distance)
