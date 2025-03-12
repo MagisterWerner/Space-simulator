@@ -26,6 +26,19 @@ enum SettingCategory {
 	DEBUG       # Debug and development options
 }
 
+# Internal mapping of UI dropdown indices to PlanetTheme enum values
+# This makes the relationship explicit and avoids off-by-one errors
+const UI_TO_PLANET_TYPE = {
+	0: -1,      # Random (special case)
+	1: 0,       # Arid     = PlanetTheme.ARID
+	2: 1,       # Ice      = PlanetTheme.ICE
+	3: 2,       # Lava     = PlanetTheme.LAVA
+	4: 3,       # Lush     = PlanetTheme.LUSH
+	5: 4,       # Desert   = PlanetTheme.DESERT
+	6: 5,       # Alpine   = PlanetTheme.ALPINE
+	7: 6        # Ocean    = PlanetTheme.OCEAN
+}
+
 # ---- SEED SETTINGS ----
 @export_group("Seed Settings")
 ## Main game seed that affects all procedural generation
@@ -543,6 +556,9 @@ func is_random_player_planet() -> bool:
 	return player_starting_planet_type == 0  # 0 = Random
 
 # Get the effective planet type (accounting for Random selection)
+# This now properly maps UI values to PlanetTheme enum values
+# UI indices: 0=Random, 1=Arid, 2=Ice, 3=Lava, etc.
+# PlanetTheme enum: 0=ARID, 1=ICE, 2=LAVA, etc.
 func get_effective_planet_type(seed_value: int = 0) -> int:
 	if is_random_player_planet():
 		# Generate a random planet type based on seed
@@ -550,15 +566,23 @@ func get_effective_planet_type(seed_value: int = 0) -> int:
 		rng.seed = seed_value if seed_value != 0 else game_seed
 		return rng.randi_range(0, 6)  # 0-6 for the 7 planet types
 	else:
-		# Adjust for the "Random" option at index 0
-		return player_starting_planet_type - 1
+		# Use the explicit mapping for UI-to-enum conversion
+		# This ensures we always get the right enum value
+		var planet_type = UI_TO_PLANET_TYPE.get(player_starting_planet_type, 0)
+		
+		# Validate planet type is in valid range
+		if planet_type < 0 or planet_type > 6:
+			push_warning("Invalid planet type selected: " + str(player_starting_planet_type))
+			return 0  # Default to ARID if invalid
+			
+		return planet_type
 
 # Get a description of the selected planet type for debugging
 func get_planet_type_description() -> String:
 	if is_random_player_planet():
 		return "Random (seed-based)"
 	else:
-		return get_planet_type_name(player_starting_planet_type - 1)
+		return get_planet_type_name(get_effective_planet_type())
 
 # Get planet type name from index
 func get_planet_type_name(type_index: int) -> String:
@@ -719,8 +743,79 @@ func load_settings(filepath: String = "user://game_settings.cfg") -> bool:
 	if config.has_section_key("seed", "use_random_seed"):
 		use_random_seed = config.get_value("seed", "use_random_seed")
 	
-	# Load all other settings...
-	# (Abbreviated for brevity)
+	# Load world settings
+	if config.has_section_key("world", "grid_cell_size"):
+		grid_cell_size = config.get_value("world", "grid_cell_size")
+	if config.has_section_key("world", "grid_size"):
+		grid_size = config.get_value("world", "grid_size")
+	if config.has_section_key("world", "grid_color"):
+		grid_color = config.get_value("world", "grid_color")
+	if config.has_section_key("world", "grid_line_width"):
+		grid_line_width = config.get_value("world", "grid_line_width")
+	if config.has_section_key("world", "grid_opacity"):
+		grid_opacity = config.get_value("world", "grid_opacity")
+	if config.has_section_key("world", "terran_planets"):
+		terran_planets = config.get_value("world", "terran_planets")
+	if config.has_section_key("world", "gaseous_planets"):
+		gaseous_planets = config.get_value("world", "gaseous_planets")
+	if config.has_section_key("world", "asteroid_fields"):
+		asteroid_fields = config.get_value("world", "asteroid_fields")
+	if config.has_section_key("world", "space_stations"):
+		space_stations = config.get_value("world", "space_stations")
+	
+	# Load player settings
+	if config.has_section_key("player", "player_starting_planet_type"):
+		player_starting_planet_type = config.get_value("player", "player_starting_planet_type")
+	if config.has_section_key("player", "player_starting_credits"):
+		player_starting_credits = config.get_value("player", "player_starting_credits")
+	if config.has_section_key("player", "player_starting_fuel"):
+		player_starting_fuel = config.get_value("player", "player_starting_fuel")
+	
+	# Load game settings
+	if config.has_section_key("game", "difficulty"):
+		difficulty = config.get_value("game", "difficulty")
+	if config.has_section_key("game", "show_tutorials"):
+		show_tutorials = config.get_value("game", "show_tutorials")
+	
+	# Load audio settings
+	if config.has_section_key("audio", "master_volume"):
+		master_volume = config.get_value("audio", "master_volume")
+	if config.has_section_key("audio", "music_volume"):
+		music_volume = config.get_value("audio", "music_volume")
+	if config.has_section_key("audio", "sfx_volume"):
+		sfx_volume = config.get_value("audio", "sfx_volume")
+	if config.has_section_key("audio", "positional_audio"):
+		positional_audio = config.get_value("audio", "positional_audio")
+	
+	# Load graphics settings
+	if config.has_section_key("graphics", "visual_effects"):
+		visual_effects = config.get_value("graphics", "visual_effects")
+	if config.has_section_key("graphics", "particle_density"):
+		particle_density = config.get_value("graphics", "particle_density")
+	if config.has_section_key("graphics", "screen_shake"):
+		screen_shake = config.get_value("graphics", "screen_shake")
+	
+	# Load debug settings
+	if config.has_section_key("debug", "debug_mode"):
+		debug_mode = config.get_value("debug", "debug_mode")
+	if config.has_section_key("debug", "debug_panel"):
+		debug_panel = config.get_value("debug", "debug_panel")
+	if config.has_section_key("debug", "debug_logging"):
+		debug_logging = config.get_value("debug", "debug_logging")
+	if config.has_section_key("debug", "debug_grid"):
+		debug_grid = config.get_value("debug", "debug_grid")
+	if config.has_section_key("debug", "debug_seed_manager"):
+		debug_seed_manager = config.get_value("debug", "debug_seed_manager")
+	if config.has_section_key("debug", "debug_world_generator"):
+		debug_world_generator = config.get_value("debug", "debug_world_generator")
+	if config.has_section_key("debug", "debug_entity_generation"):
+		debug_entity_generation = config.get_value("debug", "debug_entity_generation")
+	if config.has_section_key("debug", "debug_physics"):
+		debug_physics = config.get_value("debug", "debug_physics")
+	if config.has_section_key("debug", "debug_ui"):
+		debug_ui = config.get_value("debug", "debug_ui")
+	if config.has_section_key("debug", "debug_components"):
+		debug_components = config.get_value("debug", "debug_components")
 	
 	# Apply settings
 	_update_debug_settings()
@@ -731,8 +826,50 @@ func load_settings(filepath: String = "user://game_settings.cfg") -> bool:
 
 # Reset settings to defaults
 func reset_to_defaults() -> void:
-	# Reset all settings to their default values
-	# (Abbreviated for brevity)
+	# Reset to inspector defaults
+	game_seed = 0
+	use_random_seed = true
+	
+	grid_cell_size = 1024
+	grid_size = 10
+	grid_color = Color.CYAN
+	grid_line_width = 2.0
+	grid_opacity = 0.5
+	
+	player_starting_planet_type = 0
+	player_starting_credits = 1000
+	player_starting_fuel = 100
+	
+	terran_planets = 5
+	gaseous_planets = 1
+	asteroid_fields = 0
+	space_stations = 0
+	
+	difficulty = 1
+	show_tutorials = true
+	
+	master_volume = 1.0
+	music_volume = 0.8
+	sfx_volume = 1.0
+	positional_audio = true
+	
+	visual_effects = true
+	particle_density = 1.0
+	screen_shake = true
+	
+	debug_mode = false
+	debug_panel = false
+	debug_logging = false
+	debug_grid = false
+	debug_seed_manager = false
+	debug_world_generator = false
+	debug_entity_generation = false
+	debug_physics = false
+	debug_ui = false
+	debug_components = false
+	
+	# Generate a new seed
+	_generate_deterministic_random_seed()
 	
 	# Apply settings
 	_update_debug_settings()
