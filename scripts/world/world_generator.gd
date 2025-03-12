@@ -4,13 +4,12 @@ class_name WorldGenerator
 signal world_generation_started
 signal world_generation_completed
 signal entity_generated(entity, type, cell)
-signal planet_generation_progress(completed, total)
 
 var game_settings: GameSettings = null
 var seed_manager = null
 
-# Modified to use async planet spawners
-var async_planet_spawner_scene: PackedScene
+var planet_spawner_terran_scene: PackedScene
+var planet_spawner_gaseous_scene: PackedScene
 var asteroid_field_scene: PackedScene
 var station_scene: PackedScene
 
@@ -25,12 +24,6 @@ var _planet_spawners := {}
 var _planet_cells: Array[Vector2i] = []
 var _proximity_excluded_cells := {}
 var debug_mode := false
-
-# Async generation tracking
-var _pending_generations := 0
-var _completed_generations := 0
-var _total_planets_to_generate := 0
-var _generation_in_progress := false
 
 const PLANET_SEED_OFFSET := 1000000
 const ASTEROID_SEED_OFFSET := 2000000
@@ -71,26 +64,17 @@ func _debug(message: String) -> void:
 		print("WorldGenerator: " + message)
 
 func _initialize_scenes() -> void:
-	# Load the async planet spawner
-	if ResourceLoader.exists("res://scenes/spawners/async_planet_spawner.tscn"):
-		async_planet_spawner_scene = load("res://scenes/spawners/async_planet_spawner.tscn")
-	else:
-		# Create a scene from the script if the scene doesn't exist
-		var script = load("res://scripts/spawners/async_planet.spawner.gd")
-		if script:
-			async_planet_spawner_scene = PackedScene.new()
-			var planet_node = Node2D.new()
-			planet_node.set_script(script)
-			var result = async_planet_spawner_scene.pack(planet_node)
-			if result != OK:
-				push_error("WorldGenerator: Failed to create async planet spawner scene")
+	var scenes = {
+		"terran": {"var": "planet_spawner_terran_scene", "path": "res://scenes/world/planet_spawner_terran.tscn"},
+		"gaseous": {"var": "planet_spawner_gaseous_scene", "path": "res://scenes/world/planet_spawner_gaseous.tscn"},
+		"asteroid": {"var": "asteroid_field_scene", "path": "res://scenes/world/asteroid_field.tscn"},
+		"station": {"var": "station_scene", "path": "res://scenes/world/station.tscn"}
+	}
 	
-	# Load other scenes
-	if ResourceLoader.exists("res://scenes/world/asteroid_field.tscn"):
-		asteroid_field_scene = load("res://scenes/world/asteroid_field.tscn")
-		
-	if ResourceLoader.exists("res://scenes/world/station.tscn"):
-		station_scene = load("res://scenes/world/station.tscn")
+	for key in scenes:
+		var scene_info = scenes[key]
+		if get(scene_info.var) == null and ResourceLoader.exists(scene_info.path):
+			set(scene_info.var, load(scene_info.path))
 
 func generate_starter_world() -> Dictionary:
 	clear_world()
@@ -99,29 +83,20 @@ func generate_starter_world() -> Dictionary:
 	_planet_cells.clear()
 	_proximity_excluded_cells.clear()
 	_planet_spawners.clear()
-	_pending_generations = 0
-	_completed_generations = 0
-	_generation_in_progress = true
 	
-	# Count total planets to generate for progress tracking
-	var total_terran_planets = game_settings.terran_planets if game_settings else 5
-	var total_gaseous_planets = game_settings.gaseous_planets if game_settings else 1
-	_total_planets_to_generate = total_terran_planets + total_gaseous_planets
-	
-	# Generate player's starting planet first
 	var player_planet_cell = generate_planet("terran_planet", 1, true)
 	
+	var total_gaseous_planets = game_settings.gaseous_planets if game_settings else 1
 	var gaseous_planet_cell = Vector2i(-1, -1)
 	
-	# Generate gaseous planets
 	if total_gaseous_planets > 0:
 		gaseous_planet_cell = generate_planet("gaseous_planet", 2)
 		
 		for i in range(1, total_gaseous_planets):
 			generate_planet("gaseous_planet", 2)
 	
-	# Generate remaining terran planets
 	var max_planets = calculate_max_planets()
+	var total_terran_planets = game_settings.terran_planets if game_settings else 5
 	
 	for i in range(1, total_terran_planets):
 		if _entity_counts.terran_planet + _entity_counts.gaseous_planet < max_planets:
@@ -130,39 +105,30 @@ func generate_starter_world() -> Dictionary:
 			_debug("Maximum planet limit reached, stopping planet generation.")
 			break
 	
-	# Generate asteroid fields
 	var asteroid_count = game_settings.asteroid_fields if game_settings else 0
 	for i in range(asteroid_count):
 		generate_asteroid_field()
 	
-	# Generate stations
 	var station_count = game_settings.space_stations if game_settings else 0
 	for i in range(station_count):
 		generate_station()
 	
-	# If no pending generations, emit completion signal immediately
-	if _pending_generations == 0:
-		_complete_generation()
+	world_generation_completed.emit()
 	
-	_debug("Starter world generation initiated")
-	_debug("- Player planet cell: " + str(player_planet_cell))
-	_debug("- Expected total terran planets: " + str(total_terran_planets))
-	_debug("- Expected total gaseous planets: " + str(total_gaseous_planets))
+	_debug("Starter world generation complete")
+	_debug("- Player planet at cell: " + str(player_planet_cell))
+	_debug("- Total terran planets: " + str(_entity_counts.terran_planet) + 
+		  "/" + str(total_terran_planets))
+	_debug("- Total gaseous planets: " + str(_entity_counts.gaseous_planet) + 
+		  "/" + str(total_gaseous_planets))
+	_debug("- Maximum possible planets: " + str(max_planets))
+	_debug("- Total asteroid fields: " + str(_entity_counts.asteroid_field))
+	_debug("- Total stations: " + str(_entity_counts.station))
 	
 	return {
 		"player_planet_cell": player_planet_cell,
 		"gaseous_planet_cell": gaseous_planet_cell
 	}
-
-func _complete_generation() -> void:
-	_generation_in_progress = false
-	world_generation_completed.emit()
-	
-	_debug("World generation complete")
-	_debug("- Total terran planets: " + str(_entity_counts.terran_planet))
-	_debug("- Total gaseous planets: " + str(_entity_counts.gaseous_planet))
-	_debug("- Total asteroid fields: " + str(_entity_counts.asteroid_field))
-	_debug("- Total stations: " + str(_entity_counts.station))
 
 func calculate_max_planets() -> int:
 	var total_cells = game_settings.grid_size * game_settings.grid_size if game_settings else 25
@@ -219,10 +185,16 @@ func get_candidate_cells() -> Array:
 	
 	return candidate_cells
 
-# Modified to use async planet spawners
 func generate_planet(planet_type: String, proximity: int = 1, is_player_starting: bool = false) -> Vector2i:
-	if async_planet_spawner_scene == null:
-		push_error("WorldGenerator: Async planet spawner scene not loaded")
+	var scene: PackedScene
+	
+	if planet_type == "terran_planet":
+		scene = planet_spawner_terran_scene
+	else:
+		scene = planet_spawner_gaseous_scene
+	
+	if not scene:
+		push_error("WorldGenerator: Planet spawner scene not loaded")
 		return Vector2i(-1, -1)
 	
 	var candidate_cells = get_candidate_cells()
@@ -233,57 +205,44 @@ func generate_planet(planet_type: String, proximity: int = 1, is_player_starting
 			continue
 		
 		var cell_seed = _generate_entity_seed(cell, planet_type)
+		var seed_offset = cell_seed - (game_settings.get_seed() if game_settings else 0)
 		
-		# Create async planet spawner
-		var planet_spawner = async_planet_spawner_scene.instantiate()
+		var planet_spawner = scene.instantiate()
 		add_child(planet_spawner)
 		
-		# Calculate world position
-		var world_pos
-		if game_settings:
-			world_pos = game_settings.get_cell_world_position(cell)
-		else:
-			world_pos = Vector2(cell.x * 1024, cell.y * 1024)
+		var planet_type_value: int
 		
-		planet_spawner.global_position = world_pos
-		
-		# Set up planet type
-		var is_gaseous = (planet_type == "gaseous_planet")
-		planet_spawner.is_gaseous = is_gaseous
-		
-		# Determine theme
-		var theme_value: int
 		if planet_type == "terran_planet" and is_player_starting and game_settings:
-			theme_value = game_settings.player_starting_planet_type
+			planet_type_value = game_settings.player_starting_planet_type
 		else:
 			if seed_manager:
-				theme_value = seed_manager.get_random_int(cell_seed, 0, 6 if planet_type == "terran_planet" else 3)
+				planet_type_value = seed_manager.get_random_int(cell_seed, 0, 6 if planet_type == "terran_planet" else 3)
 			else:
 				var temp_rng = RandomNumberGenerator.new()
 				temp_rng.seed = cell_seed
-				theme_value = temp_rng.randi_range(0, 6 if planet_type == "terran_planet" else 3)
+				planet_type_value = temp_rng.randi_range(0, 6 if planet_type == "terran_planet" else 3)
 				
-			if planet_type == "terran_planet" and game_settings and theme_value == game_settings.player_starting_planet_type:
-				theme_value = (theme_value + 1) % 7
+			if planet_type == "terran_planet" and game_settings and planet_type_value == game_settings.player_starting_planet_type:
+				planet_type_value = (planet_type_value + 1) % 7
 		
-		# Set theme override
-		planet_spawner.theme_override = theme_value
+		if planet_type == "terran_planet":
+			planet_spawner.terran_theme = planet_type_value + 1
+		else:
+			planet_spawner.gaseous_theme = planet_type_value + 1
 		
-		# Connect signals
-		if planet_spawner.has_signal("planet_ready"):
-			planet_spawner.planet_ready.connect(_on_planet_ready.bind(planet_spawner, planet_type, cell))
+		planet_spawner.set_grid_position(cell.x, cell.y)
+		planet_spawner.use_grid_position = true
+		planet_spawner.local_seed_offset = seed_offset
 		
-		if planet_spawner.has_signal("generation_started"):
-			planet_spawner.generation_started.connect(_on_planet_generation_started.bind(planet_spawner, cell))
-			
-		if planet_spawner.has_signal("generation_failed"):
-			planet_spawner.generation_failed.connect(_on_planet_generation_failed.bind(planet_spawner, cell))
+		var planet = planet_spawner.spawn_planet()
 		
-		# Start generation with the determined seed
-		planet_spawner.generate_planet(cell_seed)
+		if not planet:
+			push_error("WorldGenerator: Failed to spawn planet at " + str(cell))
+			planet_spawner.queue_free()
+			continue
 		
-		# Track generation
-		_pending_generations += 1
+		if planet_spawner.has_signal("planet_spawned") and not planet_spawner.is_connected("planet_spawned", _on_planet_spawned):
+			planet_spawner.planet_spawned.connect(_on_planet_spawned)
 		
 		if not _generated_cells.has(cell):
 			_generated_cells[cell] = {
@@ -294,74 +253,22 @@ func generate_planet(planet_type: String, proximity: int = 1, is_player_starting
 		
 		_planet_spawners[cell] = planet_spawner
 		_generated_cells[cell].planets.append(planet_spawner)
-		
-		# We count the planet now, even though it's not fully generated yet
 		_entity_counts[planet_type] += 1
 		
 		mark_proximity_cells(cell, proximity)
 		_planet_cells.append(cell)
 		
-		_debug("Started generating " + planet_type + " at cell " + str(cell))
+		entity_generated.emit(planet, planet_type, cell)
+		
+		_debug("Generated " + planet_type + " at cell " + str(cell))
 		if planet_type == "terran_planet" and is_player_starting:
-			_debug("This is the player's starting planet (theme: " + 
-				game_settings.get_planet_type_name(theme_value) + ")")
+			_debug("This is the player's starting planet (" + 
+				game_settings.get_planet_type_name(planet_type_value) + ")")
 		
 		return cell
 	
 	push_warning("WorldGenerator: Failed to generate " + planet_type + " - no valid cells available")
 	return Vector2i(-1, -1)
-
-# Signal handlers for async planet generation
-func _on_planet_generation_started(spawner, cell) -> void:
-	_debug("Planet generation started at cell " + str(cell))
-
-func _on_planet_ready(spawner, planet_type, cell) -> void:
-	_debug("Planet generation completed at cell " + str(cell))
-	
-	# Get the planet instance from the spawner
-	var planet = null
-	if spawner.has_method("get_planet_sprite"):
-		planet = spawner.get_planet_sprite()
-	else:
-		planet = spawner # Use spawner as fallback
-	
-	# Register with EntityManager if available
-	if has_node("/root/EntityManager") and EntityManager.has_method("register_entity"):
-		EntityManager.register_entity(planet, "planet")
-	
-	entity_generated.emit(planet, planet_type, cell)
-	
-	# Update generation tracking
-	_completed_generations += 1
-	_pending_generations -= 1
-	
-	# Emit progress signal
-	planet_generation_progress.emit(_completed_generations, _total_planets_to_generate)
-	
-	# Check if all generations are complete
-	if _generation_in_progress and _pending_generations <= 0:
-		_complete_generation()
-
-func _on_planet_generation_failed(error, spawner, cell) -> void:
-	_debug("Planet generation failed at cell " + str(cell) + ": " + str(error))
-	
-	# Update generation tracking
-	_pending_generations -= 1
-	
-	# Remove the spawner from the cell
-	if _generated_cells.has(cell):
-		var planets = _generated_cells[cell].planets
-		var index = planets.find(spawner)
-		if index >= 0:
-			planets.remove_at(index)
-	
-	# Clean up spawner
-	if is_instance_valid(spawner):
-		spawner.queue_free()
-	
-	# Check if all generations are complete
-	if _generation_in_progress and _pending_generations <= 0:
-		_complete_generation()
 
 func generate_asteroid_field() -> Vector2i:
 	if asteroid_field_scene == null:
@@ -491,6 +398,10 @@ func generate_station() -> Vector2i:
 	push_warning("WorldGenerator: Failed to generate station - no valid cells available")
 	return Vector2i(-1, -1)
 
+func _on_planet_spawned(planet_instance) -> void:
+	if has_node("/root/EntityManager") and EntityManager.has_method("register_entity"):
+		EntityManager.register_entity(planet_instance, "planet")
+
 func mark_proximity_cells(center: Vector2i, proximity: int) -> void:
 	if proximity <= 0:
 		_proximity_excluded_cells[center] = true
@@ -508,9 +419,6 @@ func clear_world() -> void:
 		
 		for planet_spawner in cell_data.planets:
 			if is_instance_valid(planet_spawner):
-				# Cancel any pending generations
-				if planet_spawner.has_method("cancel_generation"):
-					planet_spawner.cancel_generation()
 				planet_spawner.queue_free()
 		
 		for asteroid_field in cell_data.asteroid_fields:
@@ -534,8 +442,6 @@ func clear_world() -> void:
 	_planet_cells.clear()
 	_proximity_excluded_cells.clear()
 	_planet_spawners.clear()
-	_pending_generations = 0
-	_completed_generations = 0
 	
 	_debug("World cleared")
 
@@ -560,16 +466,11 @@ func get_cell_entities(cell_coords: Vector2i) -> Array:
 	var result = []
 	var cell_data = _generated_cells[cell_coords]
 	
-	# Get planets from the async spawners
 	for planet_spawner in cell_data.planets:
-		if is_instance_valid(planet_spawner):
-			# For async spawners, use the sprite or the spawner itself
-			if planet_spawner.has_method("get_planet_sprite") and planet_spawner.is_planet_ready:
-				var planet = planet_spawner.get_planet_sprite()
-				if planet:
-					result.append(planet)
-			else:
-				result.append(planet_spawner)
+		if is_instance_valid(planet_spawner) and planet_spawner.has_method("get_planet_instance"):
+			var planet = planet_spawner.get_planet_instance()
+			if planet:
+				result.append(planet)
 	
 	for asteroid_field in cell_data.asteroid_fields:
 		if is_instance_valid(asteroid_field):
@@ -580,16 +481,3 @@ func get_cell_entities(cell_coords: Vector2i) -> Array:
 			result.append(station)
 	
 	return result
-
-# Get generation status
-func get_generation_progress() -> Dictionary:
-	return {
-		"completed": _completed_generations,
-		"total": _total_planets_to_generate,
-		"pending": _pending_generations,
-		"in_progress": _generation_in_progress
-	}
-
-# Check if all world generation is complete
-func is_generation_complete() -> bool:
-	return not _generation_in_progress

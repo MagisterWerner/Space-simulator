@@ -7,7 +7,7 @@ signal generation_started
 signal generation_failed(error)
 
 # Generation parameters
-@export var auto_generate: bool = false  # Changed to false to prevent automatic generation
+@export var auto_generate: bool = true
 @export var planet_seed: int = 0
 @export var is_gaseous: bool = false
 @export var theme_override: int = -1
@@ -27,7 +27,7 @@ var is_planet_ready: bool = false
 var planet_theme: int = -1
 var generation_step: int = 0  # 0=not started, 1=planet, 2=atmosphere
 
-func _ready() -> void:
+func _ready():
 	# Create component for async generation
 	generator_component = AsyncGeneratorComponent.new()
 	generator_component.name = "AsyncGenerator"
@@ -223,10 +223,6 @@ func get_planet_type_name():
 # Get planet diameter in game units
 func get_planet_diameter():
 	return planet_size
-
-# Get the planet sprite for direct access by world generator
-func get_planet_sprite():
-	return planet_sprite
 
 # Cancel any in-progress generation
 func cancel_generation():
