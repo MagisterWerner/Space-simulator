@@ -1,0 +1,19 @@
+[gd_scene load_steps=4 format=3 uid="uid://drnfepk7bcvry"]
+
+[ext_resource type="Script" uid="uid://bgatuvlv7ajst" path="res://scripts/entities/asteroid.gd" id="1_ew2bx"]
+[ext_resource type="Script" uid="uid://ctt8im8oamjmv" path="res://scripts/components/health_component.gd" id="2_health"]
+[ext_resource type="Script" uid="uid://bdu38q6s0iuie" path="res://scripts/components/explode_debris_component.gd" id="3_5mhnt"]
+
+[node name="Asteroid" type="Node2D" groups=["asteroids"]]
+z_index = 3
+script = ExtResource("1_ew2bx")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+
+[node name="HealthComponent" type="Node" parent="."]
+script = ExtResource("2_health")
+max_health = 50.0
+current_health = 50.0
+
+[node name="ExplodeDebrisComponent" type="Node" parent="."]
+script = ExtResource("3_5mhnt")

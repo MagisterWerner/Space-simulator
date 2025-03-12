@@ -19,7 +19,7 @@ func _ready() -> void:
 	# Wait for game settings to initialize if needed
 	if game_settings and not game_settings.is_connected("settings_initialized", _on_game_settings_initialized):
 		if not game_settings._initialized:
-			game_settings.settings_initialized.connect(_on_game_settings_initialized)
+			game_settings.connect("settings_initialized", _on_game_settings_initialized)
 			return
 	
 	# If settings already initialized or not available, initialize directly
@@ -54,9 +54,10 @@ func _initialize_seed() -> void:
 	# Make sure SeedManager gets the correct seed from GameSettings
 	if has_node("/root/SeedManager") and game_settings:
 		# Wait for SeedManager to be initialized if necessary
-		if SeedManager.has_method("is_initialized") and not SeedManager.is_initialized:
+		# Fix: Check if is_initialized is a property (not a method)
+		if "is_initialized" in SeedManager and not SeedManager.is_initialized:
 			if SeedManager.has_signal("seed_initialized"):
-				SeedManager.seed_initialized.connect(_on_seed_manager_initialized)
+				SeedManager.connect("seed_initialized", _on_seed_manager_initialized)
 				return
 		
 		# Set the seed in SeedManager - important for world generation
@@ -94,7 +95,7 @@ func _initialize_world_generator() -> void:
 	
 	# Connect world generation signals
 	if world_generator.has_signal("world_generation_completed"):
-		world_generator.world_generation_completed.connect(_on_world_generation_completed)
+		world_generator.connect("world_generation_completed", _on_world_generation_completed)
 	
 	# Generate starter world
 	if world_generator.has_method("generate_starter_world"):
@@ -124,12 +125,23 @@ func _initialize_background_and_camera() -> void:
 	camera.add_to_group("camera")
 	
 	# Ensure space background is initialized
-	if space_background and not space_background.initialized:
-		# If the background uses the game seed, wait until it's properly initialized
-		if space_background.use_game_seed and has_node("/root/SeedManager"):
-			space_background.background_seed = SeedManager.get_seed()
+	if space_background:
+		# Try to access initialized property
+		var is_bg_initialized = false
+		if "initialized" in space_background:
+			is_bg_initialized = space_background.initialized
 		
-		space_background.setup_background()
+		if not is_bg_initialized:
+			# Try to set game seed directly
+			if "use_game_seed" in space_background:
+				space_background.use_game_seed = true
+			
+			if has_node("/root/SeedManager") and "background_seed" in space_background:
+				space_background.background_seed = SeedManager.get_seed()
+			
+			# Call setup_background if it exists
+			if space_background.has_method("setup_background"):
+				space_background.setup_background()
 
 func _on_world_generation_completed() -> void:
 	if game_settings and game_settings.debug_mode:
@@ -171,7 +183,7 @@ func _process(_delta: float) -> void:
 	var current_size = get_viewport_rect().size
 	if current_size != screen_size:
 		screen_size = current_size
-		if space_background:
+		if space_background and space_background.has_method("update_viewport_size"):
 			space_background.update_viewport_size()
 
 func _update_camera_position() -> void:

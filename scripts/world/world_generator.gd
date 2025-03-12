@@ -80,7 +80,11 @@ func _load_essential_scenes() -> void:
 	_load_scene("station", "res://scenes/world/station.tscn")
 
 func _load_scene(key: String, path: String) -> void:
-	if _scene_cache.has(key) or not ResourceLoader.exists(path):
+	if _scene_cache.has(key):
+		return
+		
+	if not ResourceLoader.exists(path):
+		push_error("WorldGenerator: Scene file does not exist: " + path)
 		return
 		
 	_scene_cache[key] = load(path)
@@ -150,6 +154,8 @@ func generate_starter_world() -> Dictionary:
 		print("WorldGenerator: World generation completed")
 		print("Planets generated: ", 
 			_entity_counts[ENTITY_TYPES.TERRAN_PLANET] + _entity_counts[ENTITY_TYPES.GASEOUS_PLANET])
+		print("Asteroid fields generated: ", _entity_counts[ENTITY_TYPES.ASTEROID_FIELD])
+		print("Stations generated: ", _entity_counts[ENTITY_TYPES.STATION])
 	
 	return {
 		"player_planet_cell": player_planet_cell,
@@ -168,7 +174,7 @@ func _batch_generate_entities(entity_type: String, count: int, params: Dictionar
 
 func _calculate_max_planets() -> int:
 	var total_cells = game_settings.grid_size * game_settings.grid_size if game_settings else 25
-	return total_cells - _excluded_cells.size()
+	return min(total_cells - _excluded_cells.size(), 15)  # Cap at 15 to avoid overcrowding
 
 func generate_entity(entity_type: String, params: Dictionary = {}) -> Vector2i:
 	# Increment generation ID for deterministic ordering
@@ -177,6 +183,8 @@ func generate_entity(entity_type: String, params: Dictionary = {}) -> Vector2i:
 	# Get scene key based on entity type
 	var scene_key = _get_scene_key_for_entity(entity_type)
 	if not _scene_cache.has(scene_key):
+		if _debug_mode:
+			print("WorldGenerator: Error - Scene not found in cache: ", scene_key)
 		return Vector2i(-1, -1)
 	
 	# Process parameters
@@ -185,6 +193,10 @@ func generate_entity(entity_type: String, params: Dictionary = {}) -> Vector2i:
 	
 	# Get valid candidate cells
 	var candidate_cells = get_candidate_cells()
+	if candidate_cells.is_empty():
+		if _debug_mode:
+			print("WorldGenerator: Error - No valid cells available for entity: ", entity_type)
+		return Vector2i(-1, -1)
 	
 	# Shuffle deterministically using current seed and generation ID
 	_shuffle_candidates_deterministic(candidate_cells)
@@ -220,6 +232,8 @@ func generate_entity(entity_type: String, params: Dictionary = {}) -> Vector2i:
 			
 			return cell
 	
+	if _debug_mode:
+		print("WorldGenerator: Failed to find valid location for entity: ", entity_type)
 	return Vector2i(-1, -1)
 
 func _get_scene_key_for_entity(entity_type: String) -> String:
@@ -241,8 +255,6 @@ func _generate_planet(planet_type: String, cell: Vector2i, cell_seed: int, is_pl
 	var planet_type_value
 	
 	if planet_type == ENTITY_TYPES.TERRAN_PLANET and is_player_starting and game_settings:
-		# FIXED: Use get_effective_planet_type() instead of player_starting_planet_type directly
-		# This properly converts UI dropdown index to PlanetTheme enum value
 		planet_type_value = game_settings.get_effective_planet_type()
 	else:
 		# Create deterministic planet type based on cell and seed
@@ -284,7 +296,7 @@ func _generate_planet(planet_type: String, cell: Vector2i, cell_seed: int, is_pl
 	
 	# Connect to planet spawned signal
 	if planet_spawner.has_signal("planet_spawned") and not planet_spawner.is_connected("planet_spawned", _on_planet_spawned):
-		planet_spawner.planet_spawned.connect(_on_planet_spawned)
+		planet_spawner.connect("planet_spawned", _on_planet_spawned)
 	
 	return planet
 
@@ -292,28 +304,53 @@ func _generate_asteroid_field(cell: Vector2i, field_seed: int) -> Node:
 	var asteroid_field = _scene_cache["asteroid_field"].instantiate()
 	add_child(asteroid_field)
 	
-	var world_pos = _cell_to_world_position(cell)
-	asteroid_field.global_position = world_pos
+	# Set grid position which will handle proper world positioning
+	if asteroid_field.has_method("set_grid_position"):
+		asteroid_field.set_grid_position(cell.x, cell.y)
+	else:
+		# Fallback to direct position setting
+		var world_pos = _cell_to_world_position(cell)
+		asteroid_field.global_position = world_pos
 	
-	if asteroid_field.has_method("generate"):
-		# Create deterministic parameters based on field_seed
-		var density_seed = field_seed
-		var size_seed = field_seed + 1
-		
-		var density = 1.0
-		var size = 1.0
-		
-		if seed_manager:
-			density = seed_manager.get_random_value(density_seed, 0.5, 1.5)
-			size = seed_manager.get_random_value(size_seed, 0.7, 1.3)
-		else:
-			var rng = RandomNumberGenerator.new()
-			rng.seed = field_seed
-			density = rng.randf_range(0.5, 1.5)
-			size = rng.randf_range(0.7, 1.3)
-		
-		asteroid_field.generate(field_seed, density, size)
+	# Set local seed offset - direct property access
+	asteroid_field.local_seed_offset = field_seed % 1000
 	
+	# Create deterministic parameters based on field_seed
+	var density_seed = field_seed
+	var size_seed = field_seed + 1
+	var radius_seed = field_seed + 2
+	
+	var density = 1.0
+	var size_variation = 1.0
+	var field_radius = 400.0
+	
+	# Use seed manager for deterministic randomization if available
+	if seed_manager:
+		density = seed_manager.get_random_value(density_seed, 0.5, 1.5)
+		size_variation = seed_manager.get_random_value(size_seed, 0.7, 1.3)
+		field_radius = seed_manager.get_random_value(radius_seed, 350.0, 450.0)
+	else:
+		var rng = RandomNumberGenerator.new()
+		rng.seed = field_seed
+		density = rng.randf_range(0.5, 1.5)
+		size_variation = rng.randf_range(0.7, 1.3)
+		field_radius = rng.randf_range(350.0, 450.0)
+	
+	# Configure field properties - direct access
+	asteroid_field.field_radius = field_radius
+	
+	# Adjust asteroid count based on density - direct access
+	asteroid_field.min_asteroids = int(12 * density)  # Default is 12
+	asteroid_field.max_asteroids = int(20 * density)  # Default is 20
+	
+	# Apply size variation setting
+	asteroid_field.size_variation = size_variation * 0.4
+	
+	# Generate the field
+	if asteroid_field.has_method("generate_field"):
+		asteroid_field.generate_field()
+	
+	# Register with entity manager
 	_register_generated_entity(cell, asteroid_field, "asteroid_field")
 	
 	if has_node("/root/EntityManager") and EntityManager.has_method("register_entity"):
@@ -431,6 +468,11 @@ func clear_world() -> void:
 				if is_instance_valid(entity):
 					if has_node("/root/EntityManager") and EntityManager.has_method("deregister_entity") and entity_type != "planet_spawner":
 						EntityManager.deregister_entity(entity)
+					
+					# Special handling for asteroid fields to ensure proper cleanup
+					if entity_type == "asteroid_field" and entity.has_method("clear_field"):
+						entity.clear_field()
+						
 					entity.queue_free()
 	
 	_generated_entities.clear()
@@ -465,7 +507,9 @@ func _cell_to_world_position(cell: Vector2i) -> Vector2:
 		return game_settings.get_cell_world_position(cell)
 	else:
 		var cell_size = 1024  # Default
-		return Vector2(cell.x * cell_size + cell_size/2.0, cell.y * cell_size + cell_size/2.0)
+		var grid_size = 10    # Default
+		var grid_offset = Vector2(cell_size * grid_size / 2, cell_size * grid_size / 2)
+		return Vector2(cell.x * cell_size + cell_size/2.0, cell.y * cell_size + cell_size/2.0) - grid_offset
 
 func get_cell_entities(cell_coords: Vector2i) -> Array:
 	if not _generated_entities.has(cell_coords):
@@ -485,3 +529,69 @@ func get_cell_entities(cell_coords: Vector2i) -> Array:
 					result.append(entity)
 	
 	return result
+
+func get_entity_at_world_position(world_pos: Vector2, entity_group: String = "") -> Node:
+	if not game_settings:
+		return null
+		
+	var cell = game_settings.get_cell_coords(world_pos)
+	if not is_valid_cell(cell):
+		return null
+		
+	var entities = get_cell_entities(cell)
+	if entities.is_empty():
+		return null
+		
+	# If no group specified, return the first entity
+	if entity_group.is_empty():
+		return entities[0]
+		
+	# Otherwise, find entity in the specified group
+	for entity in entities:
+		if entity.is_in_group(entity_group):
+			return entity
+			
+	return null
+
+func get_nearest_entity_of_type(world_pos: Vector2, entity_type: String) -> Dictionary:
+	var nearest_entity = null
+	var nearest_distance = INF
+	var nearest_cell = Vector2i(-1, -1)
+	
+	for cell in _generated_entities:
+		var cell_data = _generated_entities[cell]
+		var cell_has_type = false
+		
+		for type in cell_data:
+			if (type == "planet_spawner" and (entity_type == ENTITY_TYPES.TERRAN_PLANET or entity_type == ENTITY_TYPES.GASEOUS_PLANET)) or \
+			   (type == entity_type):
+				cell_has_type = true
+				break
+		
+		if not cell_has_type:
+			continue
+			
+		var cell_position = _cell_to_world_position(cell)
+		var distance = cell_position.distance_to(world_pos)
+		
+		if distance < nearest_distance:
+			var entities = get_cell_entities(cell)
+			if not entities.is_empty():
+				nearest_entity = entities[0]
+				nearest_distance = distance
+				nearest_cell = cell
+	
+	return {
+		"entity": nearest_entity,
+		"distance": nearest_distance,
+		"cell": nearest_cell
+	}
+
+func get_entity_count(entity_type: String) -> int:
+	return _entity_counts.get(entity_type, 0)
+
+func get_total_entity_count() -> int:
+	var total = 0
+	for type in _entity_counts:
+		total += _entity_counts[type]
+	return total

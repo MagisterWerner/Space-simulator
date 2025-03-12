@@ -52,6 +52,16 @@ window/per_pixel_transparency/allowed=true
 
 enabled=PackedStringArray("res://addons/gdfxr/plugin.cfg")
 
+[file_customization]
+
+folder_colors={
+"res://assets/": "purple",
+"res://autoload/": "green",
+"res://resources/": "blue",
+"res://scenes/": "red",
+"res://scripts/": "green"
+}
+
 [filesystem]
 
 import/blender/enabled=false

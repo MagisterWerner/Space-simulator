@@ -17,8 +17,9 @@ grid_cell_size = 768
 grid_size = 6
 terran_planets = 1
 gaseous_planets = 0
+asteroid_fields = 1
 show_tutorials = false
-master_volume = 0.0
+music_volume = 0.39
 debug_mode = true
 debug_seed_manager = true
 debug_world_generator = true
@@ -37,5 +38,4 @@ position_smoothing_speed = 3.0
 
 [node name="BackGroundMusicController" type="Node" parent="."]
 script = ExtResource("5_6q06x")
-start_music_on_ready = false
 enable_debug_log = true
