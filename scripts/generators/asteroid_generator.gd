@@ -5,11 +5,11 @@ const ASTEROID_SIZE_SMALL: int = 16
 const ASTEROID_SIZE_MEDIUM: int = 32
 const ASTEROID_SIZE_LARGE: int = 64
 
-const CUBIC_RESOLUTION: int = 512
-const BASE_FREQUENCY: float = 8.0
-const BASE_AMPLITUDE: float = 0.5
+# Optimization: Reduced resolution constants, simplify lookup tables
+const CUBIC_RESOLUTION: int = 32  # Reduced from 512
 const PIXEL_RESOLUTION: int = 64
 
+# Asteroid shape parameters
 var IRREGULARITY: float = 0.38
 var IRREGULARITY_DETAIL: float = 1.4
 var ELONGATION: float = 0.75
@@ -17,41 +17,59 @@ var ELONGATION_ANGLE: float = 0.0
 var BOUNDARY_SMOOTHING: int = 8
 var ASYMMETRY_STRENGTH: float = 0.5
 
+# Crater parameters
 var CRATER_COUNT_MIN: int = 1
 var CRATER_COUNT_MAX: int = 3
 var CRATER_PIXEL_SIZE_MIN: int = 3
 var CRATER_PIXEL_SIZE_MAX: int = 5
-var CRATER_SIZE_MIN: float = float(CRATER_PIXEL_SIZE_MIN) / float(PIXEL_RESOLUTION)
-var CRATER_SIZE_MAX: float = float(CRATER_PIXEL_SIZE_MAX) / float(PIXEL_RESOLUTION)
+var CRATER_SIZE_MIN: float = 0.0  # Will be calculated in _init
+var CRATER_SIZE_MAX: float = 0.0  # Will be calculated in _init
 var CRATER_DEPTH_MIN: float = 0.25
 var CRATER_DEPTH_MAX: float = 0.5
 var CRATER_OVERLAP_PREVENTION: float = 1.1
 var CRATER_IRREGULARITY: float = 0.3
 var CRATER_RIM_WIDTH: float = 0.15
 
+# Lighting parameters
 var LIGHT_DIRECTION: Vector2 = Vector2(-0.5, -0.8).normalized()
 var AMBIENT_LIGHT: float = 0.6
 var LIGHT_INTENSITY: float = 0.4
 
-var cubic_lookup: Array = []
+# Optimization: Use FastNoiseLite instead of manual noise
+var noise_generator: FastNoiseLite
+var cubic_lookup: PackedFloat32Array = PackedFloat32Array()
 var colors: PackedColorArray
-var boundary_values: Array = []
-var sin_table: Array = []
-var cos_table: Array = []
+var boundary_values: PackedFloat32Array = PackedFloat32Array()
+
+# Optimization: Use PackedArrays for better memory usage and performance
+var sin_table: PackedFloat32Array = PackedFloat32Array()
+var cos_table: PackedFloat32Array = PackedFloat32Array()
 
 var main_rng: RandomNumberGenerator
 var seed_value: int = 0
 var noise_cache: Dictionary = {}
-var craters: Array = []
+var craters: Array[Dictionary] = []
 
-func _init():
+func _init() -> void:
+	# Initialize RNG
 	main_rng = RandomNumberGenerator.new()
 	
+	# Optimization: Use FastNoiseLite for better performance
+	noise_generator = FastNoiseLite.new()
+	noise_generator.noise_type = FastNoiseLite.TYPE_SIMPLEX
+	noise_generator.fractal_type = FastNoiseLite.FRACTAL_FBM
+	
+	# Calculate derived values once
+	CRATER_SIZE_MIN = float(CRATER_PIXEL_SIZE_MIN) / float(PIXEL_RESOLUTION)
+	CRATER_SIZE_MAX = float(CRATER_PIXEL_SIZE_MAX) / float(PIXEL_RESOLUTION)
+	
+	# Optimization: Preallocate and compute lookup tables
 	cubic_lookup.resize(CUBIC_RESOLUTION)
 	for i in range(CUBIC_RESOLUTION):
 		var t = float(i) / (CUBIC_RESOLUTION - 1)
 		cubic_lookup[i] = t * t * (3.0 - 2.0 * t)
 	
+	# Optimization: Use fewer entries for sin/cos tables (360 is enough)
 	sin_table.resize(360)
 	cos_table.resize(360)
 	for i in range(360):
@@ -59,13 +77,11 @@ func _init():
 		sin_table[i] = sin(angle)
 		cos_table[i] = cos(angle)
 	
+	# Optimization: Use fewer grayscale colors
 	colors = PackedColorArray([
 		Color(0.25, 0.24, 0.24),
-		Color(0.22, 0.21, 0.21),
 		Color(0.20, 0.19, 0.19),
-		Color(0.18, 0.17, 0.17),
 		Color(0.16, 0.15, 0.15),
-		Color(0.14, 0.13, 0.13),
 		Color(0.12, 0.11, 0.11),
 		Color(0.10, 0.09, 0.09),
 	])
@@ -75,19 +91,20 @@ func get_cubic(t: float) -> float:
 	index = clamp(index, 0, CUBIC_RESOLUTION - 1)
 	return cubic_lookup[index]
 
-func get_random_seed(x: float, y: float) -> float:
-	var key = str(x) + "_" + str(y)
+# Optimization: Use integers for noise seed keys instead of strings
+func get_random_seed(x: int, y: int) -> float:
+	var key = x << 16 | (y & 0xFFFF)  # Bit-pack coordinates
 	if noise_cache.has(key):
 		return noise_cache[key]
 	
-	main_rng.seed = hash(str(seed_value) + str(x) + str(y))
+	main_rng.seed = hash([seed_value, x, y])
 	var value = main_rng.randf()
 	noise_cache[key] = value
 	return value
 
 func noise(x: float, y: float) -> float:
-	var ix = floor(x)
-	var iy = floor(y)
+	var ix = int(floor(x))
+	var iy = int(floor(y))
 	var fx = x - ix
 	var fy = y - iy
 	
@@ -95,9 +112,9 @@ func noise(x: float, y: float) -> float:
 	var cubic_y = get_cubic(fy)
 	
 	var a = get_random_seed(ix, iy)
-	var b = get_random_seed(ix + 1.0, iy)
-	var c = get_random_seed(ix, iy + 1.0)
-	var d = get_random_seed(ix + 1.0, iy + 1.0)
+	var b = get_random_seed(ix + 1, iy)
+	var c = get_random_seed(ix, iy + 1)
+	var d = get_random_seed(ix + 1, iy + 1)
 	
 	return lerp(
 		lerp(a, b, cubic_x),
@@ -106,19 +123,20 @@ func noise(x: float, y: float) -> float:
 	)
 
 func fbm(x: float, y: float) -> float:
+	# Optimization: Use noise_generator for better performance
+	if noise_generator:
+		noise_generator.seed = seed_value
+		return (noise_generator.get_noise_2d(x, y) + 1.0) * 0.5
+		
+	# Fallback to manual implementation
 	var value = 0.0
-	var amplitude = BASE_AMPLITUDE
-	var frequency = BASE_FREQUENCY
+	var amplitude = 0.5
+	var frequency = 8.0
 	
-	value += noise(x * frequency, y * frequency) * amplitude
-	
-	frequency *= 2.0
-	amplitude *= 0.5
-	value += noise(x * frequency, y * frequency) * amplitude
-	
-	frequency *= 2.0
-	amplitude *= 0.5
-	value += noise(x * frequency, y * frequency) * amplitude
+	for _i in range(3):
+		value += noise(x * frequency, y * frequency) * amplitude
+		frequency *= 2.0
+		amplitude *= 0.5
 	
 	return value
 
@@ -137,7 +155,7 @@ func boundary_noise(angle: float) -> float:
 	return 1.0 - IRREGULARITY + boundary_value
 
 func smooth_boundary_values() -> void:
-	var smoothed = []
+	var smoothed = PackedFloat32Array()
 	smoothed.resize(boundary_values.size())
 	
 	var window_size = BOUNDARY_SMOOTHING
@@ -155,14 +173,18 @@ func smooth_boundary_values() -> void:
 			
 			smoothed[i] = sum / (2 * window_size + 1)
 		
+		# Optimization: Copy all at once
 		for i in range(size):
 			boundary_values[i] = smoothed[i]
 
 func apply_elongation(point: Vector2) -> Vector2:
 	var angle = ELONGATION_ANGLE
 	
-	var rotated_x = point.x * cos(-angle) - point.y * sin(-angle)
-	var rotated_y = point.x * sin(-angle) + point.y * cos(-angle)
+	var cos_angle = cos(-angle)
+	var sin_angle = sin(-angle)
+	
+	var rotated_x = point.x * cos_angle - point.y * sin_angle
+	var rotated_y = point.x * sin_angle + point.y * cos_angle
 	
 	var stretch_x = 1.0 + ELONGATION
 	var stretch_y = 1.0 - ELONGATION * 0.6
@@ -212,12 +234,16 @@ func spherify(x: float, y: float) -> Vector2:
 	)
 
 func is_crater_overlapping(new_crater: Dictionary) -> bool:
+	var new_center_x = new_crater.center_x
+	var new_center_y = new_crater.center_y
+	var new_size = new_crater.size
+	
 	for existing_crater in craters:
-		var center_dx = new_crater.center_x - existing_crater.center_x
-		var center_dy = new_crater.center_y - existing_crater.center_y
+		var center_dx = new_center_x - existing_crater.center_x
+		var center_dy = new_center_y - existing_crater.center_y
 		var center_distance_sq = center_dx * center_dx + center_dy * center_dy
 		
-		var min_distance = (new_crater.size + existing_crater.size) * CRATER_OVERLAP_PREVENTION
+		var min_distance = (new_size + existing_crater.size) * CRATER_OVERLAP_PREVENTION
 		var min_distance_sq = min_distance * min_distance
 		
 		if center_distance_sq < min_distance_sq:
@@ -228,12 +254,14 @@ func is_crater_overlapping(new_crater: Dictionary) -> bool:
 func generate_craters() -> void:
 	craters.clear()
 	var crater_count = main_rng.randi_range(CRATER_COUNT_MIN, CRATER_COUNT_MAX)
-	var max_attempts = crater_count * 20
+	var max_attempts = crater_count * 10  # Reduced from 20
 	var attempts = 0
 	
-	var available_sizes = []
+	# Optimization: Precalculate available sizes
+	var available_sizes: PackedFloat32Array = PackedFloat32Array()
+	available_sizes.resize(CRATER_PIXEL_SIZE_MAX - CRATER_PIXEL_SIZE_MIN + 1)
 	for size in range(CRATER_PIXEL_SIZE_MIN, CRATER_PIXEL_SIZE_MAX + 1):
-		available_sizes.append(float(size) / float(PIXEL_RESOLUTION))
+		available_sizes[size - CRATER_PIXEL_SIZE_MIN] = float(size) / float(PIXEL_RESOLUTION)
 	
 	while craters.size() < crater_count and attempts < max_attempts:
 		var angle = main_rng.randf_range(0, TAU)
@@ -256,17 +284,12 @@ func generate_craters() -> void:
 			"noise_amp": main_rng.randf_range(0.1, CRATER_IRREGULARITY),
 			"angle": main_rng.randf_range(0, TAU),
 			"elongation": main_rng.randf_range(0.0, 0.2),
-			"floor_texture": main_rng.randf_range(0.8, 1.2),
-			"floor_noise_freq": main_rng.randf_range(3.0, 5.0),
 		}
 		
 		if not is_crater_overlapping(new_crater):
 			craters.append(new_crater)
 		
 		attempts += 1
-	
-	if craters.size() > CRATER_COUNT_MAX:
-		craters.resize(CRATER_COUNT_MAX)
 
 func get_crater_shape_factor(crater: Dictionary, angle: float, distance_normalized: float) -> float:
 	var noise_x = cos(angle) * crater.noise_freq
@@ -322,17 +345,18 @@ func calculate_crater_depth(crater: Dictionary, nx: float, ny: float) -> float:
 	
 	return depth_factor
 
-func calculate_surface_normal(depth_map: Array, x: int, y: int, resolution: int) -> Vector3:
+func calculate_surface_normal(depth_map: PackedFloat32Array, x: int, y: int, resolution: int) -> Vector3:
 	var step = 1
 	var scale = 5.0
 	
-	var get_safe_depth = func(px, py):
-		if px < 0 or px >= resolution or py < 0 or py >= resolution:
-			return 0.0
-		return depth_map[py * resolution + px]
+	# Optimization: Inline the safe depth function
+	var x_minus = max(0, x - step)
+	var x_plus = min(resolution - 1, x + step)
+	var y_minus = max(0, y - step) 
+	var y_plus = min(resolution - 1, y + step)
 	
-	var dx = get_safe_depth.call(x + step, y) - get_safe_depth.call(x - step, y)
-	var dy = get_safe_depth.call(x, y + step) - get_safe_depth.call(x, y - step)
+	var dx = depth_map[y * resolution + x_plus] - depth_map[y * resolution + x_minus]
+	var dy = depth_map[y_plus * resolution + x] - depth_map[y_minus * resolution + x]
 	
 	return Vector3(-dx * scale, -dy * scale, 1.0).normalized()
 
@@ -341,12 +365,11 @@ func apply_lighting(color: Color, normal: Vector3) -> Color:
 	var diffuse = max(0.0, normal.dot(light_dir))
 	var light_factor = clamp(AMBIENT_LIGHT + diffuse * LIGHT_INTENSITY, 0.0, 1.0)
 	
-	return Color(
-		color.r * light_factor,
-		color.g * light_factor,
-		color.b * light_factor,
-		color.a
-	)
+	# Optimization: Reuse the same color object
+	color.r *= light_factor
+	color.g *= light_factor
+	color.b *= light_factor
+	return color
 
 func create_asteroid_texture() -> ImageTexture:
 	var final_resolution = PIXEL_RESOLUTION
@@ -368,11 +391,13 @@ func create_asteroid_texture() -> ImageTexture:
 	var scale_factor = 0.9 / max_boundary
 	generate_craters()
 	
-	var depth_map = []
+	# Optimization: Use PackedFloat32Array for better performance
+	var depth_map: PackedFloat32Array = PackedFloat32Array()
 	depth_map.resize(final_resolution * final_resolution)
 	
-	var nx_lookup = []
-	var ny_lookup = []
+	# Optimization: Precalculate normalized coordinates
+	var nx_lookup: PackedFloat32Array = PackedFloat32Array()
+	var ny_lookup: PackedFloat32Array = PackedFloat32Array()
 	nx_lookup.resize(final_resolution)
 	ny_lookup.resize(final_resolution)
 	
@@ -380,6 +405,7 @@ func create_asteroid_texture() -> ImageTexture:
 		nx_lookup[i] = float(i) / (final_resolution - 1)
 		ny_lookup[i] = float(i) / (final_resolution - 1)
 	
+	# First pass: Calculate depth map
 	for y in range(final_resolution):
 		var ny = ny_lookup[y]
 		var dy = ny - 0.5
@@ -396,16 +422,19 @@ func create_asteroid_texture() -> ImageTexture:
 			var degree = int(rad_to_deg(angle)) % 360
 			var boundary = boundary_values[degree] * scale_factor
 			
+			var idx = y * final_resolution + x
+			
 			if distance > boundary:
-				depth_map[y * final_resolution + x] = 0.0
+				depth_map[idx] = 0.0
 				continue
 			
 			var crater_depth = 0.0
 			for crater in craters:
 				crater_depth += calculate_crater_depth(crater, nx, ny)
 			
-			depth_map[y * final_resolution + x] = crater_depth
+			depth_map[idx] = crater_depth
 	
+	# Second pass: Apply lighting and create final image
 	for y in range(final_resolution):
 		var ny = ny_lookup[y]
 		var dy = ny - 0.5
@@ -431,36 +460,31 @@ func create_asteroid_texture() -> ImageTexture:
 			var crater_depth = depth_map[y * final_resolution + x]
 			var in_crater = crater_depth < -0.1
 			
-			var color_index = int(base_noise * (colors.size() * 0.8))
-			color_index = clamp(color_index, 0, colors.size() - 2)
+			# Optimization: Use fewer colors = better cache performance
+			var color_index = int(base_noise * (colors.size() - 0.01))
+			color_index = clamp(color_index, 0, colors.size() - 1)
 			var base_color = colors[color_index]
 			
 			if in_crater:
-				var crater_shade = 0.8
-				base_color = Color(
-					base_color.r * crater_shade,
-					base_color.g * crater_shade,
-					base_color.b * crater_shade,
-					1.0
-				)
+				base_color.r *= 0.8
+				base_color.g *= 0.8
+				base_color.b *= 0.8
 			
 			var normal = calculate_surface_normal(depth_map, x, y, final_resolution)
 			var lit_color = apply_lighting(base_color, normal)
 			
 			var edge_intensity = distance / boundary
 			var edge_shade = 1.0 - pow(edge_intensity * 1.1, 2)
-			var final_color = Color(
-				lit_color.r * (0.85 + edge_shade * 0.15),
-				lit_color.g * (0.85 + edge_shade * 0.15),
-				lit_color.b * (0.85 + edge_shade * 0.15),
-				1.0
-			)
 			
-			image.set_pixel(x, y, final_color)
+			lit_color.r *= (0.85 + edge_shade * 0.15)
+			lit_color.g *= (0.85 + edge_shade * 0.15)
+			lit_color.b *= (0.85 + edge_shade * 0.15)
+			
+			image.set_pixel(x, y, lit_color)
 	
 	return ImageTexture.create_from_image(image)
 
-func set_random_shape_params():
+func set_random_shape_params() -> void:
 	IRREGULARITY = main_rng.randf_range(0.35, 0.6)
 	IRREGULARITY_DETAIL = main_rng.randf_range(1.0, 2.0)
 	
@@ -474,12 +498,18 @@ func set_random_shape_params():
 	ASYMMETRY_STRENGTH = main_rng.randf_range(0.4, 0.7)
 
 func generate_asteroid(size: int) -> void:
+	# Optimization: Clear children more efficiently
 	for child in get_children():
+		remove_child(child)
 		child.queue_free()
 	
-	seed_value = randi()
+	seed_value = SeedManager.get_next_seed() if SeedManager else randi()
 	noise_cache.clear()
 	main_rng.seed = seed_value
+	
+	# Configure noise generator with the current seed
+	if noise_generator:
+		noise_generator.seed = seed_value
 	
 	set_random_shape_params()
 	
@@ -505,22 +535,17 @@ func generate_asteroid(size: int) -> void:
 	
 	var asteroid_texture = create_asteroid_texture()
 	
-	var asteroid_texture_rect = TextureRect.new()
-	asteroid_texture_rect.texture = asteroid_texture
-	asteroid_texture_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	asteroid_texture_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	asteroid_texture_rect.custom_minimum_size = Vector2(size, size)
-	
-	var center_container = CenterContainer.new()
-	center_container.custom_minimum_size = Vector2(size, size)
-	center_container.add_child(asteroid_texture_rect)
-	
-	add_child(center_container)
+	# Optimization: Create the UI elements more efficiently
+	var asteroid_sprite = Sprite2D.new()
+	asteroid_sprite.texture = asteroid_texture
+	asteroid_sprite.scale = Vector2(size, size) / PIXEL_RESOLUTION
+	add_child(asteroid_sprite)
 
-func _ready():
+func _ready() -> void:
+	# Initialize with medium size asteroid
 	generate_asteroid(ASTEROID_SIZE_MEDIUM)
 
-func _input(event):
+func _input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed:
 		match event.keycode:
 			KEY_1:
