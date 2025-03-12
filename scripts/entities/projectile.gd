@@ -1,4 +1,4 @@
-# projectile.gd
+# scripts/entities/projectile.gd
 extends Area2D
 class_name Projectile
 
@@ -17,61 +17,57 @@ var shooter: Node = null
 var hit_targets: Array = []
 
 func _ready() -> void:
-	# Calculate velocity based on rotation
+	# Pre-calculate velocity once
 	velocity = Vector2(speed, 0).rotated(rotation)
-	
-	# Connect to body entered signal
 	body_entered.connect(_on_body_entered)
-	
-	# Set up a timer to destroy the projectile after lifespan
-	lifetime = 0.0
 
 func _process(delta: float) -> void:
-	# Move the projectile
+	# Apply movement
 	position += velocity * delta
 	
-	# Update lifetime and destroy if expired
+	# Update lifetime - queue_free at end
 	lifetime += delta
 	if lifetime >= lifespan:
 		queue_free()
 
 func _on_body_entered(body: Node2D) -> void:
-	# Ignore collisions with the shooter
+	# Skip already hit bodies and shooter
 	if body == shooter or hit_targets.has(body):
 		return
 	
-	# Check if the body has a health component
+	# Get health component efficiently
 	var health = body.get_node_or_null("HealthComponent") as HealthComponent
 	if health:
-		# Deal damage
 		health.apply_damage(damage, "projectile", shooter)
 		hit_target.emit(body)
 		hit_targets.append(body)
 	
-	# Spawn impact effect if provided
+	# Spawn impact effect only if needed
 	if impact_effect_scene:
 		var impact = impact_effect_scene.instantiate()
 		get_tree().current_scene.add_child(impact)
 		impact.global_position = global_position
 	
-	# Handle piercing
-	if pierce_targets:
-		# If pierce_count is > 0, decrease it by 1
-		if pierce_count > 0:
-			pierce_count -= 1
-			if pierce_count <= 0:
-				queue_free()
-		# If pierce_count is 0 or negative, it has unlimited piercing
-	else:
-		# No piercing, destroy projectile
+	# Handle piercing logic with early exits
+	if not pierce_targets:
 		queue_free()
+		return
+		
+	# Limited piercing
+	if pierce_count > 0:
+		pierce_count -= 1
+		if pierce_count <= 0:
+			queue_free()
+	# Else unlimited piercing - do nothing
 
+# More efficient property setters
 func set_damage(value: float) -> void:
 	damage = value
 
 func set_speed(value: float) -> void:
 	speed = value
-	if is_inside_tree():  # If the node is already in the tree, update the velocity
+	# Only recalculate velocity if node is in tree
+	if is_inside_tree():
 		velocity = Vector2(speed, 0).rotated(rotation)
 
 func set_lifespan(value: float) -> void:

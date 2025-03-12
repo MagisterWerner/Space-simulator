@@ -1,5 +1,4 @@
 # scripts/entities/asteroid.gd
-# Asteroid entity that can be destroyed, split into fragments, and damage the player
 extends Node2D
 class_name Asteroid
 
@@ -12,15 +11,20 @@ var field_data = null
 var initial_rotation: float = 0.0
 var audio_manager = null
 
-func _ready():
+# Cache for frequently accessed nodes
+var _sprite: Sprite2D
+var _explosion_component: Node
+
+func _ready() -> void:
 	z_index = 3
 	add_to_group("asteroids")
 	
 	health_component = $HealthComponent
+	_sprite = $Sprite2D
+	_explosion_component = $ExplodeDebrisComponent if has_node("ExplodeDebrisComponent") else null
 	
-	# Look for AudioManager singleton
-	if Engine.has_singleton("AudioManager"):
-		audio_manager = AudioManager
+	# Use direct singleton access - more efficient
+	audio_manager = Engine.get_singleton("AudioManager")
 	
 	if health_component:
 		match size_category:
@@ -31,59 +35,60 @@ func _ready():
 		health_component.current_health = health_component.max_health
 		health_component.connect("died", _on_destroyed)
 	
-	if has_node("Sprite2D"):
-		var sprite = $Sprite2D
-		sprite.scale = Vector2(base_scale, base_scale)
-		sprite.rotation = initial_rotation
+	if _sprite:
+		_sprite.scale = Vector2(base_scale, base_scale)
+		_sprite.rotation = initial_rotation
 	
-	set_process(true)
+	set_process(rotation_speed != 0)
 	
-func _process(delta):
-	if has_node("Sprite2D") and rotation_speed != 0:
-		$Sprite2D.rotation += rotation_speed * delta
+func _process(delta: float) -> void:
+	if _sprite:
+		_sprite.rotation += rotation_speed * delta
 
-func setup(size: String, variant: int, scale_value: float, rot_speed: float, initial_rot: float = 0.0):
+func setup(size: String, variant: int, scale_value: float, rot_speed: float, initial_rot: float = 0.0) -> void:
 	size_category = size
 	sprite_variant = variant
 	base_scale = scale_value
 	rotation_speed = rot_speed
 	initial_rotation = initial_rot
 	
-	if has_node("Sprite2D"):
-		$Sprite2D.scale = Vector2(base_scale, base_scale)
-		$Sprite2D.rotation = initial_rotation
+	if _sprite:
+		_sprite.scale = Vector2(base_scale, base_scale)
+		_sprite.rotation = initial_rotation
+	
+	# Only process if we need rotation
+	set_process(rot_speed != 0)
 
 func take_damage(amount: float) -> bool:
 	return health_component.take_damage(amount) if health_component else false
 
 func check_laser_hit(laser) -> bool:
-	return get_collision_rect().has_point(to_local(laser.global_position))
+	# More efficient collision check using global coordinates
+	var global_rect = get_collision_rect()
+	global_rect.position += global_position
+	return global_rect.has_point(laser.global_position)
 
 func get_collision_rect() -> Rect2:
-	var sprite = $Sprite2D
-	if sprite and sprite.texture:
-		var texture_size = sprite.texture.get_size()
-		var scaled_size = texture_size * sprite.scale
+	if _sprite and _sprite.texture:
+		var texture_size = _sprite.texture.get_size()
+		var scaled_size = texture_size * _sprite.scale
 		return Rect2(-scaled_size.x/2, -scaled_size.y/2, scaled_size.x, scaled_size.y)
 	
-	var size = 10
-	match size_category:
-		"small": size = 10
-		"medium": size = 20
-		"large": size = 30
+	# Fallback to size-based rect
+	var size = 10 * (1 if size_category == "small" else (2 if size_category == "medium" else 3))
 	return Rect2(-size/2, -size/2, size, size)
 
-func _on_destroyed():
-	var explode_component = $ExplodeDebrisComponent if has_node("ExplodeDebrisComponent") else null
-	
-	if explode_component and explode_component.has_method("explode"):
-		explode_component.explode()
+func _on_destroyed() -> void:
+	# Use cached explosion component
+	if _explosion_component and _explosion_component.has_method("explode"):
+		_explosion_component.explode()
 	else:
 		_create_explosion()
 		
 		if audio_manager:
 			audio_manager.play_sfx("explosion", global_position)
 		
+		# Only get asteroid spawner if needed
 		var asteroid_spawner = get_node_or_null("/root/Main/AsteroidSpawner")
 		if asteroid_spawner:
 			asteroid_spawner._spawn_fragments(
@@ -95,7 +100,7 @@ func _on_destroyed():
 	
 	queue_free()
 
-func _create_explosion():
+func _create_explosion() -> void:
 	var explosion_scene_path = "res://scenes/explosion_effect.tscn"
 	
 	if ResourceLoader.exists(explosion_scene_path):
@@ -103,36 +108,28 @@ func _create_explosion():
 		var explosion = explosion_scene.instantiate()
 		explosion.global_position = global_position
 		
-		var explosion_scale = 1.0
-		match size_category:
-			"small": explosion_scale = 0.5
-			"medium": explosion_scale = 1.0
-			"large": explosion_scale = 1.5
-		
+		var explosion_scale = 0.5 if size_category == "small" else (1.0 if size_category == "medium" else 1.5)
 		explosion.scale = Vector2(explosion_scale, explosion_scale)
 		get_tree().current_scene.add_child(explosion)
 	else:
-		var explosion_particles = CPUParticles2D.new()
-		explosion_particles.emitting = true
-		explosion_particles.one_shot = true
-		explosion_particles.explosiveness = 1.0
-		explosion_particles.amount = 30
-		explosion_particles.lifetime = 0.6
-		explosion_particles.local_coords = false
-		explosion_particles.position = global_position
-		explosion_particles.direction = Vector2.ZERO
-		explosion_particles.spread = 180.0
-		explosion_particles.gravity = Vector2.ZERO
-		explosion_particles.initial_velocity_min = 100.0
-		explosion_particles.initial_velocity_max = 150.0
-		explosion_particles.scale_amount_min = 2.0
-		explosion_particles.scale_amount_max = 4.0
+		# Fallback particles - simplified setup
+		var particles = CPUParticles2D.new()
 		
-		get_tree().current_scene.add_child(explosion_particles)
+		# Configure particles in a more efficient way
+		particles.emitting = true
+		particles.one_shot = true
+		particles.explosiveness = 1.0
+		particles.amount = 30
+		particles.lifetime = 0.6
+		particles.position = global_position
+		particles.direction = Vector2.ZERO
+		particles.spread = 180.0
+		particles.gravity = Vector2.ZERO
+		particles.initial_velocity_min = 100.0
+		particles.initial_velocity_max = 150.0
+		particles.scale_amount_min = 2.0
+		particles.scale_amount_max = 4.0
 		
-		var timer = Timer.new()
-		explosion_particles.add_child(timer)
-		timer.wait_time = 0.8
-		timer.one_shot = true
-		timer.timeout.connect(func(): explosion_particles.queue_free())
-		timer.start()
+		# Use CallbackTimer pattern for cleanup
+		get_tree().current_scene.add_child(particles)
+		get_tree().create_timer(0.8).timeout.connect(particles.queue_free)

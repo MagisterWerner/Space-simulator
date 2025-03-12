@@ -1,7 +1,8 @@
 # scripts/entities/moons/moon_base.gd
-# Base class for all moon types with improved visual indicators
 extends Node2D
 class_name MoonBase
+
+enum MoonType { ROCKY, ICY, VOLCANIC }
 
 # Common properties for all moons
 var seed_value: int = 0
@@ -15,70 +16,87 @@ var orbit_deviation: float = 0
 var phase_offset: float = 0
 var moon_name: String
 var use_texture_cache: bool = true
-var is_gaseous: bool = false  # Flag to indicate if moon belongs to a gaseous planet
+var is_gaseous: bool = false
+var moon_type: int = MoonType.ROCKY  # Default type
 
 # Visual indicator properties
-var orbit_color: Color = Color(1, 1, 1, 0.5)  # Default orbit color
-var orbit_indicator_size: float = 4.0         # Size of the orbit indicator in debug mode
+var orbit_color: Color = Color(1, 1, 1, 0.5)
+var orbit_indicator_size: float = 4.0
 
-# New orbital parameters for different planet types
-var orbital_inclination: float = 1.0  # For 3D orbit projection (1.0 = circular)
-var orbit_vertical_offset: float = 0.0  # Offset from the equatorial plane
+# Orbital parameters
+var orbital_inclination: float = 1.0
+var orbit_vertical_offset: float = 0.0
 
-# Reference to initialization parameters for seed updates
+# Reference to initialization parameters
 var _init_params: Dictionary = {}
 
+# Type-specific properties mapped by moon type
+const TYPE_PROPERTIES = {
+	MoonType.VOLCANIC: {
+		"prefix": "Volcanic",
+		"orbit_color": Color(1.0, 0.3, 0.0, 0.5),
+		"indicator_color": Color(1.0, 0.3, 0.0, 0.8),
+		"cache_offset": 2
+	},
+	MoonType.ROCKY: {
+		"prefix": "Rocky",
+		"orbit_color": Color(0.7, 0.7, 0.7, 0.5),
+		"indicator_color": Color(0.8, 0.8, 0.8, 0.8),
+		"cache_offset": 0
+	},
+	MoonType.ICY: {
+		"prefix": "Icy",
+		"orbit_color": Color(0.5, 0.8, 1.0, 0.5),
+		"indicator_color": Color(0.6, 0.9, 1.0, 0.8),
+		"cache_offset": 1
+	}
+}
+
 func _ready() -> void:
-	# Set z-index appropriately - will be adjusted dynamically based on moon type
-	# for gaseous planets to ensure consistent visual hierarchy
+	# Set z-index and connect to seed manager
 	z_index = -9
 	
-	# Set orbit color based on moon type
-	_set_orbit_color()
-	
-	# Connect to SeedManager for seed changes
 	if has_node("/root/SeedManager"):
-		if SeedManager.has_signal("seed_changed") and not SeedManager.is_connected("seed_changed", _on_seed_changed):
-			SeedManager.connect("seed_changed", _on_seed_changed)
+		var seed_manager = get_node("/root/SeedManager")
+		if not seed_manager.is_connected("seed_changed", _on_seed_changed):
+			seed_manager.connect("seed_changed", _on_seed_changed)
 
 func _process(_delta) -> void:
 	queue_redraw()
 
 func _draw() -> void:
 	if moon_texture:
-		# Draw moon texture centered at the origin (the moon's position)
+		# Draw moon texture centered
 		draw_texture(moon_texture, -Vector2(pixel_size, pixel_size) / 2, Color.WHITE)
 		
-		# Optional: Draw a small indicator showing the moon type
+		# Debug indicator
 		if parent_planet and parent_planet.debug_draw_orbits:
-			var indicator_color = _get_type_color()
-			draw_circle(Vector2.ZERO, orbit_indicator_size, indicator_color)
+			var type_props = TYPE_PROPERTIES.get(moon_type, TYPE_PROPERTIES[MoonType.ROCKY])
+			draw_circle(Vector2.ZERO, orbit_indicator_size, type_props.indicator_color)
 
-# Handle seed changes - reinitialize with updated seed
 func _on_seed_changed(new_seed: int) -> void:
 	if _init_params.is_empty():
-		return  # Can't reinitialize without initial parameters
+		return
 	
-	# Update our seed based on the new global seed
+	# Update seed with new base but preserve unique part
 	if has_node("/root/SeedManager"):
-		# Preserve relative seed offset but use new base seed
-		var base_seed = SeedManager.get_seed()
-		var seed_offset = seed_value % 1000  # Preserve the unique part
+		var base_seed = get_node("/root/SeedManager").get_seed()
+		var seed_offset = seed_value % 1000
 		seed_value = base_seed + seed_offset
-		
-		# Update init params with new seed
 		_init_params.seed_value = seed_value
 		
 		# Regenerate moon texture
 		_generate_moon_texture()
 		
-		# Optionally log the update
-		print("Moon %s: Updated seed to %d" % [moon_name, seed_value])
+		# Optional log - could be removed in production
+		if parent_planet and parent_planet.debug_planet_generation:
+			print("Moon %s: Updated seed to %d" % [moon_name, seed_value])
 
 func initialize(params: Dictionary) -> void:
-	# Store initialization parameters for potential regeneration on seed change
+	# Store initialization parameters
 	_init_params = params.duplicate()
 	
+	# Extract parameters
 	seed_value = params.seed_value
 	parent_planet = params.parent_planet
 	distance = params.distance
@@ -87,63 +105,48 @@ func initialize(params: Dictionary) -> void:
 	orbit_deviation = params.orbit_deviation
 	phase_offset = params.phase_offset
 	
-	if "use_texture_cache" in params:
-		use_texture_cache = params.use_texture_cache
+	# Optional parameters
+	use_texture_cache = params.get("use_texture_cache", true)
+	is_gaseous = params.get("is_gaseous", false)
+	orbital_inclination = params.get("orbital_inclination", 1.0)
+	orbit_vertical_offset = params.get("orbit_vertical_offset", 0.0)
+	moon_type = params.get("moon_type", MoonType.ROCKY)
 	
-	# Store if this moon belongs to a gaseous planet
-	if "is_gaseous" in params:
-		is_gaseous = params.is_gaseous
-		
-	# Initialize new orbital parameters
-	if "orbital_inclination" in params:
-		orbital_inclination = params.orbital_inclination
-	if "orbit_vertical_offset" in params:
-		orbit_vertical_offset = params.orbit_vertical_offset
-		
-	# Use moon_name from params if provided
-	if "moon_name" in params:
-		moon_name = params.moon_name
-	else:
-		# Generate a simple name based on type and seed
-		moon_name = _get_moon_type_prefix() + " Moon-" + str(seed_value % 1000)
+	# Moon name
+	moon_name = params.get("moon_name", _get_moon_type_prefix() + " Moon-" + str(seed_value % 1000))
 	
-	# Generate moon texture - will set pixel_size correctly based on is_gaseous
+	# Generate texture
 	_generate_moon_texture()
 	
-	# Set orbit color based on moon type
+	# Set orbit color
 	_set_orbit_color()
-	
-	# NOTE: The position is now set by the parent planet after initialization
-	# This ensures the moon starts at the correct position on its orbit
 
-# Set the orbit color based on moon type for visual identification
-func _set_orbit_color() -> void:
-	match _get_moon_type_prefix():
-		"Volcanic":
-			orbit_color = Color(1.0, 0.3, 0.0, 0.5)  # Orange-red for volcanic (closest)
-		"Rocky":
-			orbit_color = Color(0.7, 0.7, 0.7, 0.5)  # Gray for rocky (middle)
-		"Icy":
-			orbit_color = Color(0.5, 0.8, 1.0, 0.5)  # Light blue for icy (furthest)
-		_:
-			orbit_color = Color(1.0, 1.0, 1.0, 0.5)  # White default
-
-# Get color for type indicator
-func _get_type_color() -> Color:
-	match _get_moon_type_prefix():
-		"Volcanic":
-			return Color(1.0, 0.3, 0.0, 0.8)  # Bright orange-red
-		"Rocky":
-			return Color(0.8, 0.8, 0.8, 0.8)  # Bright gray
-		"Icy":
-			return Color(0.6, 0.9, 1.0, 0.8)  # Bright blue
-		_:
-			return Color(1.0, 1.0, 1.0, 0.8)  # White default
-
-# Virtual method to be implemented by subclasses
+# Generate texture with appropriate type
 func _generate_moon_texture() -> void:
-	push_error("MoonBase: _generate_moon_texture is a virtual method that should be overridden")
+	# Calculate cache key based on moon type
+	var type_props = TYPE_PROPERTIES.get(moon_type, TYPE_PROPERTIES[MoonType.ROCKY])
+	var cache_key = seed_value * 10 + type_props.cache_offset
+	
+	# Generate or retrieve from cache
+	if use_texture_cache and PlanetSpawnerBase.texture_cache != null and PlanetSpawnerBase.texture_cache.moons.has(cache_key):
+		# Use cached texture
+		moon_texture = PlanetSpawnerBase.texture_cache.moons[cache_key]
+		var moon_generator = MoonGenerator.new()
+		pixel_size = moon_generator.get_moon_size(seed_value, is_gaseous)
+	else:
+		# Generate based on type
+		var moon_generator = MoonGenerator.new()
+		moon_texture = moon_generator.create_moon_texture(seed_value, moon_type, is_gaseous)
+		pixel_size = moon_generator.get_moon_size(seed_value, is_gaseous)
+		
+		# Cache the texture
+		if use_texture_cache and PlanetSpawnerBase.texture_cache != null:
+			PlanetSpawnerBase.texture_cache.moons[cache_key] = moon_texture
 
-# Virtual method to get moon type prefix
+func _set_orbit_color() -> void:
+	var type_props = TYPE_PROPERTIES.get(moon_type, TYPE_PROPERTIES[MoonType.ROCKY])
+	orbit_color = type_props.orbit_color
+
 func _get_moon_type_prefix() -> String:
-	return "Moon"
+	var type_props = TYPE_PROPERTIES.get(moon_type, TYPE_PROPERTIES[MoonType.ROCKY])
+	return type_props.prefix
