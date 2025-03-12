@@ -21,7 +21,9 @@ terran_planets = 2
 [node name="DebugPanel" parent="." instance=ExtResource("3_ow5a4")]
 
 [node name="SpaceBackground" parent="." instance=ExtResource("3_t8g3p")]
-star_count_far = 5000
+star_count_far = 3000
+star_count_mid = 600
+star_count_near = 300
 
 [node name="Camera2D" type="Camera2D" parent="."]
 zoom = Vector2(0.8, 0.8)

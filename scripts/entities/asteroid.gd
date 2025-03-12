@@ -1,85 +1,110 @@
-# scripts/entities/asteroid.gd
+# scripts/entities/asteroid.gd - Highly optimized implementation
 extends Node2D
 class_name Asteroid
 
-var health_component
+# Core components and properties
+var health_component: HealthComponent
 var size_category: String = "medium"
-var sprite_variant: int = 0
 var rotation_speed: float = 0.0
 var base_scale: float = 1.0
 var field_data = null
-var initial_rotation: float = 0.0
 var audio_manager = null
 
-# Cache for frequently accessed nodes
+# Frequently accessed nodes - cached
 var _sprite: Sprite2D
 var _explosion_component: Node
+var _collision_rect: Rect2
+var _collision_rect_global: Rect2
+var _health_values := {"small": 20.0, "medium": 50.0, "large": 100.0}
+
+# Static shared paths - avoid recalculation
+const EXPLOSION_SCENE_PATH: String = "res://scenes/explosion_effect.tscn"
 
 func _ready() -> void:
 	z_index = 3
 	add_to_group("asteroids")
 	
+	# Cache component references
 	health_component = $HealthComponent
 	_sprite = $Sprite2D
 	_explosion_component = $ExplodeDebrisComponent if has_node("ExplodeDebrisComponent") else null
 	
-	# Use direct singleton access - more efficient
+	# Direct singleton access is more efficient
 	audio_manager = Engine.get_singleton("AudioManager")
 	
+	# Set health based on size
 	if health_component:
-		match size_category:
-			"small": health_component.max_health = 20.0
-			"medium": health_component.max_health = 50.0
-			"large": health_component.max_health = 100.0
-		
+		health_component.max_health = _health_values.get(size_category, 50.0)
 		health_component.current_health = health_component.max_health
 		health_component.connect("died", _on_destroyed)
 	
+	# Apply visual settings
 	if _sprite:
 		_sprite.scale = Vector2(base_scale, base_scale)
-		_sprite.rotation = initial_rotation
+		_sprite.rotation = randf() * TAU  # Initial random rotation
 	
+	# Precalculate collision rect
+	_update_collision_rect()
+	
+	# Only enable process if actually rotating
 	set_process(rotation_speed != 0)
-	
+
+# Only called if rotation_speed != 0
 func _process(delta: float) -> void:
 	if _sprite:
 		_sprite.rotation += rotation_speed * delta
 
+# Setup with all needed values at once
 func setup(size: String, variant: int, scale_value: float, rot_speed: float, initial_rot: float = 0.0) -> void:
 	size_category = size
-	sprite_variant = variant
 	base_scale = scale_value
 	rotation_speed = rot_speed
-	initial_rotation = initial_rot
 	
 	if _sprite:
-		_sprite.scale = Vector2(base_scale, base_scale)
-		_sprite.rotation = initial_rotation
+		_sprite.scale = Vector2(scale_value, scale_value)
+		_sprite.rotation = initial_rot
 	
-	# Only process if we need rotation
+	# Update health based on size
+	if health_component:
+		health_component.max_health = _health_values.get(size, 50.0)
+		health_component.current_health = health_component.max_health
+	
+	# Precalculate collision rectangle
+	_update_collision_rect()
+	
+	# Only enable process if actually rotating
 	set_process(rot_speed != 0)
 
-func take_damage(amount: float) -> bool:
-	return health_component.take_damage(amount) if health_component else false
-
-func check_laser_hit(laser) -> bool:
-	# More efficient collision check using global coordinates
-	var global_rect = get_collision_rect()
-	global_rect.position += global_position
-	return global_rect.has_point(laser.global_position)
-
-func get_collision_rect() -> Rect2:
+# Precalculate collision rectangle once
+func _update_collision_rect() -> void:
 	if _sprite and _sprite.texture:
 		var texture_size = _sprite.texture.get_size()
 		var scaled_size = texture_size * _sprite.scale
-		return Rect2(-scaled_size.x/2, -scaled_size.y/2, scaled_size.x, scaled_size.y)
-	
-	# Fallback to size-based rect
-	var size = 10 * (1 if size_category == "small" else (2 if size_category == "medium" else 3))
-	return Rect2(-size/2, -size/2, size, size)
+		_collision_rect = Rect2(-scaled_size.x/2, -scaled_size.y/2, scaled_size.x, scaled_size.y)
+	else:
+		# Fallback to size-based rect
+		var size = 10 * (1 if size_category == "small" else (2 if size_category == "medium" else 3))
+		_collision_rect = Rect2(-size/2, -size/2, size, size)
 
+# Delegate to health component with optional source
+func take_damage(amount: float, source = null) -> bool:
+	if health_component:
+		return health_component.apply_damage(amount, "impact", source)
+	return false
+
+# Optimized collision check using precalculated rect
+func check_laser_hit(laser) -> bool:
+	# Update global rect only when checking collision
+	_collision_rect_global = _collision_rect
+	_collision_rect_global.position += global_position
+	return _collision_rect_global.has_point(laser.global_position)
+
+func get_collision_rect() -> Rect2:
+	return _collision_rect
+
+# Explosion and destruction handling
 func _on_destroyed() -> void:
-	# Use cached explosion component
+	# Use cached explosion component if available
 	if _explosion_component and _explosion_component.has_method("explode"):
 		_explosion_component.explode()
 	else:
@@ -88,7 +113,7 @@ func _on_destroyed() -> void:
 		if audio_manager:
 			audio_manager.play_sfx("explosion", global_position)
 		
-		# Only get asteroid spawner if needed
+		# Only get asteroid spawner if needed - direct path access
 		var asteroid_spawner = get_node_or_null("/root/Main/AsteroidSpawner")
 		if asteroid_spawner:
 			asteroid_spawner._spawn_fragments(
@@ -100,22 +125,27 @@ func _on_destroyed() -> void:
 	
 	queue_free()
 
+# Create explosion effect
 func _create_explosion() -> void:
-	var explosion_scene_path = "res://scenes/explosion_effect.tscn"
-	
-	if ResourceLoader.exists(explosion_scene_path):
-		var explosion_scene = load(explosion_scene_path)
+	# Only check if path exists once
+	if ResourceLoader.exists(EXPLOSION_SCENE_PATH):
+		var explosion_scene = load(EXPLOSION_SCENE_PATH)
 		var explosion = explosion_scene.instantiate()
 		explosion.global_position = global_position
 		
-		var explosion_scale = 0.5 if size_category == "small" else (1.0 if size_category == "medium" else 1.5)
+		# Size scale based on asteroid size
+		var explosion_scale = 0.5
+		match size_category:
+			"medium": explosion_scale = 1.0
+			"large": explosion_scale = 1.5
+		
 		explosion.scale = Vector2(explosion_scale, explosion_scale)
 		get_tree().current_scene.add_child(explosion)
 	else:
-		# Fallback particles - simplified setup
+		# Fallback particles - optimized setup
 		var particles = CPUParticles2D.new()
 		
-		# Configure particles in a more efficient way
+		# Configure particles with efficient property setup
 		particles.emitting = true
 		particles.one_shot = true
 		particles.explosiveness = 1.0
@@ -130,6 +160,6 @@ func _create_explosion() -> void:
 		particles.scale_amount_min = 2.0
 		particles.scale_amount_max = 4.0
 		
-		# Use CallbackTimer pattern for cleanup
+		# Auto cleanup with timer
 		get_tree().current_scene.add_child(particles)
 		get_tree().create_timer(0.8).timeout.connect(particles.queue_free)
