@@ -74,7 +74,7 @@ func _draw() -> void:
 			var type_props = TYPE_PROPERTIES.get(moon_type, TYPE_PROPERTIES[MoonType.ROCKY])
 			draw_circle(Vector2.ZERO, orbit_indicator_size, type_props.indicator_color)
 
-func _on_seed_changed(new_seed: int) -> void:
+func _on_seed_changed(_new_seed: int) -> void:
 	if _init_params.is_empty():
 		return
 	

@@ -224,7 +224,7 @@ func deplete_shield() -> void:
 	if current_shield <= 0 or not _shield_active:
 		return
 		
-	var old_shield = current_shield
+	var _old_shield = current_shield
 	current_shield = 0
 	_shield_percent = 0.0
 	_shield_active = false

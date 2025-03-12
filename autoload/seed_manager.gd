@@ -94,11 +94,13 @@ func print_cache_stats() -> void:
 	
 	var hit_percent = 0
 	if _stats.total_requests > 0:
-		hit_percent = int(_stats.cache_hits * 100 / _stats.total_requests)
+		# FIX: Use float division to avoid integer division warnings
+		hit_percent = int((_stats.cache_hits * 100.0) / _stats.total_requests)
 	
 	print("SeedManager: Cache hits: " + str(_stats.cache_hits) + " (" + str(hit_percent) + "%)")
 	print("SeedManager: Cache misses: " + str(_stats.cache_misses) + " (" + str(100 - hit_percent) + "%)")
 	
+	# FIX: Use float division to avoid integer division warnings
 	var uptime = (Time.get_ticks_msec() - _stats.last_cache_clear) / 1000.0
 	print("SeedManager: Time since last cache clear: " + str(int(uptime)) + " seconds")
 
@@ -324,6 +326,7 @@ func _generate_seed_hash(seed_value: int) -> String:
 	for i in range(6):
 		var index = temp_seed % characters.length()
 		hash_string += characters[index]
+		# FIX: Use float conversion to avoid integer division warnings
 		temp_seed = int(temp_seed / float(characters.length()))
 	
 	return hash_string

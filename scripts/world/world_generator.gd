@@ -132,7 +132,7 @@ func generate_starter_world() -> Dictionary:
 		"gaseous_planet_cell": gaseous_planet_cell
 	}
 
-func _debug_print_summary(player_cell, gaseous_cell, terran_count, gaseous_count, max_planets) -> void:
+func _debug_print_summary(player_cell, _gaseous_cell, terran_count, gaseous_count, max_planets) -> void:
 	print("WorldGenerator: Generation complete")
 	print("- Player planet at cell: " + str(player_cell))
 	print("- Total terran planets: " + str(_entity_counts.terran_planet) + "/" + str(terran_count))
@@ -430,7 +430,7 @@ func _cell_to_world_position(cell: Vector2i) -> Vector2:
 		return game_settings.get_cell_world_position(cell)
 	else:
 		var cell_size = 1024  # Default
-		return Vector2(cell.x * cell_size + cell_size/2, cell.y * cell_size + cell_size/2)
+		return Vector2(cell.x * cell_size + cell_size/2.0, cell.y * cell_size + cell_size/2.0)
 
 func get_cell_entities(cell_coords: Vector2i) -> Array:
 	if not _generated_entities.has(cell_coords):

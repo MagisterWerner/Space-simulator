@@ -24,7 +24,7 @@ func enter(params: Dictionary = {}) -> void:
 	var seed_manager = Engine.get_singleton("SeedManager")
 	if seed_manager and seed_manager.has_method("get_random_bool"):
 		# Use a deterministic seed combining ship ID and current time
-		var damage_seed = ship.get_instance_id() + int(Time.get_ticks_msec() / 1000)
+		var damage_seed = ship.get_instance_id() + int(Time.get_ticks_msec() / 1000.0)
 		
 		# Apply rotation based on deterministic random value
 		if seed_manager.get_random_bool(damage_seed, 0.5):

@@ -398,7 +398,7 @@ func _get_entity_name(entity: Node) -> String:
 		return entity.name
 
 # Event handlers
-func _on_player_damaged(amount: float, source = null) -> void:
+func _on_player_damaged(amount: float, _source = null) -> void:
 	if not show_damage_numbers:
 		return
 	

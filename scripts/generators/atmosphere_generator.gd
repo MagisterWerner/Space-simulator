@@ -209,5 +209,5 @@ func generate_atmosphere_texture(theme: int, seed_value: int, color: Color, thic
 func get_atmosphere_color_for_theme(theme: int) -> Color:
 	return ATMOSPHERE_COLORS.get(theme, Color(0.5, 0.7, 0.9, 0.4))
 
-func get_atmosphere_thickness_for_theme(theme: int) -> float:
+func get_atmosphere_thickness_for_theme(_theme: int) -> float:
 	return ATMOSPHERE_THICKNESS

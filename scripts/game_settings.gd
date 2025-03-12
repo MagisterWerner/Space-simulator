@@ -339,11 +339,13 @@ func generate_random_seed() -> void:
 # Get the starting position for the player in world coordinates
 func get_player_starting_position() -> Vector2:
 	# Player starts near the center of the grid
-	var center_cell = Vector2i(grid_size / 2.0, grid_size / 2.0)
+	# FIX: Use floats for division to avoid integer division warnings
+	var center_cell = Vector2i(int(grid_size / 2.0), int(grid_size / 2.0))
 	return get_cell_world_position(center_cell)
 
 # Convert grid cell coordinates to world position (center of cell)
 func get_cell_world_position(cell_coords: Vector2i) -> Vector2:
+	# FIX: Use floats for division to avoid integer division warnings
 	var grid_center = Vector2(grid_cell_size * grid_size / 2.0, grid_cell_size * grid_size / 2.0)
 	var cell_position = Vector2(
 		cell_coords.x * grid_cell_size + grid_cell_size / 2.0,
@@ -447,7 +449,7 @@ func _generate_seed_hash(seed_value: int) -> String:
 	for i in range(6):
 		var index = temp_seed % characters.length()
 		hash_string += characters[index]
-		# Fix for integer division
+		# FIX: Use float division to avoid integer division
 		temp_seed = int(temp_seed / float(characters.length()))
 	
 	return hash_string

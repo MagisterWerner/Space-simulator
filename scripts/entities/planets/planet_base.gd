@@ -101,7 +101,7 @@ func initialize(params: Dictionary) -> void:
 	
 	_initialized = true
 
-func _on_seed_changed(new_seed: int) -> void:
+func _on_seed_changed(_new_seed: int) -> void:
 	if not _initialized or _init_params.is_empty():
 		return
 	

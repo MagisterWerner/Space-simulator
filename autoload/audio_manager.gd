@@ -382,7 +382,7 @@ func play_sfx_with_culling(sfx_name: String, position: Vector2, max_distance: fl
 		return null
 		
 	# Improved distance-based volume calculation with smoother falloff
-	var audible_distance = max_distance * 0.8  # Start falloff at 80% of max distance
+	var _audible_distance = max_distance * 0.8  # Start falloff at 80% of max distance
 	var volume_db = 0.0
 	
 	if distance > FALLOFF_START_DISTANCE:

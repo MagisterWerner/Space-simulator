@@ -19,7 +19,6 @@ var _opacity: float = 0.5
 var _draw_debug: bool = false
 
 # Grid cell cache for performance
-var _visible_cells := {}
 var _cell_world_positions := {}
 var _cell_centers := {}
 
@@ -255,8 +254,8 @@ func _draw_debug_info(bounds: Dictionary) -> void:
 	for x in range(bounds.start_x, bounds.end_x):
 		for y in range(bounds.start_y, bounds.end_y):
 			var cell_center = Vector2(
-				x * _cell_size + _cell_size / 2,
-				y * _cell_size + _cell_size / 2
+				x * _cell_size + _cell_size / 2.0,
+				y * _cell_size + _cell_size / 2.0
 			)
 			
 			var cell_text = "(%d,%d)" % [x, y]

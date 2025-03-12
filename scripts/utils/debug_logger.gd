@@ -56,7 +56,7 @@ func _open_log_file() -> void:
 	else:
 		push_error("Failed to open log file: %s" % log_file_path)
 
-func _on_debug_settings_changed(debug_settings: Dictionary) -> void:
+func _on_debug_settings_changed(_debug_settings: Dictionary) -> void:
 	_update_from_settings(_game_settings)
 
 func _update_from_settings(game_settings: Node) -> void:
