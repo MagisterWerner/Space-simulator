@@ -1,179 +1,116 @@
 # scripts/entities/planet_spawner_gaseous.gd
-# Specialized spawner for gaseous planets
 class_name PlanetSpawnerGaseous
 extends PlanetSpawnerBase
 
-# Gas giant type constants
 enum GasGiantType {
-	JUPITER = 0,  # Jupiter-like (beige/tan tones)
-	SATURN = 1,   # Saturn-like (golden tones)
-	URANUS = 2,   # Uranus-like (cyan/teal tones)
-	NEPTUNE = 3   # Neptune-like (blue tones)
+	JUPITER = 0,
+	SATURN = 1,
+	URANUS = 2,
+	NEPTUNE = 3
 }
 
 # Gaseous Planet Type
 @export_enum("Random", "Jupiter-like", "Saturn-like", "Uranus-like", "Neptune-like") 
-var gaseous_theme: int = 0  # 0=Random, 1-4=Specific Gaseous theme
+var gaseous_theme: int = 0
 
-# Debug Options - Already defined here, just reorganizing for consistency
 @export_category("Debug Options")
 @export var debug_draw_orbits: bool = false
 @export var debug_orbit_line_width: float = 1.0
 
-# Override the spawner type method for debugging
+# Cached scene reference
+var _gaseous_scene = null
+
 func get_spawner_type() -> String:
 	return "PlanetSpawnerGaseous"
 
-# Override the spawn_planet method to specifically spawn gaseous planets
 func spawn_planet() -> Node2D:
-	# Clean up any previously spawned planets
 	cleanup()
-	
-	# Spawn a gaseous planet
 	return _spawn_gaseous_planet()
 
-# Implementation of is_terran_planet for API compatibility
-func is_terran_planet() -> bool:
-	return false
-
-# Implementation of is_gaseous_planet for API compatibility
 func is_gaseous_planet() -> bool:
 	return true
 
-# Spawn a gaseous planet with fixed parameters
 func _spawn_gaseous_planet() -> Node2D:
-	# Load the gaseous planet scene
-	var gaseous_scene = load("res://scenes/world/planet_gaseous.tscn")
-	if not gaseous_scene:
+	if not _gaseous_scene:
+		_gaseous_scene = load("res://scenes/world/planet_gaseous.tscn")
+		
+	if not _gaseous_scene:
 		push_error("PlanetSpawnerGaseous: Planet gaseous scene is not loaded!")
 		return null
 		
-	# Create planet instance
-	_planet_instance = gaseous_scene.instantiate()
+	_planet_instance = _gaseous_scene.instantiate()
 	add_child(_planet_instance)
 	
-	# Set z-index for rendering order
 	_planet_instance.z_index = z_index_base
-	
-	# Calculate position
-	var spawn_position = _calculate_spawn_position()
-	_planet_instance.global_position = spawn_position
+	_planet_instance.global_position = _calculate_spawn_position()
 	
 	# Determine gas giant type
-	var gas_giant_type: int = -1  # -1 means let planet.gd decide
+	var gas_giant_type: int = gaseous_theme > 0 if gaseous_theme - 1 else -1
 	
-	if gaseous_theme > 0:
-		# User selected specific gas giant type (1=Jupiter, 2=Saturn, etc.)
-		gas_giant_type = gaseous_theme - 1
+	# Generate unique seed for randomization
+	var random_gas_seed: int = gaseous_theme == 0 if _seed_value * 23 + 41 else _seed_value
 	
-	# Force-generate a random gas giant seed if needed
-	var random_gas_seed: int = _seed_value
-	if gaseous_theme == 0:
-		# Generate a unique seed for gas giant type selection
-		random_gas_seed = _seed_value * 23 + 41  # Different prime multiplier
-	
-	# Set up the planet parameters
 	var planet_params = {
 		"seed_value": _seed_value,
 		"random_gas_seed": random_gas_seed,
 		"grid_x": grid_x,
 		"grid_y": grid_y,
-		"moon_chance": 100,  # Fixed moon chance for gaseous planets
+		"moon_chance": 100,
 		"min_moon_distance_factor": 1.8,
 		"max_moon_distance_factor": 2.5,
-		"max_orbit_deviation": 0.0,  # No deviation for perfect circles
+		"max_orbit_deviation": 0.0,
 		"moon_orbit_factor": 0.05,
 		"use_texture_cache": use_texture_cache,
-		"theme_override": PlanetThemes.JUPITER,  # Force gas giant theme
-		"category_override": PlanetCategories.GASEOUS,  # Force gaseous category
-		"moon_orbit_speed_factor": moon_orbit_speed_factor,  # Pass the moon orbit speed factor
-		"gas_giant_type_override": gas_giant_type,  # Pass our gas giant type override
-		"is_random_gaseous": gaseous_theme == 0,  # Flag indicating if we want a random gas giant
-		
-		# IMPORTANT: Pass debug options
+		"theme_override": PlanetThemes.JUPITER,
+		"category_override": PlanetCategories.GASEOUS,
+		"moon_orbit_speed_factor": moon_orbit_speed_factor,
+		"gas_giant_type_override": gas_giant_type,
+		"is_random_gaseous": gaseous_theme == 0,
 		"debug_draw_orbits": debug_draw_orbits,
 		"debug_orbit_line_width": debug_orbit_line_width,
-		
 		"debug_planet_generation": debug_planet_generation
 	}
 	
-	# If debug is enabled, add additional debug info to the parameters
-	if debug_planet_generation:
-		planet_params["debug_gas_theme_source"] = "From gaseous_theme export: " + str(gaseous_theme)
-	
-	# Initialize the planet with our parameters
 	_planet_instance.initialize(planet_params)
-	
-	# Register the planet with EntityManager if available
 	_register_with_entity_manager(_planet_instance)
 	
-	# Connect to planet's loaded signal to handle moons if they spawn
-	if _planet_instance.has_signal("planet_loaded"):
-		if not _planet_instance.is_connected("planet_loaded", _on_planet_loaded):
-			_planet_instance.connect("planet_loaded", _on_planet_loaded)
+	if _planet_instance.has_signal("planet_loaded") and not _planet_instance.is_connected("planet_loaded", _on_planet_loaded):
+		_planet_instance.connect("planet_loaded", _on_planet_loaded)
 	
-	# Emit spawned signal
 	planet_spawned.emit(_planet_instance)
-	
-	# Debug output
-	if game_settings and game_settings.debug_mode or debug_planet_generation:
-		var planet_size = PlanetGeneratorBase.get_planet_size(_seed_value, true)  # true = gaseous
-		print("PlanetSpawnerGaseous: Spawned gaseous planet at position ", _planet_instance.global_position)
-		print("PlanetSpawnerGaseous: Selected gaseous_theme=", gaseous_theme, " (0=Random, 1-4=specific)")
-		print("PlanetSpawnerGaseous: Planet size: ", planet_size, " pixels")
-		if _planet_instance.has_method("get_gas_giant_type_name"):
-			print("PlanetSpawnerGaseous: Actual gas giant type: ", _planet_instance.get_gas_giant_type_name())
-	
-	# Check if texture cache needs cleaning
 	_check_and_clean_cache()
 	
 	return _planet_instance
 
-# Force a specific gas giant type - Used for direct API calls
 func force_gas_giant_type(type_index: int) -> void:
 	if type_index >= 0 and type_index < 4:
-		gaseous_theme = type_index + 1  # +1 because 0 is Random
+		gaseous_theme = type_index + 1
 		
-	# Update and respawn if already initialized
 	if _initialized:
 		_update_seed_value()
 		spawn_planet()
 
-# Override base class method for API compatibility
 func force_planet_type(is_gaseous: bool, theme_index: int = -1) -> void:
 	if !is_gaseous:
-		push_warning("PlanetSpawnerGaseous: Cannot force terran planet type on a gaseous planet spawner")
 		return
 		
 	force_gas_giant_type(theme_index)
 
-# Get gas giant type name for debugging
 func get_gas_giant_type_name() -> String:
 	if gaseous_theme == 0:
 		return "Random"
-	elif gaseous_theme - 1 == GasGiantType.JUPITER:
-		return "Jupiter-like"
-	elif gaseous_theme - 1 == GasGiantType.SATURN:
-		return "Saturn-like"
-	elif gaseous_theme - 1 == GasGiantType.URANUS:
-		return "Uranus-like"
-	elif gaseous_theme - 1 == GasGiantType.NEPTUNE:
-		return "Neptune-like"
-	else:
-		return "Unknown"
+		
+	var type_names = ["Jupiter-like", "Saturn-like", "Uranus-like", "Neptune-like"]
+	return type_names[gaseous_theme - 1] if gaseous_theme - 1 < type_names.size() else "Unknown"
 
-# Toggle debug orbit visualization
 func toggle_orbit_debug(enabled: bool = true) -> void:
 	debug_draw_orbits = enabled
 	
-	# Update the existing planet if it's already spawned
 	if _planet_instance and is_instance_valid(_planet_instance) and _planet_instance.has_method("toggle_orbit_debug"):
 		_planet_instance.toggle_orbit_debug(enabled)
 
-# Set orbit line width
 func set_orbit_line_width(width: float) -> void:
 	debug_orbit_line_width = width
 	
-	# Update the existing planet if it's already spawned
 	if _planet_instance and is_instance_valid(_planet_instance) and _planet_instance.has_method("set_orbit_line_width"):
 		_planet_instance.set_orbit_line_width(width)
