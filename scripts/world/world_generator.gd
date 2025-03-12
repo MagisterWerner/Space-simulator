@@ -26,7 +26,6 @@ var _excluded_cells = {}
 var _gas_giant_cells = []  # Track gas giants specifically for adjacency rules
 var _all_candidate_cells = []
 var _debug_mode = false
-var _generation_counter = 0
 
 # Constants for efficient seeding
 const PLANET_SEED_OFFSET = 1000000
@@ -100,7 +99,6 @@ func _precalculate_candidate_cells(grid_size: int) -> void:
 
 func generate_starter_world() -> Dictionary:
 	# Reset generation ID to ensure determinism
-	_generation_counter += 1
 	_generation_id = 0
 	_gas_giant_cells.clear()
 	
@@ -108,51 +106,107 @@ func generate_starter_world() -> Dictionary:
 	clear_world()
 	
 	if _debug_mode:
-		print("DEBUG: Generation started - Count: ", _generation_counter)
 		print("WorldGenerator: Starting world generation with seed: ", game_settings.get_seed())
 	
 	world_generation_started.emit()
 	
-	# Generate the player's starting planet (terran)
-	var player_planet_cell = generate_entity(ENTITY_TYPES.TERRAN_PLANET, {
-		"proximity": 1,
+	# Dictionary to store generation results
+	var result = {
+		"player_planet_cell": Vector2i(-1, -1),
+		"first_gaseous_planet_cell": Vector2i(-1, -1)
+	}
+	
+	# 1. Generate the player's starting planet (terran)
+	result.player_planet_cell = generate_entity(ENTITY_TYPES.TERRAN_PLANET, {
+		"proximity": 1,  # Terran planets need 1 empty adjacent cell
 		"is_player_starting": true
 	})
 	
-	# Generate gaseous planets
-	var gaseous_count = game_settings.gaseous_planets if game_settings else 1
-	var gaseous_planet_cell = Vector2i(-1, -1)
+	if result.player_planet_cell == Vector2i(-1, -1):
+		if _debug_mode:
+			print("WorldGenerator: Failed to generate player starting planet!")
+		world_generation_completed.emit()
+		return result
 	
-	if gaseous_count > 0:
-		gaseous_planet_cell = generate_entity(ENTITY_TYPES.GASEOUS_PLANET, {
-			"proximity": 2
+	if _debug_mode:
+		print("WorldGenerator: Generated player starting planet at: ", result.player_planet_cell)
+	
+	# 2. Generate FIRST gas giant with 2 empty adjacent cells
+	result.first_gaseous_planet_cell = generate_entity(ENTITY_TYPES.GASEOUS_PLANET, {
+		"proximity": 2  # Gas giants need 2 empty adjacent cells
+	})
+	
+	if result.first_gaseous_planet_cell == Vector2i(-1, -1):
+		if _debug_mode:
+			print("WorldGenerator: Failed to generate first gas giant!")
+		world_generation_completed.emit()
+		return result
+		
+	if _debug_mode:
+		print("WorldGenerator: Generated first gas giant at: ", result.first_gaseous_planet_cell)
+	
+	# 3. Generate remaining terran planets (all with 1 empty adjacent cell)
+	var terran_count = game_settings.terran_planets if game_settings else 5
+	var max_planets = _calculate_max_planets()
+	
+	# Account for the already placed player planet (terran)
+	for i in range(1, terran_count):
+		# Check if we've hit the planet limit
+		if _entity_counts[ENTITY_TYPES.TERRAN_PLANET] + _entity_counts[ENTITY_TYPES.GASEOUS_PLANET] >= max_planets:
+			if _debug_mode:
+				print("WorldGenerator: Reached max planet limit during terran planet generation")
+			break
+			
+		var cell = generate_entity(ENTITY_TYPES.TERRAN_PLANET, {
+			"proximity": 1  # Terran planets need 1 empty adjacent cell
 		})
 		
-		# Generate remaining gaseous planets
-		for i in range(1, gaseous_count):
-			generate_entity(ENTITY_TYPES.GASEOUS_PLANET, {
-				"proximity": 2
-			})
-	
-	# Generate remaining terran planets
-	var max_planets = _calculate_max_planets()
-	var terran_count = game_settings.terran_planets if game_settings else 5
-	
-	for i in range(1, terran_count):
-		if _entity_counts[ENTITY_TYPES.TERRAN_PLANET] + _entity_counts[ENTITY_TYPES.GASEOUS_PLANET] < max_planets:
-			generate_entity(ENTITY_TYPES.TERRAN_PLANET, {
-				"proximity": 1
-			})
-		else:
+		if cell == Vector2i(-1, -1):
+			if _debug_mode:
+				print("WorldGenerator: No more room for terran planets after generating ", 
+					  _entity_counts[ENTITY_TYPES.TERRAN_PLANET], " planets")
 			break
+			
+		if _debug_mode:
+			print("WorldGenerator: Generated terran planet at: ", cell)
 	
-	# Generate asteroid fields - now with special placement rules
+	# 4. Generate remaining gaseous planets if there's still room (all with 2 empty adjacent cells)
+	var gaseous_count = game_settings.gaseous_planets if game_settings else 1
+	
+	# Account for the already placed first gas giant
+	for i in range(1, gaseous_count):
+		# Check if we've hit the planet limit
+		if _entity_counts[ENTITY_TYPES.TERRAN_PLANET] + _entity_counts[ENTITY_TYPES.GASEOUS_PLANET] >= max_planets:
+			if _debug_mode:
+				print("WorldGenerator: Reached max planet limit during gas giant generation")
+			break
+			
+		var cell = generate_entity(ENTITY_TYPES.GASEOUS_PLANET, {
+			"proximity": 2  # Gas giants need 2 empty adjacent cells
+		})
+		
+		if cell == Vector2i(-1, -1):
+			if _debug_mode:
+				print("WorldGenerator: No more room for gas giants after generating ", 
+					  _entity_counts[ENTITY_TYPES.GASEOUS_PLANET], " gas giants")
+			break
+			
+		if _debug_mode:
+			print("WorldGenerator: Generated gas giant at: ", cell)
+	
+	# 5. Generate asteroid fields
 	var asteroid_count = game_settings.asteroid_fields if game_settings else 0
-	_batch_generate_entities(ENTITY_TYPES.ASTEROID_FIELD, asteroid_count)
+	if asteroid_count > 0:
+		if _debug_mode:
+			print("WorldGenerator: Attempting to generate ", asteroid_count, " asteroid fields")
+		_batch_generate_entities(ENTITY_TYPES.ASTEROID_FIELD, asteroid_count)
 	
-	# Generate stations
+	# 6. Generate stations
 	var station_count = game_settings.space_stations if game_settings else 0
-	_batch_generate_entities(ENTITY_TYPES.STATION, station_count)
+	if station_count > 0:
+		if _debug_mode:
+			print("WorldGenerator: Attempting to generate ", station_count, " stations")
+		_batch_generate_entities(ENTITY_TYPES.STATION, station_count)
 	
 	world_generation_completed.emit()
 	
@@ -160,14 +214,12 @@ func generate_starter_world() -> Dictionary:
 		print("WorldGenerator: World generation completed")
 		print("Planets generated: ", 
 			_entity_counts[ENTITY_TYPES.TERRAN_PLANET] + _entity_counts[ENTITY_TYPES.GASEOUS_PLANET])
-		print("Asteroid fields generated: ", _entity_counts[ENTITY_TYPES.ASTEROID_FIELD])
-		print("Stations generated: ", _entity_counts[ENTITY_TYPES.STATION])
-		print("Gas giant cells: ", _gas_giant_cells)
+		print("Terran planets: ", _entity_counts[ENTITY_TYPES.TERRAN_PLANET])
+		print("Gas giants: ", _entity_counts[ENTITY_TYPES.GASEOUS_PLANET])
+		print("Asteroid fields: ", _entity_counts[ENTITY_TYPES.ASTEROID_FIELD])
+		print("Stations: ", _entity_counts[ENTITY_TYPES.STATION])
 	
-	return {
-		"player_planet_cell": player_planet_cell,
-		"gaseous_planet_cell": gaseous_planet_cell
-	}
+	return result
 
 func _batch_generate_entities(entity_type: String, count: int, params: Dictionary = {}) -> Array:
 	var generated_cells = []
@@ -234,7 +286,7 @@ func generate_entity(entity_type: String, params: Dictionary = {}) -> Vector2i:
 			_entity_counts[entity_type] += 1
 			entity_generated.emit(entity_instance, entity_type, cell)
 			
-			# Mark surrounding cells as excluded
+			# Mark surrounding cells as excluded based on proximity parameter
 			mark_proximity_cells(cell, proximity)
 			
 			if entity_type == ENTITY_TYPES.TERRAN_PLANET or entity_type == ENTITY_TYPES.GASEOUS_PLANET:
@@ -495,12 +547,19 @@ func get_candidate_cells() -> Array:
 	
 	return candidates
 
+# This function marks cells around the given center cell as excluded based on the proximity parameter
+# proximity=1: Mark all adjacent cells (8 surrounding cells)
+# proximity=2: Mark all cells within 2 steps (24 surrounding cells)
 func mark_proximity_cells(center: Vector2i, proximity: int) -> void:
 	if proximity <= 0:
+		# Only mark the center cell if proximity is 0 or negative
 		_excluded_cells[center] = true
 		return
 	
-	# Optimized proximity marking - only process required cells
+	# Mark the center cell itself as excluded
+	_excluded_cells[center] = true
+	
+	# Mark surrounding cells based on proximity parameter
 	for dx in range(-proximity, proximity + 1):
 		for dy in range(-proximity, proximity + 1):
 			var cell = Vector2i(center.x + dx, center.y + dy)
