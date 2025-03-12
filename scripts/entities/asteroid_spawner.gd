@@ -53,11 +53,15 @@ var _spawn_timer: float = 0.0
 var _game_settings = null
 var _seed_manager = null
 var _entity_manager = null
+var _asteroid_generator = null
 
 func _ready() -> void:
 	# Find required singletons
 	_cache_singletons()
 	_load_asteroid_scene()
+	
+	# Initialize asteroid generator for texture generation
+	_initialize_asteroid_generator()
 	
 	# Initialize with a small delay to ensure other systems are ready
 	call_deferred("_initialize")
@@ -74,11 +78,32 @@ func _cache_singletons() -> void:
 	if _seed_manager and _seed_manager.has_signal("seed_changed"):
 		_seed_manager.connect("seed_changed", _on_seed_changed)
 
+func _initialize_asteroid_generator() -> void:
+	var generator_script = load("res://scripts/generators/asteroid_generator.gd")
+	if generator_script:
+		_asteroid_generator = generator_script.new()
+		add_child(_asteroid_generator)
+		if debug_field_generation:
+			print("AsteroidSpawner: Asteroid generator initialized")
+	else:
+		push_error("AsteroidSpawner: Failed to load asteroid generator script")
+
 func _load_asteroid_scene() -> void:
 	if ResourceLoader.exists(asteroid_scene_path):
 		_asteroid_scene = load(asteroid_scene_path)
+		if debug_field_generation:
+			print("AsteroidSpawner: Successfully loaded asteroid scene: " + asteroid_scene_path)
 	else:
 		push_error("AsteroidSpawner: Failed to load asteroid scene: " + asteroid_scene_path)
+		
+		# Try a fallback path
+		var fallback_path = "res://scenes/entities/asteroid.tscn"
+		if ResourceLoader.exists(fallback_path):
+			if debug_field_generation:
+				print("AsteroidSpawner: Using fallback path: " + fallback_path)
+			_asteroid_scene = load(fallback_path)
+		else:
+			push_error("AsteroidSpawner: Fallback path not found either")
 
 func _on_seed_changed(_new_seed: int) -> void:
 	_update_seed_value()
@@ -131,6 +156,9 @@ func set_grid_position(x: int, y: int) -> void:
 	if use_grid_position:
 		var new_pos = _calculate_spawn_position()
 		global_position = new_pos
+		
+		if debug_field_generation:
+			print("AsteroidSpawner: Set position to ", new_pos, " for grid cell (", x, ",", y, ")")
 
 func _calculate_spawn_position() -> Vector2:
 	if use_grid_position:
@@ -146,22 +174,29 @@ func generate_field() -> void:
 		push_error("AsteroidSpawner: Cannot generate field - asteroid scene not loaded")
 		return
 	
+	if debug_field_generation:
+		print("AsteroidSpawner: Generating field at position: ", global_position)
+	
 	# Ensure we have clean state
 	clear_field()
 	
 	# Calculate field parameters based on seed
 	_field_data = _generate_field_data()
 	
+	if debug_field_generation:
+		print("AsteroidSpawner: Field data generated with radius: ", _field_data.radius, 
+			  " and count: ", _field_data.count)
+	
 	# Create asteroid spawn data
 	var asteroid_positions = _generate_asteroid_positions(_field_data)
+	
+	if debug_field_generation:
+		print("AsteroidSpawner: Generated ", asteroid_positions.size(), " asteroid positions")
 	
 	# Queue asteroids for spawning
 	_queue_asteroid_spawns(asteroid_positions)
 	
 	field_generated.emit(_field_data.radius, asteroid_positions.size())
-	
-	if debug_field_generation:
-		print("AsteroidSpawner: Generated field with ", asteroid_positions.size(), " asteroids")
 
 func _generate_field_data() -> Dictionary:
 	# Regenerate RNG to ensure consistent results
@@ -263,6 +298,9 @@ func _determine_size_category() -> String:
 func _queue_asteroid_spawns(asteroid_data: Array) -> void:
 	_remaining_to_spawn = asteroid_data.duplicate()
 	_is_spawning = true
+	
+	if debug_field_generation:
+		print("AsteroidSpawner: Queued ", _remaining_to_spawn.size(), " asteroids for spawning")
 
 func _process(delta: float) -> void:
 	if _is_spawning:
@@ -285,24 +323,70 @@ func _spawn_asteroid_batch() -> void:
 	
 	if _remaining_to_spawn.is_empty():
 		_is_spawning = false
+		if debug_field_generation:
+			print("AsteroidSpawner: All asteroids spawned. Total count: ", _spawned_count)
 
 func _spawn_asteroid(data: Dictionary) -> void:
+	# Verify we have a valid scene
+	if not _asteroid_scene:
+		if debug_field_generation:
+			print("AsteroidSpawner: Cannot spawn asteroid - scene not loaded")
+		return
+	
 	var asteroid = _asteroid_scene.instantiate()
 	add_child(asteroid)
 	
 	# Position relative to field center
 	asteroid.position = data.position
 	
+	# Ensure z-index is set for visibility
+	asteroid.z_index = 3
+	
+	# Generate texture using the asteroid generator
+	if _asteroid_generator and asteroid.get_node_or_null("Sprite2D"):
+		var sprite = asteroid.get_node("Sprite2D")
+		var size_value = 16  # Default small size
+		
+		# Map size category to pixel size
+		match data.size:
+			"small": size_value = 16
+			"medium": size_value = 32
+			"large": size_value = 64
+		
+		# Set a unique seed for each asteroid
+		var asteroid_seed = _seed_value + _spawned_count + int(data.position.x * 100) + int(data.position.y * 100)
+		_asteroid_generator.seed_value = asteroid_seed
+		
+		# Generate texture and apply to asteroid
+		if _asteroid_generator.has_method("create_asteroid_texture"):
+			var texture = _asteroid_generator.create_asteroid_texture()
+			sprite.texture = texture
+			
+			# Adjust scale based on generated texture size and desired asteroid size
+			var texture_size = texture.get_size()
+			if texture_size.x > 0:
+				sprite.scale = Vector2(size_value, size_value) / texture_size.x
+		elif _asteroid_generator.has_method("generate_asteroid"):
+			# Alternative method if available
+			_asteroid_generator.generate_asteroid(size_value)
+			if _asteroid_generator.get_child_count() > 0 and _asteroid_generator.get_child(0) is Sprite2D:
+				var generated_sprite = _asteroid_generator.get_child(0)
+				sprite.texture = generated_sprite.texture
+				sprite.scale = generated_sprite.scale * (data.scale / 1.0)
+	
 	# Setup asteroid properties
 	if asteroid.has_method("setup"):
 		asteroid.setup(data.size, data.variant, data.scale, data.rotation_speed)
+		if debug_field_generation:
+			print("AsteroidSpawner: Setup asteroid with size: ", data.size, 
+				  ", scale: ", data.scale, ", rot speed: ", data.rotation_speed)
 	
 	# Store reference
 	_asteroids.append(asteroid)
 	_spawned_count += 1
 	
 	# Register with entity manager if available
-	if _entity_manager:
+	if _entity_manager and _entity_manager.has_method("register_entity"):
 		_entity_manager.register_entity(asteroid, "asteroid")
 
 func _spawn_fragments(position: Vector2, size_category: String, count: int, parent_scale: float) -> void:
@@ -314,6 +398,9 @@ func _spawn_fragments(position: Vector2, size_category: String, count: int, pare
 	var fragment_size = "small"
 	if size_category == "large":
 		fragment_size = "medium"
+	
+	if debug_field_generation:
+		print("AsteroidSpawner: Spawning ", count, " fragments of size ", fragment_size)
 	
 	for i in range(count):
 		var angle = (TAU / count) * i + _rng.randf_range(-0.3, 0.3)
@@ -328,7 +415,26 @@ func _spawn_fragments(position: Vector2, size_category: String, count: int, pare
 		
 		# Give random velocity - normally you'd use physics for this
 		var rot_speed = _rng.randf_range(-max_rotation_speed, max_rotation_speed) * 1.5
-		var scale = parent_scale * (fragment_size == "medium" if 0.6 else 0.4)
+		var scale = parent_scale * (0.6 if fragment_size == "medium" else 0.4)
+		
+		# Generate texture for fragment
+		if _asteroid_generator and asteroid.get_node_or_null("Sprite2D"):
+			var sprite = asteroid.get_node("Sprite2D")
+			var size_value = fragment_size == "medium" if 32 else 16
+			
+			# Set a unique seed for each fragment
+			var fragment_seed = _seed_value + _spawned_count + i + int(pos.x * 100) + int(pos.y * 100)
+			_asteroid_generator.seed_value = fragment_seed
+			
+			# Generate texture
+			if _asteroid_generator.has_method("create_asteroid_texture"):
+				var texture = _asteroid_generator.create_asteroid_texture()
+				sprite.texture = texture
+				
+				# Adjust scale based on texture size
+				var texture_size = texture.get_size()
+				if texture_size.x > 0:
+					sprite.scale = Vector2(size_value, size_value) / texture_size.x
 		
 		# Setup fragment
 		if asteroid.has_method("setup"):
@@ -338,14 +444,17 @@ func _spawn_fragments(position: Vector2, size_category: String, count: int, pare
 		_asteroids.append(asteroid)
 		
 		# Register with entity manager if available
-		if _entity_manager:
+		if _entity_manager and _entity_manager.has_method("register_entity"):
 			_entity_manager.register_entity(asteroid, "asteroid")
 
 func clear_field() -> void:
+	if debug_field_generation:
+		print("AsteroidSpawner: Clearing field with ", _asteroids.size(), " asteroids")
+	
 	for asteroid in _asteroids:
 		if is_instance_valid(asteroid):
 			# Deregister from entity manager
-			if _entity_manager:
+			if _entity_manager and _entity_manager.has_method("deregister_entity"):
 				_entity_manager.deregister_entity(asteroid)
 			
 			# Remove from scene
@@ -366,3 +475,40 @@ func get_field_info() -> Dictionary:
 		"asteroid_count": _spawned_count,
 		"grid_position": Vector2i(grid_x, grid_y)
 	}
+
+# Force regenerate all asteroid textures - useful for debugging
+func regenerate_textures() -> void:
+	if not _asteroid_generator:
+		push_error("AsteroidSpawner: Can't regenerate textures - no generator available")
+		return
+	
+	for asteroid in _asteroids:
+		if is_instance_valid(asteroid) and asteroid.get_node_or_null("Sprite2D"):
+			var sprite = asteroid.get_node("Sprite2D")
+			var size_category = "medium"
+			var size_value = 32
+			
+			# Try to get size from asteroid
+			if asteroid.has("size_category"):
+				size_category = asteroid.size_category
+				
+				match size_category:
+					"small": size_value = 16
+					"medium": size_value = 32
+					"large": size_value = 64
+			
+			# Create a new texture
+			var unique_seed = _seed_value + hash(asteroid)
+			_asteroid_generator.seed_value = unique_seed
+			
+			if _asteroid_generator.has_method("create_asteroid_texture"):
+				var texture = _asteroid_generator.create_asteroid_texture()
+				sprite.texture = texture
+				
+				# Adjust scale
+				var texture_size = texture.get_size()
+				if texture_size.x > 0:
+					sprite.scale = Vector2(size_value, size_value) / texture_size.x
+	
+	if debug_field_generation:
+		print("AsteroidSpawner: Regenerated textures for ", _asteroids.size(), " asteroids")

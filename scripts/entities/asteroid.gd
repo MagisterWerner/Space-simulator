@@ -30,7 +30,7 @@ func _ready() -> void:
 	_explosion_component = $ExplodeDebrisComponent if has_node("ExplodeDebrisComponent") else null
 	
 	# Direct singleton access is more efficient
-	audio_manager = Engine.get_singleton("AudioManager")
+	audio_manager = get_node_or_null("/root/AudioManager")
 	
 	# Set health based on size
 	if health_component:
