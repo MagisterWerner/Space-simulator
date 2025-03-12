@@ -5,13 +5,14 @@ class_name PlayerShip
 signal player_damaged(amount)
 signal player_died
 signal player_respawned
+signal weapon_switched(weapon_name)
 
 # Cached component references
 @onready var health_component: HealthComponent = $HealthComponent
 @onready var movement_component: MovementComponent = $MovementComponent
 @onready var shield_component: ShieldComponent = $ShieldComponent
-@onready var weapon_component: WeaponComponent = $WeaponComponent
 @onready var state_machine: StateMachine = $StateMachine
+@onready var weapon_manager: WeaponManagerComponent = null
 
 @export var debug_mode: bool = false
 @export var input_enabled: bool = true
@@ -29,6 +30,8 @@ const INPUT_LEFT = 4
 const INPUT_RIGHT = 8
 const INPUT_BOOST = 16
 const INPUT_FIRE = 32
+const INPUT_WEAPON_NEXT = 64
+const INPUT_WEAPON_PREV = 128
 
 func _ready() -> void:
 	# Find GameSettings
@@ -58,6 +61,9 @@ func _ready() -> void:
 		health_component.damaged.connect(_on_health_damaged)
 		health_component.died.connect(_on_health_died)
 	
+	# Setup weapon management
+	_initialize_weapon_system()
+	
 	# Set starting position
 	if game_settings:
 		global_position = game_settings.get_player_starting_position()
@@ -71,10 +77,40 @@ func _ready() -> void:
 	if Engine.has_singleton("Logger"):
 		Logger.info("PlayerShip", "Player ship initialized and ready")
 
+func _initialize_weapon_system() -> void:
+	# Get or create weapon manager component
+	weapon_manager = get_node_or_null("WeaponManagerComponent")
+	if not weapon_manager:
+		weapon_manager = WeaponManagerComponent.new()
+		weapon_manager.name = "WeaponManagerComponent"
+		add_child(weapon_manager)
+	
+	# Configure weapon manager
+	weapon_manager.auto_initialize = true
+	
+	# If no specific weapons path is set, search in the player ship
+	if weapon_manager.weapons_path.is_empty():
+		weapon_manager.weapons_path = NodePath(".")
+	
+	# Connect to weapon switching signal
+	if weapon_manager.has_signal("weapon_switched") and not weapon_manager.is_connected("weapon_switched", _on_weapon_switched):
+		weapon_manager.connect("weapon_switched", _on_weapon_switched)
+	
+	# Give it a chance to initialize
+	await get_tree().process_frame
+	
+	if debug_mode and Engine.has_singleton("Logger"):
+		var current_weapon = weapon_manager.get_current_weapon()
+		if current_weapon:
+			Logger.debug("PlayerShip", "Initial weapon: " + current_weapon.weapon_name)
+		else:
+			Logger.warning("PlayerShip", "No weapons initialized!")
+
 func _process(_delta: float) -> void:
 	# Handle weapon firing
-	if input_enabled and _input_state & INPUT_FIRE and weapon_component:
-		weapon_component.fire()
+	if input_enabled and _input_state & INPUT_FIRE:
+		if weapon_manager:
+			weapon_manager.fire()
 
 func _physics_process(_delta: float) -> void:
 	if input_enabled:
@@ -123,6 +159,17 @@ func _handle_input() -> void:
 	if Input.is_action_pressed("p1_primary"):
 		_input_state |= INPUT_FIRE
 	
+	# Handle weapon switching
+	if Input.is_action_just_pressed("weapon_next"):
+		_input_state |= INPUT_WEAPON_NEXT
+		if weapon_manager:
+			weapon_manager.next_weapon()
+	
+	if Input.is_action_just_pressed("weapon_previous"):
+		_input_state |= INPUT_WEAPON_PREV
+		if weapon_manager:
+			weapon_manager.previous_weapon()
+	
 	# Update state machine based on input
 	if state_machine:
 		var current_state = state_machine.get_current_state_name()
@@ -138,6 +185,20 @@ func _handle_input() -> void:
 				state_machine.transition_to("rotating")
 		else:
 			state_machine.transition_to("idle")
+
+func _on_weapon_switched(old_weapon, new_weapon, _index) -> void:
+	if debug_mode and Engine.has_singleton("Logger"):
+		var old_name = old_weapon.weapon_name if old_weapon else "None"
+		var new_name = new_weapon.weapon_name if new_weapon else "None"
+		Logger.debug("PlayerShip", "Switched weapon: " + old_name + " -> " + new_name)
+	
+	# Emit signal for UI to update
+	if new_weapon:
+		weapon_switched.emit(new_weapon.weapon_name)
+	
+	# You could play a weapon switch sound here:
+	# if Engine.has_singleton("AudioManager"):
+	#     AudioManager.play_sfx("weapon_switch", global_position)
 
 func _on_health_damaged(amount: float, _source: Node) -> void:
 	player_damaged.emit(amount)
@@ -287,3 +348,21 @@ func _log_components() -> void:
 	for child in get_children():
 		if child is Component:
 			Logger.debug("PlayerShip", "  - " + child.name + " (" + str(child.get_path()) + ")")
+
+# Get the current weapon for external systems
+func get_current_weapon() -> WeaponComponent:
+	if weapon_manager:
+		return weapon_manager.get_current_weapon()
+	return null
+
+# Utility function to get health percentage
+func get_health_percent() -> float:
+	if health_component:
+		return health_component.get_health_percent()
+	return 1.0
+
+# Utility function to get shield percentage
+func get_shield_percent() -> float:
+	if shield_component:
+		return shield_component.get_shield_percent()
+	return 1.0

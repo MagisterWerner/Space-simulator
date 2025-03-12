@@ -5,7 +5,6 @@
 [ext_resource type="Script" uid="uid://ctt8im8oamjmv" path="res://scripts/components/health_component.gd" id="3_e3lqq"]
 [ext_resource type="Script" uid="uid://crnu7wl41p080" path="res://scripts/components/shield_component.gd" id="4_kk8v0"]
 [ext_resource type="Script" uid="uid://clvi1tnfs0f0s" path="res://scripts/components/movement_component.gd" id="5_dy5mj"]
-[ext_resource type="Script" uid="uid://xv88jjvcwgq0" path="res://scripts/components/weapon_component.gd" id="6_mndbk"]
 [ext_resource type="Script" uid="uid://bvmta14u3uiyu" path="res://scripts/states/state_machine.gd" id="7_x6hty"]
 [ext_resource type="Script" uid="uid://bqsl503lfnvei" path="res://scripts/states/ship_idle_state.gd" id="8_ep03r"]
 [ext_resource type="Script" uid="uid://c3n82ompwjtli" path="res://scripts/states/ship_moving_state.gd" id="9_r6a07"]
@@ -18,6 +17,7 @@
 [ext_resource type="Script" uid="uid://cl0jtieouhwli" path="res://scripts/components/weapons/missile_launcher_component.gd" id="16_qd4s4"]
 [ext_resource type="PackedScene" uid="uid://b34rtd6fv2w5" path="res://scenes/projectiles/laser_projectile.tscn" id="16_yjlin"]
 [ext_resource type="PackedScene" uid="uid://i17v7l2g88dp" path="res://scenes/projectiles/missile_projectile.tscn" id="18_nfb6c"]
+[ext_resource type="Script" uid="uid://7kiogah7oop0" path="res://scripts/components/weapon_manager_component.gd" id="18_yjlin"]
 
 [sub_resource type="Gradient" id="Gradient_u2vx4"]
 offsets = PackedFloat32Array(0, 0.486667, 0.846667, 1)
@@ -135,9 +135,6 @@ main_thruster_volume_db = -10.0
 rotation_thruster_volume_db = -20.0
 backward_thruster_volume_db = -20.0
 
-[node name="WeaponComponent" type="Node" parent="."]
-script = ExtResource("6_mndbk")
-
 [node name="StateMachine" type="Node" parent="."]
 script = ExtResource("7_x6hty")
 
@@ -166,8 +163,12 @@ script = ExtResource("14_7dcri")
 script = ExtResource("15_2s2q7")
 projectile_scene = ExtResource("16_yjlin")
 
-[node name="MissileWeaponComponent" type="Node" parent="."]
+[node name="MissileLauncherComponent" type="Node" parent="."]
 script = ExtResource("16_qd4s4")
+weapon_name = "Missile Launcher"
 projectile_scene = ExtResource("18_nfb6c")
+
+[node name="WeaponManagerComponent" type="Node" parent="."]
+script = ExtResource("18_yjlin")
 
 [connection signal="body_entered" from="." to="." method="_on_body_entered"]
