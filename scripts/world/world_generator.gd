@@ -23,7 +23,7 @@ var _generated_entities = {}
 var _entity_counts = {}
 var _planet_cells = []
 var _excluded_cells = {}
-var _gas_giant_cells = []  # Track gas giants specifically for adjacency rules
+var _gas_giant_cells = []  # Track gas giants for other purposes
 var _all_candidate_cells = []
 var _debug_mode = false
 
@@ -166,9 +166,6 @@ func generate_starter_world() -> Dictionary:
 				print("WorldGenerator: No more room for terran planets after generating ", 
 					  _entity_counts[ENTITY_TYPES.TERRAN_PLANET], " planets")
 			break
-			
-		if _debug_mode:
-			print("WorldGenerator: Generated terran planet at: ", cell)
 	
 	# 4. Generate remaining gaseous planets if there's still room (all with 2 empty adjacent cells)
 	var gaseous_count = game_settings.gaseous_planets if game_settings else 1
@@ -190,16 +187,27 @@ func generate_starter_world() -> Dictionary:
 				print("WorldGenerator: No more room for gas giants after generating ", 
 					  _entity_counts[ENTITY_TYPES.GASEOUS_PLANET], " gas giants")
 			break
-			
-		if _debug_mode:
-			print("WorldGenerator: Generated gas giant at: ", cell)
 	
 	# 5. Generate asteroid fields
 	var asteroid_count = game_settings.asteroid_fields if game_settings else 0
 	if asteroid_count > 0:
 		if _debug_mode:
 			print("WorldGenerator: Attempting to generate ", asteroid_count, " asteroid fields")
-		_batch_generate_entities(ENTITY_TYPES.ASTEROID_FIELD, asteroid_count)
+		
+		# Create a temporary copy of excluded cells containing only occupied cells
+		var occupied_cells = {}
+		for cell in _generated_entities.keys():
+			occupied_cells[cell] = true
+		
+		# Reset exclusion zones to only occupy cells with entities
+		var old_excluded = _excluded_cells.duplicate()
+		_excluded_cells = occupied_cells
+		
+		# Place asteroids
+		_batch_generate_entities(ENTITY_TYPES.ASTEROID_FIELD, asteroid_count, {"proximity": 0})
+		
+		# Restore original exclusion zones for other entity types
+		_excluded_cells = old_excluded
 	
 	# 6. Generate stations
 	var station_count = game_settings.space_stations if game_settings else 0
@@ -267,12 +275,15 @@ func generate_entity(entity_type: String, params: Dictionary = {}) -> Vector2i:
 		
 		var entity_seed = _generate_entity_seed(cell, entity_type)
 		var entity_instance = null
+		var planet_theme_name = ""
 		
 		match entity_type:
 			ENTITY_TYPES.TERRAN_PLANET, ENTITY_TYPES.GASEOUS_PLANET:
-				entity_instance = _generate_planet(entity_type, cell, entity_seed, is_player_starting)
+				var result = _generate_planet(entity_type, cell, entity_seed, is_player_starting)
+				entity_instance = result.instance
+				planet_theme_name = result.theme_name
 				
-				# Track gas giants for asteroid field adjacency rules
+				# Track gas giants for other purposes
 				if entity_type == ENTITY_TYPES.GASEOUS_PLANET and entity_instance:
 					_gas_giant_cells.append(cell)
 					
@@ -293,7 +304,12 @@ func generate_entity(entity_type: String, params: Dictionary = {}) -> Vector2i:
 				_planet_cells.append(cell)
 			
 			if _debug_mode:
-				print("Generated ", entity_type, " at cell ", cell, " with seed ", entity_seed)
+				if entity_type == ENTITY_TYPES.TERRAN_PLANET:
+					print("Generated terran ", planet_theme_name, " planet at cell ", cell, " with seed ", entity_seed)
+				elif entity_type == ENTITY_TYPES.GASEOUS_PLANET:
+					print("Generated gaseous ", planet_theme_name, " planet at cell ", cell, " with seed ", entity_seed)
+				else:
+					print("Generated ", entity_type, " at cell ", cell, " with seed ", entity_seed)
 			
 			return cell
 	
@@ -301,22 +317,13 @@ func generate_entity(entity_type: String, params: Dictionary = {}) -> Vector2i:
 		print("WorldGenerator: Failed to find valid location for entity: ", entity_type)
 	return Vector2i(-1, -1)
 
-# Get candidate cells with specific filtering for asteroid fields
+# Get candidate cells for entity types - Simplified to remove asteroid-specific restrictions
 func get_candidate_cells_for_entity_type(entity_type: String) -> Array:
-	var candidates = []
-	
-	if entity_type == ENTITY_TYPES.ASTEROID_FIELD:
-		# For asteroid fields: filter out cells adjacent to gas giants
-		for cell in _all_candidate_cells:
-			if not _excluded_cells.has(cell) and not _is_adjacent_to_gas_giant(cell):
-				candidates.append(cell)
-	else:
-		# Default behavior for other entities
-		candidates = get_candidate_cells()
-	
-	return candidates
+	# For all entities, just return the standard candidate cells
+	# This removed the unnecessary restriction for asteroids
+	return get_candidate_cells()
 
-# Check if a cell is adjacent to any gas giant
+# Check if a cell is adjacent to any gas giant - kept for possible future use
 func _is_adjacent_to_gas_giant(cell: Vector2i) -> bool:
 	for gas_giant_cell in _gas_giant_cells:
 		if _are_cells_adjacent(cell, gas_giant_cell):
@@ -348,7 +355,7 @@ func _get_scene_key_for_entity(entity_type: String) -> String:
 		ENTITY_TYPES.STATION: return "station"
 		_: return ""
 
-func _generate_planet(planet_type: String, cell: Vector2i, cell_seed: int, is_player_starting: bool) -> Node:
+func _generate_planet(planet_type: String, cell: Vector2i, cell_seed: int, is_player_starting: bool) -> Dictionary:
 	var scene_key = "planet_spawner_terran" if planet_type == ENTITY_TYPES.TERRAN_PLANET else "planet_spawner_gaseous"
 	var seed_offset = cell_seed - (game_settings.get_seed() if game_settings else 0)
 	
@@ -357,6 +364,7 @@ func _generate_planet(planet_type: String, cell: Vector2i, cell_seed: int, is_pl
 	
 	# Deterministic generation of planet type
 	var planet_type_value
+	var theme_name = ""
 	
 	if planet_type == ENTITY_TYPES.TERRAN_PLANET and is_player_starting and game_settings:
 		planet_type_value = game_settings.get_effective_planet_type()
@@ -374,6 +382,12 @@ func _generate_planet(planet_type: String, cell: Vector2i, cell_seed: int, is_pl
 		# Avoid duplicating player starting planet type
 		if planet_type == ENTITY_TYPES.TERRAN_PLANET and game_settings and planet_type_value == game_settings.get_effective_planet_type():
 			planet_type_value = (planet_type_value + 1) % 7
+	
+	# Get the theme name based on the planet type value
+	if planet_type == ENTITY_TYPES.TERRAN_PLANET:
+		theme_name = PlanetGeneratorBase.get_theme_name(planet_type_value).to_lower()
+	else:
+		theme_name = PlanetGeneratorBase.get_theme_name(PlanetGeneratorBase.PlanetTheme.JUPITER + planet_type_value)
 	
 	# Add to planet_spawners group for cache clearing
 	if not planet_spawner.is_in_group("planet_spawners"):
@@ -393,7 +407,7 @@ func _generate_planet(planet_type: String, cell: Vector2i, cell_seed: int, is_pl
 	
 	if not planet:
 		planet_spawner.queue_free()
-		return null
+		return {"instance": null, "theme_name": ""}
 	
 	# Register this entity
 	_register_generated_entity(cell, planet_spawner, "planet_spawner")
@@ -402,7 +416,7 @@ func _generate_planet(planet_type: String, cell: Vector2i, cell_seed: int, is_pl
 	if planet_spawner.has_signal("planet_spawned") and not planet_spawner.is_connected("planet_spawned", _on_planet_spawned):
 		planet_spawner.connect("planet_spawned", _on_planet_spawned)
 	
-	return planet
+	return {"instance": planet, "theme_name": theme_name}
 
 func _generate_asteroid_field(cell: Vector2i, field_seed: int) -> Node:
 	var asteroid_field = _scene_cache["asteroid_field"].instantiate()
