@@ -45,7 +45,7 @@ class PiercingShotStrategy extends Strategy:
 		if projectile.has_method("set_piercing"):
 			projectile.set_piercing(true)
 
-# Spread Shot Strategy
+# Spread Shot Strategy - Optimized
 class SpreadShotStrategy extends Strategy:
 	@export var num_additional_projectiles: int = 2
 	@export var spread_angle: float = 15.0  # Degrees
@@ -61,7 +61,8 @@ class SpreadShotStrategy extends Strategy:
 		
 		if component is WeaponComponent:
 			# Connect to the weapon fired signal to create additional projectiles
-			component.weapon_fired.connect(_on_weapon_fired)
+			if not component.weapon_fired.is_connected(_on_weapon_fired):
+				component.weapon_fired.connect(_on_weapon_fired)
 	
 	func remove_from_component() -> void:
 		if owner_component is WeaponComponent:
@@ -70,39 +71,47 @@ class SpreadShotStrategy extends Strategy:
 		super.remove_from_component()
 	
 	func _on_weapon_fired(projectile) -> void:
-		if not is_instance_valid(projectile) or not owner_component:
+		if not is_instance_valid(projectile) or not owner_component or not projectile.get_parent() is Node2D:
 			return
 		
 		var weapon = owner_component as WeaponComponent
-		
-		# Make sure we can access the projectile's parent (should be a Node2D)
-		if not projectile.get_parent() is Node2D:
+		if not weapon.projectile_scene:
 			return
 			
-		for i in range(num_additional_projectiles):
-			# Create side projectiles with angle offsets
-			var side_projectile = weapon.projectile_scene.instantiate()
-			projectile.get_parent().add_child(side_projectile)
+		var parent = projectile.get_parent()
+		var projectile_props = {
+			"position": projectile.global_position,
+			"rotation": projectile.global_rotation,
+			"damage": weapon.damage if projectile.has_method("set_damage") else 0,
+			"speed": weapon.projectile_speed if projectile.has_method("set_speed") else 0,
+			"lifespan": weapon.projectile_lifespan if projectile.has_method("set_lifespan") else 0,
+			"shooter": weapon.owner_entity if projectile.has_method("set_shooter") else null
+		}
 			
+		for i in range(num_additional_projectiles):
 			# Calculate angle offset (alternating left and right)
 			var offset = spread_angle * (i + 1) / 2.0
 			if i % 2 == 0:
 				offset *= -1.0
 			
-			# Set properties similar to original projectile
-			side_projectile.global_position = projectile.global_position
-			side_projectile.global_rotation = projectile.global_rotation + deg_to_rad(offset)
+			# Create side projectile efficiently
+			var side_projectile = weapon.projectile_scene.instantiate()
+			parent.add_child(side_projectile)
 			
-			# Configure the projectile
-			if side_projectile.has_method("set_damage"):
-				side_projectile.set_damage(weapon.damage)
+			# Set position and rotation
+			side_projectile.global_position = projectile_props.position
+			side_projectile.global_rotation = projectile_props.rotation + deg_to_rad(offset)
 			
-			if side_projectile.has_method("set_speed"):
-				side_projectile.set_speed(weapon.projectile_speed)
+			# Configure the projectile properties - only set if available
+			if side_projectile.has_method("set_damage") and projectile_props.damage > 0:
+				side_projectile.set_damage(projectile_props.damage)
 			
-			if side_projectile.has_method("set_lifespan"):
-				side_projectile.set_lifespan(weapon.projectile_lifespan)
+			if side_projectile.has_method("set_speed") and projectile_props.speed > 0:
+				side_projectile.set_speed(projectile_props.speed)
+			
+			if side_projectile.has_method("set_lifespan") and projectile_props.lifespan > 0:
+				side_projectile.set_lifespan(projectile_props.lifespan)
 			
 			# Mark the shooter to prevent self-damage
-			if side_projectile.has_method("set_shooter"):
-				side_projectile.set_shooter(weapon.owner_entity)
+			if side_projectile.has_method("set_shooter") and projectile_props.shooter:
+				side_projectile.set_shooter(projectile_props.shooter)
