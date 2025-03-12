@@ -50,6 +50,11 @@ var seed_value: int = 0
 var noise_cache: Dictionary = {}
 var craters: Array[Dictionary] = []
 
+# Texture caching for performance
+static var texture_cache: Dictionary = {}
+static var last_texture_cleanup: int = 0
+const MAX_TEXTURE_CACHE_SIZE: int = 50
+
 func _init() -> void:
 	# Initialize RNG
 	main_rng = RandomNumberGenerator.new()
@@ -85,6 +90,28 @@ func _init() -> void:
 		Color(0.12, 0.11, 0.11),
 		Color(0.10, 0.09, 0.09),
 	])
+
+# Clean up old textures from cache
+static func clean_texture_cache() -> void:
+	var current_time = Time.get_ticks_msec()
+	
+	# Only clean every 30 seconds
+	if current_time - last_texture_cleanup < 30000:
+		return
+		
+	last_texture_cleanup = current_time
+	
+	# If cache is smaller than limit, don't clean
+	if texture_cache.size() <= MAX_TEXTURE_CACHE_SIZE:
+		return
+		
+	# Get all keys and sort by oldest first
+	var keys = texture_cache.keys()
+	keys.sort()  # Simple sort for deterministic cleanup
+	
+	# Remove oldest entries until we're under the limit
+	for i in range(keys.size() - MAX_TEXTURE_CACHE_SIZE):
+		texture_cache.erase(keys[i])
 
 func get_cubic(t: float) -> float:
 	var index = int(t * (CUBIC_RESOLUTION - 1))
@@ -372,6 +399,14 @@ func apply_lighting(color: Color, normal: Vector3) -> Color:
 	return color
 
 func create_asteroid_texture() -> ImageTexture:
+	# Check cache first for better performance
+	var cache_key = str(seed_value)
+	if texture_cache.has(cache_key):
+		return texture_cache[cache_key]
+	
+	# Clean texture cache occasionally
+	clean_texture_cache()
+	
 	var final_resolution = PIXEL_RESOLUTION
 	var image = Image.create(final_resolution, final_resolution, true, Image.FORMAT_RGBA8)
 	
@@ -482,7 +517,12 @@ func create_asteroid_texture() -> ImageTexture:
 			
 			image.set_pixel(x, y, lit_color)
 	
-	return ImageTexture.create_from_image(image)
+	var texture = ImageTexture.create_from_image(image)
+	
+	# Cache the result
+	texture_cache[cache_key] = texture
+	
+	return texture
 
 func set_random_shape_params() -> void:
 	IRREGULARITY = main_rng.randf_range(0.35, 0.6)
@@ -545,16 +585,4 @@ func _ready() -> void:
 	# Initialize with medium size asteroid
 	generate_asteroid(ASTEROID_SIZE_MEDIUM)
 
-func _input(event: InputEvent) -> void:
-	if event is InputEventKey and event.pressed:
-		match event.keycode:
-			KEY_1:
-				generate_asteroid(ASTEROID_SIZE_SMALL)
-			KEY_2:
-				generate_asteroid(ASTEROID_SIZE_MEDIUM)
-			KEY_3:
-				generate_asteroid(ASTEROID_SIZE_LARGE)
-			KEY_SPACE:
-				var sizes = [ASTEROID_SIZE_SMALL, ASTEROID_SIZE_MEDIUM, ASTEROID_SIZE_LARGE]
-				var random_size = sizes[main_rng.randi() % sizes.size()]
-				generate_asteroid(random_size)
+# REMOVED problematic _input method that was causing texture regeneration when space key was pressed

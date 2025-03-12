@@ -23,8 +23,10 @@ var _generated_entities = {}
 var _entity_counts = {}
 var _planet_cells = []
 var _excluded_cells = {}
+var _gas_giant_cells = []  # Track gas giants specifically for adjacency rules
 var _all_candidate_cells = []
 var _debug_mode = false
+var _generation_counter = 0
 
 # Constants for efficient seeding
 const PLANET_SEED_OFFSET = 1000000
@@ -42,6 +44,7 @@ func _ready() -> void:
 func _initialize() -> void:
 	# Reset entity counts and generation ID
 	_generation_id = 0
+	_gas_giant_cells.clear()
 	
 	for type in ENTITY_TYPES.values():
 		_entity_counts[type] = 0
@@ -97,12 +100,15 @@ func _precalculate_candidate_cells(grid_size: int) -> void:
 
 func generate_starter_world() -> Dictionary:
 	# Reset generation ID to ensure determinism
+	_generation_counter += 1
 	_generation_id = 0
+	_gas_giant_cells.clear()
 	
 	# Clear previous generation
 	clear_world()
 	
 	if _debug_mode:
+		print("DEBUG: Generation started - Count: ", _generation_counter)
 		print("WorldGenerator: Starting world generation with seed: ", game_settings.get_seed())
 	
 	world_generation_started.emit()
@@ -140,7 +146,7 @@ func generate_starter_world() -> Dictionary:
 		else:
 			break
 	
-	# Generate asteroid fields
+	# Generate asteroid fields - now with special placement rules
 	var asteroid_count = game_settings.asteroid_fields if game_settings else 0
 	_batch_generate_entities(ENTITY_TYPES.ASTEROID_FIELD, asteroid_count)
 	
@@ -156,6 +162,7 @@ func generate_starter_world() -> Dictionary:
 			_entity_counts[ENTITY_TYPES.TERRAN_PLANET] + _entity_counts[ENTITY_TYPES.GASEOUS_PLANET])
 		print("Asteroid fields generated: ", _entity_counts[ENTITY_TYPES.ASTEROID_FIELD])
 		print("Stations generated: ", _entity_counts[ENTITY_TYPES.STATION])
+		print("Gas giant cells: ", _gas_giant_cells)
 	
 	return {
 		"player_planet_cell": player_planet_cell,
@@ -191,8 +198,8 @@ func generate_entity(entity_type: String, params: Dictionary = {}) -> Vector2i:
 	var proximity = params.get("proximity", 1)
 	var is_player_starting = params.get("is_player_starting", false)
 	
-	# Get valid candidate cells
-	var candidate_cells = get_candidate_cells()
+	# Get valid candidate cells based on entity type
+	var candidate_cells = get_candidate_cells_for_entity_type(entity_type)
 	if candidate_cells.is_empty():
 		if _debug_mode:
 			print("WorldGenerator: Error - No valid cells available for entity: ", entity_type)
@@ -212,8 +219,14 @@ func generate_entity(entity_type: String, params: Dictionary = {}) -> Vector2i:
 		match entity_type:
 			ENTITY_TYPES.TERRAN_PLANET, ENTITY_TYPES.GASEOUS_PLANET:
 				entity_instance = _generate_planet(entity_type, cell, entity_seed, is_player_starting)
+				
+				# Track gas giants for asteroid field adjacency rules
+				if entity_type == ENTITY_TYPES.GASEOUS_PLANET and entity_instance:
+					_gas_giant_cells.append(cell)
+					
 			ENTITY_TYPES.ASTEROID_FIELD:
 				entity_instance = _generate_asteroid_field(cell, entity_seed)
+				
 			ENTITY_TYPES.STATION:
 				entity_instance = _generate_station(cell, entity_seed)
 		
@@ -235,6 +248,45 @@ func generate_entity(entity_type: String, params: Dictionary = {}) -> Vector2i:
 	if _debug_mode:
 		print("WorldGenerator: Failed to find valid location for entity: ", entity_type)
 	return Vector2i(-1, -1)
+
+# Get candidate cells with specific filtering for asteroid fields
+func get_candidate_cells_for_entity_type(entity_type: String) -> Array:
+	var candidates = []
+	
+	if entity_type == ENTITY_TYPES.ASTEROID_FIELD:
+		# For asteroid fields: filter out cells adjacent to gas giants
+		for cell in _all_candidate_cells:
+			if not _excluded_cells.has(cell) and not _is_adjacent_to_gas_giant(cell):
+				candidates.append(cell)
+	else:
+		# Default behavior for other entities
+		candidates = get_candidate_cells()
+	
+	return candidates
+
+# Check if a cell is adjacent to any gas giant
+func _is_adjacent_to_gas_giant(cell: Vector2i) -> bool:
+	for gas_giant_cell in _gas_giant_cells:
+		if _are_cells_adjacent(cell, gas_giant_cell):
+			return true
+	return false
+
+# Check if two cells are adjacent (including diagonals)
+func _are_cells_adjacent(cell1: Vector2i, cell2: Vector2i) -> bool:
+	# Check if the cells are the same
+	if cell1 == cell2:
+		return true
+		
+	# Check cardinal and diagonal adjacency
+	for dx in range(-1, 2):
+		for dy in range(-1, 2):
+			if dx == 0 and dy == 0:
+				continue
+				
+			if cell1 + Vector2i(dx, dy) == cell2:
+				return true
+				
+	return false
 
 func _get_scene_key_for_entity(entity_type: String) -> String:
 	match entity_type:
@@ -304,13 +356,9 @@ func _generate_asteroid_field(cell: Vector2i, field_seed: int) -> Node:
 	var asteroid_field = _scene_cache["asteroid_field"].instantiate()
 	add_child(asteroid_field)
 	
-	# Set grid position which will handle proper world positioning
-	if asteroid_field.has_method("set_grid_position"):
-		asteroid_field.set_grid_position(cell.x, cell.y)
-	else:
-		# Fallback to direct position setting
-		var world_pos = _cell_to_world_position(cell)
-		asteroid_field.global_position = world_pos
+	# Important: Always set grid position for exact cell center placement
+	asteroid_field.set_grid_position(cell.x, cell.y)
+	asteroid_field.use_grid_position = true  # Force grid position usage
 	
 	# Set local seed offset - direct property access
 	asteroid_field.local_seed_offset = field_seed % 1000
@@ -350,7 +398,7 @@ func _generate_asteroid_field(cell: Vector2i, field_seed: int) -> Node:
 	if asteroid_field.has_method("generate_field"):
 		asteroid_field.generate_field()
 	
-	# Register with entity manager
+	# Register with entity manager and our internal tracking
 	_register_generated_entity(cell, asteroid_field, "asteroid_field")
 	
 	if has_node("/root/EntityManager") and EntityManager.has_method("register_entity"):
@@ -478,6 +526,7 @@ func clear_world() -> void:
 	_generated_entities.clear()
 	_excluded_cells.clear()
 	_planet_cells.clear()
+	_gas_giant_cells.clear()
 	
 	# Reset entity counts
 	for type in ENTITY_TYPES.values():

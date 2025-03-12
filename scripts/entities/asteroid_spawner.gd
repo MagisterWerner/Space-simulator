@@ -1,4 +1,4 @@
-# scripts/entities/asteroid_spawner.gd
+# scripts/entities/asteroid_spawner.gd - Optimized implementation
 extends Node2D
 class_name AsteroidSpawner
 
@@ -49,11 +49,16 @@ var _remaining_to_spawn: Array = []
 var _is_spawning: bool = false
 var _spawn_timer: float = 0.0
 
+# Texture cache (persistent across asteroid instances)
+var _texture_cache: Dictionary = {}
+const MAX_TEXTURE_CACHE_SIZE: int = 20
+
 # Cached managers
 var _game_settings = null
 var _seed_manager = null
 var _entity_manager = null
 var _asteroid_generator = null
+var _asteroid_generator_instance = null
 
 func _ready() -> void:
 	# Find required singletons
@@ -79,10 +84,15 @@ func _cache_singletons() -> void:
 		_seed_manager.connect("seed_changed", _on_seed_changed)
 
 func _initialize_asteroid_generator() -> void:
+	# Load the script first
 	var generator_script = load("res://scripts/generators/asteroid_generator.gd")
 	if generator_script:
-		_asteroid_generator = generator_script.new()
-		add_child(_asteroid_generator)
+		_asteroid_generator = generator_script
+		
+		# Create an actual instance for texture generation
+		_asteroid_generator_instance = generator_script.new()
+		add_child(_asteroid_generator_instance)
+		
 		if debug_field_generation:
 			print("AsteroidSpawner: Asteroid generator initialized")
 	else:
@@ -278,7 +288,8 @@ func _generate_asteroid_positions(field_data: Dictionary) -> Array:
 				"size": size_category,
 				"scale": actual_scale,
 				"rotation_speed": rotation_speed,
-				"variant": _rng.randi_range(0, 3) # Variant for texture selection
+				"variant": _rng.randi_range(0, 3), # Variant for texture selection
+				"seed": _seed_value + positions.size() * 1000 + int(pos.x * 100) + int(pos.y * 100)
 			})
 		
 		attempts += 1
@@ -342,37 +353,47 @@ func _spawn_asteroid(data: Dictionary) -> void:
 	# Ensure z-index is set for visibility
 	asteroid.z_index = 3
 	
-	# Generate texture using the asteroid generator
-	if _asteroid_generator and asteroid.get_node_or_null("Sprite2D"):
-		var sprite = asteroid.get_node("Sprite2D")
-		var size_value = 16  # Default small size
+	# Use the unique asteroid seed for stable texture generation
+	var asteroid_seed = data.seed
+	
+	# Check if we already have this texture in cache
+	if _asteroid_generator_instance:
+		# Apply the seed to generator
+		_asteroid_generator_instance.seed_value = asteroid_seed
 		
-		# Map size category to pixel size
-		match data.size:
-			"small": size_value = 16
-			"medium": size_value = 32
-			"large": size_value = 64
-		
-		# Set a unique seed for each asteroid
-		var asteroid_seed = _seed_value + _spawned_count + int(data.position.x * 100) + int(data.position.y * 100)
-		_asteroid_generator.seed_value = asteroid_seed
-		
-		# Generate texture and apply to asteroid
-		if _asteroid_generator.has_method("create_asteroid_texture"):
-			var texture = _asteroid_generator.create_asteroid_texture()
+		# Set sprite texture
+		if asteroid.get_node_or_null("Sprite2D"):
+			var sprite = asteroid.get_node("Sprite2D")
+			var texture = null
+			
+			# Check cache first
+			var cache_key = str(asteroid_seed)
+			if _texture_cache.has(cache_key):
+				texture = _texture_cache[cache_key]
+			else:
+				# Generate new texture
+				texture = _asteroid_generator_instance.create_asteroid_texture()
+				
+				# Cache with limit check
+				if _texture_cache.size() >= MAX_TEXTURE_CACHE_SIZE:
+					# Remove oldest entry (first key)
+					var first_key = _texture_cache.keys()[0]
+					_texture_cache.erase(first_key)
+				
+				_texture_cache[cache_key] = texture
+			
+			# Apply texture to asteroid
 			sprite.texture = texture
 			
-			# Adjust scale based on generated texture size and desired asteroid size
-			var texture_size = texture.get_size()
-			if texture_size.x > 0:
-				sprite.scale = Vector2(size_value, size_value) / texture_size.x
-		elif _asteroid_generator.has_method("generate_asteroid"):
-			# Alternative method if available
-			_asteroid_generator.generate_asteroid(size_value)
-			if _asteroid_generator.get_child_count() > 0 and _asteroid_generator.get_child(0) is Sprite2D:
-				var generated_sprite = _asteroid_generator.get_child(0)
-				sprite.texture = generated_sprite.texture
-				sprite.scale = generated_sprite.scale * (data.scale / 1.0)
+			# Adjust scale based on asteroid size
+			var size_value = 16  # Default small size
+			match data.size:
+				"small": size_value = 16
+				"medium": size_value = 32
+				"large": size_value = 64
+			
+			# Scale sprite based on size and data scale
+			sprite.scale = Vector2(size_value, size_value) / texture.get_width() * data.scale
 	
 	# Setup asteroid properties
 	if asteroid.has_method("setup"):
@@ -417,24 +438,41 @@ func _spawn_fragments(position: Vector2, size_category: String, count: int, pare
 		var rot_speed = _rng.randf_range(-max_rotation_speed, max_rotation_speed) * 1.5
 		var scale = parent_scale * (0.6 if fragment_size == "medium" else 0.4)
 		
-		# Generate texture for fragment
-		if _asteroid_generator and asteroid.get_node_or_null("Sprite2D"):
+		# Generate unique seed for fragment
+		var fragment_seed = _seed_value + i + _spawned_count * 10 + int(pos.x * 10) + int(pos.y * 10)
+		
+		# Set sprite texture
+		if _asteroid_generator_instance and asteroid.get_node_or_null("Sprite2D"):
 			var sprite = asteroid.get_node("Sprite2D")
+			var texture = null
+			
+			# Check cache first
+			var cache_key = str(fragment_seed)
+			if _texture_cache.has(cache_key):
+				texture = _texture_cache[cache_key]
+			else:
+				# Apply seed to generator
+				_asteroid_generator_instance.seed_value = fragment_seed
+				
+				# Generate texture
+				texture = _asteroid_generator_instance.create_asteroid_texture()
+				
+				# Cache with limit check
+				if _texture_cache.size() >= MAX_TEXTURE_CACHE_SIZE:
+					# Remove oldest entry
+					var first_key = _texture_cache.keys()[0]
+					_texture_cache.erase(first_key)
+				
+				_texture_cache[cache_key] = texture
+			
+			# Apply texture
+			sprite.texture = texture
+			
+			# Get appropriate size
 			var size_value = fragment_size == "medium" if 32 else 16
 			
-			# Set a unique seed for each fragment
-			var fragment_seed = _seed_value + _spawned_count + i + int(pos.x * 100) + int(pos.y * 100)
-			_asteroid_generator.seed_value = fragment_seed
-			
-			# Generate texture
-			if _asteroid_generator.has_method("create_asteroid_texture"):
-				var texture = _asteroid_generator.create_asteroid_texture()
-				sprite.texture = texture
-				
-				# Adjust scale based on texture size
-				var texture_size = texture.get_size()
-				if texture_size.x > 0:
-					sprite.scale = Vector2(size_value, size_value) / texture_size.x
+			# Scale based on texture size
+			sprite.scale = Vector2(size_value, size_value) / texture.get_width() * scale
 		
 		# Setup fragment
 		if asteroid.has_method("setup"):
@@ -442,6 +480,7 @@ func _spawn_fragments(position: Vector2, size_category: String, count: int, pare
 		
 		# Add to active asteroids
 		_asteroids.append(asteroid)
+		_spawned_count += 1
 		
 		# Register with entity manager if available
 		if _entity_manager and _entity_manager.has_method("register_entity"):
@@ -475,40 +514,3 @@ func get_field_info() -> Dictionary:
 		"asteroid_count": _spawned_count,
 		"grid_position": Vector2i(grid_x, grid_y)
 	}
-
-# Force regenerate all asteroid textures - useful for debugging
-func regenerate_textures() -> void:
-	if not _asteroid_generator:
-		push_error("AsteroidSpawner: Can't regenerate textures - no generator available")
-		return
-	
-	for asteroid in _asteroids:
-		if is_instance_valid(asteroid) and asteroid.get_node_or_null("Sprite2D"):
-			var sprite = asteroid.get_node("Sprite2D")
-			var size_category = "medium"
-			var size_value = 32
-			
-			# Try to get size from asteroid
-			if asteroid.has("size_category"):
-				size_category = asteroid.size_category
-				
-				match size_category:
-					"small": size_value = 16
-					"medium": size_value = 32
-					"large": size_value = 64
-			
-			# Create a new texture
-			var unique_seed = _seed_value + hash(asteroid)
-			_asteroid_generator.seed_value = unique_seed
-			
-			if _asteroid_generator.has_method("create_asteroid_texture"):
-				var texture = _asteroid_generator.create_asteroid_texture()
-				sprite.texture = texture
-				
-				# Adjust scale
-				var texture_size = texture.get_size()
-				if texture_size.x > 0:
-					sprite.scale = Vector2(size_value, size_value) / texture_size.x
-	
-	if debug_field_generation:
-		print("AsteroidSpawner: Regenerated textures for ", _asteroids.size(), " asteroids")

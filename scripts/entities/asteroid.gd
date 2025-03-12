@@ -1,4 +1,4 @@
-# scripts/entities/asteroid.gd - Highly optimized implementation
+# scripts/entities/asteroid.gd - Enhanced implementation with proper health and hit detection
 extends Node2D
 class_name Asteroid
 
@@ -15,10 +15,16 @@ var _sprite: Sprite2D
 var _explosion_component: Node
 var _collision_rect: Rect2
 var _collision_rect_global: Rect2
-var _health_values := {"small": 20.0, "medium": 50.0, "large": 100.0}
+var _health_values := {"small": 10.0, "medium": 25.0, "large": 50.0}
 
 # Static shared paths - avoid recalculation
 const EXPLOSION_SCENE_PATH: String = "res://scenes/explosion_effect.tscn"
+
+# Hit flash effect
+var _hit_flash_timer: float = 0.0
+var _is_hit_flashing: bool = false
+const HIT_FLASH_DURATION: float = 0.1
+var _original_modulate: Color = Color.WHITE
 
 func _ready() -> void:
 	z_index = 3
@@ -34,25 +40,48 @@ func _ready() -> void:
 	
 	# Set health based on size
 	if health_component:
-		health_component.max_health = _health_values.get(size_category, 50.0)
+		health_component.max_health = _health_values.get(size_category, 25.0)
 		health_component.current_health = health_component.max_health
+		health_component.connect("damaged", _on_damaged)
+		health_component.connect("died", _on_destroyed)
+	else:
+		# Create a health component if it doesn't exist
+		health_component = HealthComponent.new()
+		health_component.name = "HealthComponent"
+		add_child(health_component)
+		health_component.max_health = _health_values.get(size_category, 25.0)
+		health_component.current_health = health_component.max_health
+		health_component.connect("damaged", _on_damaged)
 		health_component.connect("died", _on_destroyed)
 	
 	# Apply visual settings
 	if _sprite:
 		_sprite.scale = Vector2(base_scale, base_scale)
 		_sprite.rotation = randf() * TAU  # Initial random rotation
+		_original_modulate = _sprite.modulate
 	
 	# Precalculate collision rect
 	_update_collision_rect()
 	
-	# Only enable process if actually rotating
-	set_process(rotation_speed != 0)
+	# Only enable process if actually rotating or during hit flash
+	set_process(rotation_speed != 0 || _is_hit_flashing)
 
-# Only called if rotation_speed != 0
+# Process function for rotation and hit flash effect
 func _process(delta: float) -> void:
-	if _sprite:
+	if _sprite and rotation_speed != 0:
 		_sprite.rotation += rotation_speed * delta
+	
+	# Handle hit flash effect if active
+	if _is_hit_flashing:
+		_hit_flash_timer -= delta
+		if _hit_flash_timer <= 0:
+			_is_hit_flashing = false
+			if _sprite:
+				_sprite.modulate = _original_modulate
+			
+			# Turn off process if no rotation needed
+			if rotation_speed == 0:
+				set_process(false)
 
 # Setup with all needed values at once
 func setup(size: String, variant: int, scale_value: float, rot_speed: float, initial_rot: float = 0.0) -> void:
@@ -66,7 +95,7 @@ func setup(size: String, variant: int, scale_value: float, rot_speed: float, ini
 	
 	# Update health based on size
 	if health_component:
-		health_component.max_health = _health_values.get(size, 50.0)
+		health_component.max_health = _health_values.get(size, 25.0)
 		health_component.current_health = health_component.max_health
 	
 	# Precalculate collision rectangle
@@ -102,6 +131,19 @@ func check_laser_hit(laser) -> bool:
 func get_collision_rect() -> Rect2:
 	return _collision_rect
 
+# Hit effect handler
+func _on_damaged(amount: float, _type: String, _source: Node) -> void:
+	# Play hit flash effect
+	if _sprite:
+		_sprite.modulate = Color(1.5, 1.5, 1.5, 1.0)  # White flash
+		_is_hit_flashing = true
+		_hit_flash_timer = HIT_FLASH_DURATION
+		set_process(true)
+	
+	# Play hit sound if audio manager is available
+	if audio_manager:
+		audio_manager.play_sfx("asteroid_hit", global_position)
+
 # Explosion and destruction handling
 func _on_destroyed() -> void:
 	# Use cached explosion component if available
@@ -122,6 +164,10 @@ func _on_destroyed() -> void:
 				2,
 				base_scale
 			)
+	
+	# Notify EntityManager if registered
+	if has_meta("entity_id") and has_node("/root/EntityManager") and EntityManager.has_method("deregister_entity"):
+		EntityManager.deregister_entity(self)
 	
 	queue_free()
 

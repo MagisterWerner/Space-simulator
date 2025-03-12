@@ -69,11 +69,21 @@ func _initialize_seed() -> void:
 		print("Warning: SeedManager not found or GameSettings not available")
 
 func _on_seed_manager_initialized() -> void:
-	# SeedManager is now initialized, continue with the setup
+	# Check if we've already completed initialization
+	if initialization_complete:
+		# Just update the seed and return
+		if game_settings:
+			SeedManager.set_seed(game_settings.get_seed())
+		return
+	
+	# Set initialization flag to prevent further initialization attempts
+	initialization_complete = true
+	
+	# SeedManager is now initialized, set the seed
 	if game_settings:
 		SeedManager.set_seed(game_settings.get_seed())
-		
-	# Continue initialization
+	
+	# Continue with the standard initialization sequence
 	_preload_audio()
 	_initialize_world_generator()
 	_initialize_background_and_camera()

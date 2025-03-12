@@ -15,12 +15,11 @@ game_seed = 855937
 use_random_seed = false
 grid_cell_size = 768
 grid_size = 6
-terran_planets = 1
-gaseous_planets = 0
-asteroid_fields = 3
+gaseous_planets = 5
 show_tutorials = false
 music_volume = 0.39
 debug_mode = true
+debug_grid = true
 debug_seed_manager = true
 debug_world_generator = true
 
