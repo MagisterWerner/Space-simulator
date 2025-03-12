@@ -12,13 +12,18 @@ signal weapon_switched(weapon_name)
 @onready var movement_component: MovementComponent = $MovementComponent
 @onready var shield_component: ShieldComponent = $ShieldComponent
 @onready var state_machine: StateMachine = $StateMachine
-@onready var weapon_manager: WeaponManagerComponent = null
+@onready var laser_weapon: WeaponComponent = $LaserWeaponComponent
+@onready var missile_weapon: WeaponComponent = $MissileWeaponComponent
 
 @export var debug_mode: bool = false
 @export var input_enabled: bool = true
 
 # Reference to GameSettings
 var game_settings: GameSettings = null
+
+# Weapon management
+var weapons = []
+var current_weapon_index = 0
 
 # Input state - packed into bitmask for efficiency
 var _input_state: int = 0
@@ -30,8 +35,6 @@ const INPUT_LEFT = 4
 const INPUT_RIGHT = 8
 const INPUT_BOOST = 16
 const INPUT_FIRE = 32
-const INPUT_WEAPON_NEXT = 64
-const INPUT_WEAPON_PREV = 128
 
 func _ready() -> void:
 	# Find GameSettings
@@ -61,8 +64,8 @@ func _ready() -> void:
 		health_component.damaged.connect(_on_health_damaged)
 		health_component.died.connect(_on_health_died)
 	
-	# Setup weapon management
-	_initialize_weapon_system()
+	# Initialize weapon system
+	_initialize_weapons()
 	
 	# Set starting position
 	if game_settings:
@@ -77,40 +80,65 @@ func _ready() -> void:
 	if Engine.has_singleton("Logger"):
 		Logger.info("PlayerShip", "Player ship initialized and ready")
 
-func _initialize_weapon_system() -> void:
-	# Get or create weapon manager component
-	weapon_manager = get_node_or_null("WeaponManagerComponent")
-	if not weapon_manager:
-		weapon_manager = WeaponManagerComponent.new()
-		weapon_manager.name = "WeaponManagerComponent"
-		add_child(weapon_manager)
+func _initialize_weapons() -> void:
+	# Clear existing weapons array
+	weapons.clear()
 	
-	# Configure weapon manager
-	weapon_manager.auto_initialize = true
+	# Add available weapons to the array
+	if laser_weapon and laser_weapon is WeaponComponent:
+		weapons.append(laser_weapon)
+		print("Found laser weapon: ", laser_weapon.weapon_name)
 	
-	# If no specific weapons path is set, search in the player ship
-	if weapon_manager.weapons_path.is_empty():
-		weapon_manager.weapons_path = NodePath(".")
+	if missile_weapon and missile_weapon is WeaponComponent:
+		weapons.append(missile_weapon)
+		print("Found missile weapon: ", missile_weapon.weapon_name)
 	
-	# Connect to weapon switching signal
-	if weapon_manager.has_signal("weapon_switched") and not weapon_manager.is_connected("weapon_switched", _on_weapon_switched):
-		weapon_manager.connect("weapon_switched", _on_weapon_switched)
+	# If we found any weapons, select the first one
+	if weapons.size() > 0:
+		_select_weapon(0)
+		print("Total weapons found: ", weapons.size())
+	else:
+		print("WARNING: No weapons found on player ship!")
+
+func _select_weapon(index: int) -> void:
+	if weapons.is_empty():
+		return
 	
-	# Give it a chance to initialize
-	await get_tree().process_frame
+	# Validate index
+	index = clampi(index, 0, weapons.size() - 1)
 	
-	if debug_mode and Engine.has_singleton("Logger"):
-		var current_weapon = weapon_manager.get_current_weapon()
-		if current_weapon:
-			Logger.debug("PlayerShip", "Initial weapon: " + current_weapon.weapon_name)
-		else:
-			Logger.warning("PlayerShip", "No weapons initialized!")
+	# Disable all weapons first
+	for weapon in weapons:
+		if weapon.enabled:
+			weapon.disable()
+	
+	# Enable only the selected weapon
+	current_weapon_index = index
+	var current_weapon = weapons[current_weapon_index]
+	current_weapon.enable()
+	
+	# Emit signal for UI updates
+	weapon_switched.emit(current_weapon.weapon_name)
+	
+	print("Selected weapon: ", current_weapon.weapon_name)
 
 func _process(_delta: float) -> void:
 	# Handle weapon firing
 	if input_enabled and _input_state & INPUT_FIRE:
-		if weapon_manager:
-			weapon_manager.fire()
+		if not weapons.is_empty():
+			var current_weapon = weapons[current_weapon_index]
+			if current_weapon.enabled:
+				current_weapon.fire()
+	
+	# Handle weapon switching - directly in process to ensure responsiveness
+	if input_enabled:
+		if Input.is_action_just_pressed("weapon_next"):
+			print("Next weapon pressed")
+			_next_weapon()
+		
+		if Input.is_action_just_pressed("weapon_previous"):
+			print("Previous weapon pressed")
+			_previous_weapon()
 
 func _physics_process(_delta: float) -> void:
 	if input_enabled:
@@ -159,17 +187,6 @@ func _handle_input() -> void:
 	if Input.is_action_pressed("p1_primary"):
 		_input_state |= INPUT_FIRE
 	
-	# Handle weapon switching
-	if Input.is_action_just_pressed("weapon_next"):
-		_input_state |= INPUT_WEAPON_NEXT
-		if weapon_manager:
-			weapon_manager.next_weapon()
-	
-	if Input.is_action_just_pressed("weapon_previous"):
-		_input_state |= INPUT_WEAPON_PREV
-		if weapon_manager:
-			weapon_manager.previous_weapon()
-	
 	# Update state machine based on input
 	if state_machine:
 		var current_state = state_machine.get_current_state_name()
@@ -186,19 +203,27 @@ func _handle_input() -> void:
 		else:
 			state_machine.transition_to("idle")
 
-func _on_weapon_switched(old_weapon, new_weapon, _index) -> void:
-	if debug_mode and Engine.has_singleton("Logger"):
-		var old_name = old_weapon.weapon_name if old_weapon else "None"
-		var new_name = new_weapon.weapon_name if new_weapon else "None"
-		Logger.debug("PlayerShip", "Switched weapon: " + old_name + " -> " + new_name)
+func _next_weapon() -> void:
+	if weapons.size() <= 1:
+		return
 	
-	# Emit signal for UI to update
-	if new_weapon:
-		weapon_switched.emit(new_weapon.weapon_name)
+	var next_index = (current_weapon_index + 1) % weapons.size()
+	_select_weapon(next_index)
 	
-	# You could play a weapon switch sound here:
-	# if Engine.has_singleton("AudioManager"):
-	#     AudioManager.play_sfx("weapon_switch", global_position)
+	# Play weapon switch sound if available
+	if Engine.has_singleton("AudioManager"):
+		AudioManager.play_sfx("weapon_switch", global_position)
+
+func _previous_weapon() -> void:
+	if weapons.size() <= 1:
+		return
+	
+	var prev_index = (current_weapon_index - 1 + weapons.size()) % weapons.size()
+	_select_weapon(prev_index)
+	
+	# Play weapon switch sound if available
+	if Engine.has_singleton("AudioManager"):
+		AudioManager.play_sfx("weapon_switch", global_position)
 
 func _on_health_damaged(amount: float, _source: Node) -> void:
 	player_damaged.emit(amount)
@@ -255,6 +280,9 @@ func respawn(spawn_position: Vector2 = Vector2.ZERO) -> void:
 	# Reset state and input
 	if state_machine:
 		state_machine.transition_to("idle")
+	
+	# Re-select first weapon
+	_select_weapon(0)
 	
 	input_enabled = true
 	player_respawned.emit()
@@ -351,8 +379,8 @@ func _log_components() -> void:
 
 # Get the current weapon for external systems
 func get_current_weapon() -> WeaponComponent:
-	if weapon_manager:
-		return weapon_manager.get_current_weapon()
+	if not weapons.is_empty() and current_weapon_index >= 0 and current_weapon_index < weapons.size():
+		return weapons[current_weapon_index]
 	return null
 
 # Utility function to get health percentage
@@ -361,7 +389,7 @@ func get_health_percent() -> float:
 		return health_component.get_health_percent()
 	return 1.0
 
-# Utility function to get shield percentage
+# Utility function to get shield percentage  
 func get_shield_percent() -> float:
 	if shield_component:
 		return shield_component.get_shield_percent()

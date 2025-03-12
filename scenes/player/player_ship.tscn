@@ -1,4 +1,4 @@
-[gd_scene load_steps=20 format=3 uid="uid://rhas31gnv33u"]
+[gd_scene load_steps=19 format=3 uid="uid://rhas31gnv33u"]
 
 [ext_resource type="Script" uid="uid://qr734f4toeq1" path="res://scripts/entities/player_ship.gd" id="1_a8k2q"]
 [ext_resource type="Texture2D" uid="uid://rmbujdpioval" path="res://assets/sprites/player_ship.png" id="2_n7prj"]
@@ -17,7 +17,6 @@
 [ext_resource type="Script" uid="uid://cl0jtieouhwli" path="res://scripts/components/weapons/missile_launcher_component.gd" id="16_qd4s4"]
 [ext_resource type="PackedScene" uid="uid://b34rtd6fv2w5" path="res://scenes/projectiles/laser_projectile.tscn" id="16_yjlin"]
 [ext_resource type="PackedScene" uid="uid://i17v7l2g88dp" path="res://scenes/projectiles/missile_projectile.tscn" id="18_nfb6c"]
-[ext_resource type="Script" uid="uid://7kiogah7oop0" path="res://scripts/components/weapon_manager_component.gd" id="18_yjlin"]
 
 [sub_resource type="Gradient" id="Gradient_u2vx4"]
 offsets = PackedFloat32Array(0, 0.486667, 0.846667, 1)
@@ -161,14 +160,14 @@ script = ExtResource("14_7dcri")
 
 [node name="LaserWeaponComponent" type="Node" parent="."]
 script = ExtResource("15_2s2q7")
+laser_color = Color(0.164706, 1, 0, 1)
+laser_width = 4.0
+projectile_speed = 1000.0
 projectile_scene = ExtResource("16_yjlin")
 
-[node name="MissileLauncherComponent" type="Node" parent="."]
+[node name="MissileWeaponComponent" type="Node" parent="."]
 script = ExtResource("16_qd4s4")
 weapon_name = "Missile Launcher"
 projectile_scene = ExtResource("18_nfb6c")
-
-[node name="WeaponManagerComponent" type="Node" parent="."]
-script = ExtResource("18_yjlin")
 
 [connection signal="body_entered" from="." to="." method="_on_body_entered"]
