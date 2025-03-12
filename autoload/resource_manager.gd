@@ -21,77 +21,107 @@ enum ResourceType {
 	LUXURY_GOODS
 }
 
-# Resource indices for array format
-enum ResourceIndex {
-	NAME,
-	DESC,
-	ICON,
-	VALUE,
-	WEIGHT,
-	IS_CURRENCY
-}
+# Resource class for better data organization
+class ResourceData:
+	var name: String
+	var description: String
+	var icon: Texture2D
+	var base_value: float
+	var weight: float
+	var is_currency: bool
+	
+	func _init(p_name: String, p_desc: String, p_icon = null, p_value: float = 0.0, p_weight: float = 0.0, p_is_currency: bool = false):
+		name = p_name
+		description = p_desc
+		icon = p_icon
+		base_value = p_value
+		weight = p_weight
+		is_currency = p_is_currency
 
-# Resource metadata - optimized as arrays
-var resource_data = {
-	ResourceType.CREDITS: ["Credits", "Universal currency", null, 1.0, 0.0, true],
-	ResourceType.FUEL: ["Fuel", "Standard ship fuel", null, 5.0, 0.1, false],
-	ResourceType.METAL_ORE: ["Metal Ore", "Raw metal ore", null, 10.0, 2.0, false],
-	ResourceType.PRECIOUS_METALS: ["Precious Metals", "High-value metals", null, 50.0, 1.0, false],
-	ResourceType.CRYSTALS: ["Crystals", "Rare crystals", null, 75.0, 0.5, false],
-	ResourceType.ORGANIC_MATTER: ["Organic Matter", "Biological resources", null, 15.0, 1.5, false],
-	ResourceType.TECHNOLOGY_PARTS: ["Technology Parts", "Tech components", null, 40.0, 0.8, false],
-	ResourceType.WEAPONS_COMPONENTS: ["Weapons Components", "Weapon parts", null, 60.0, 1.2, false],
-	ResourceType.MEDICAL_SUPPLIES: ["Medical Supplies", "Medical items", null, 35.0, 0.7, false],
-	ResourceType.LUXURY_GOODS: ["Luxury Goods", "High-value items", null, 100.0, 0.3, false]
-}
+# Resource data storage - optimized with class instances
+var resource_data = {}
 
 # Inventory and capacity
 var inventory = {}
-var cargo_capacity = 100.0
-var used_capacity = 0.0
+var cargo_capacity: float = 100.0
+var used_capacity: float = 0.0
 
-# Market price fluctuations
+# Market price caching
 var market_modifiers = {}
-var _seed_ready = false
-var debug_mode = false
+var market_prices_cache = {}
+var _seed_manager = null
+var _debug_mode = false
 
 func _ready() -> void:
-	# Initialize inventory with zero amounts
-	for resource_id in ResourceType.values():
-		inventory[resource_id] = 0.0
-	
-	_seed_ready = has_node("/root/SeedManager")
+	_initialize_resource_data()
+	_initialize_inventory()
+	_connect_to_seed_manager()
 	call_deferred("_find_game_settings")
 
+func _initialize_resource_data() -> void:
+	# Define all resources using the ResourceData class
+	resource_data[ResourceType.CREDITS] = ResourceData.new("Credits", "Universal currency", null, 1.0, 0.0, true)
+	resource_data[ResourceType.FUEL] = ResourceData.new("Fuel", "Standard ship fuel", null, 5.0, 0.1, false)
+	resource_data[ResourceType.METAL_ORE] = ResourceData.new("Metal Ore", "Raw metal ore", null, 10.0, 2.0, false)
+	resource_data[ResourceType.PRECIOUS_METALS] = ResourceData.new("Precious Metals", "High-value metals", null, 50.0, 1.0, false)
+	resource_data[ResourceType.CRYSTALS] = ResourceData.new("Crystals", "Rare crystals", null, 75.0, 0.5, false)
+	resource_data[ResourceType.ORGANIC_MATTER] = ResourceData.new("Organic Matter", "Biological resources", null, 15.0, 1.5, false)
+	resource_data[ResourceType.TECHNOLOGY_PARTS] = ResourceData.new("Technology Parts", "Tech components", null, 40.0, 0.8, false)
+	resource_data[ResourceType.WEAPONS_COMPONENTS] = ResourceData.new("Weapons Components", "Weapon parts", null, 60.0, 1.2, false)
+	resource_data[ResourceType.MEDICAL_SUPPLIES] = ResourceData.new("Medical Supplies", "Medical items", null, 35.0, 0.7, false)
+	resource_data[ResourceType.LUXURY_GOODS] = ResourceData.new("Luxury Goods", "High-value items", null, 100.0, 0.3, false)
+
+func _initialize_inventory() -> void:
+	# Initialize all resource amounts to zero
+	for resource_id in ResourceType.values():
+		inventory[resource_id] = 0.0
+
+func _connect_to_seed_manager() -> void:
+	if Engine.has_singleton("SeedManager"):
+		_seed_manager = Engine.get_singleton("SeedManager")
+		
+		# Connect to seed changes for market updates
+		if _seed_manager.has_signal("seed_changed") and not _seed_manager.is_connected("seed_changed", _on_seed_changed):
+			_seed_manager.connect("seed_changed", _on_seed_changed)
+		
+		# Wait for initialization if needed
+		if _seed_manager.has_method("is_initialized") and not _seed_manager.is_initialized:
+			if _seed_manager.has_signal("seed_initialized"):
+				_seed_manager.seed_initialized.connect(_on_seed_manager_initialized)
+
+func _on_seed_manager_initialized() -> void:
+	_update_market_modifiers()
+
+func _on_seed_changed(_new_seed) -> void:
+	_update_market_modifiers()
+	market_prices_cache.clear()
+
 func _find_game_settings() -> void:
-	await get_tree().process_frame
-	
+	# Find game settings reference
 	var main_scene = get_tree().current_scene
 	game_settings = main_scene.get_node_or_null("GameSettings")
 	
 	if game_settings:
-		debug_mode = game_settings.debug_mode
+		_debug_mode = game_settings.debug_mode
 		
-		# Connect to SeedManager
-		if _seed_ready and has_node("/root/SeedManager"):
-			if SeedManager.has_signal("seed_changed") and not SeedManager.is_connected("seed_changed", _on_seed_changed):
-				SeedManager.connect("seed_changed", _on_seed_changed)
+		# Connect to debug settings changes
+		if game_settings.has_signal("debug_settings_changed") and not game_settings.is_connected("debug_settings_changed", _on_debug_settings_changed):
+			game_settings.connect("debug_settings_changed", _on_debug_settings_changed)
 
-# Fixed: Added parameter name with underscore to indicate it's intentionally unused
-func _on_seed_changed(_new_seed: int) -> void:
-	_update_market_modifiers()
+func _on_debug_settings_changed(debug_settings: Dictionary) -> void:
+	_debug_mode = debug_settings.get("master", false)
 
-# Add resources to inventory
+# Add resources to inventory - optimized with early returns and direct property access
 func add_resource(resource_id, amount) -> bool:
 	if amount <= 0:
 		return false
 	
 	var old_amount = inventory[resource_id]
+	var res_data = resource_data[resource_id]
 	
 	# Check cargo capacity for non-currency resources
-	if not resource_data[resource_id][ResourceIndex.IS_CURRENCY]:
-		var weight_per_unit = resource_data[resource_id][ResourceIndex.WEIGHT]
-		var additional_weight = amount * weight_per_unit
+	if not res_data.is_currency:
+		var additional_weight = amount * res_data.weight
 		
 		if used_capacity + additional_weight > cargo_capacity:
 			return false
@@ -107,20 +137,20 @@ func add_resource(resource_id, amount) -> bool:
 	
 	return true
 
-# Remove resources from inventory
+# Remove resources from inventory - optimized with early returns
 func remove_resource(resource_id, amount) -> bool:
 	if amount <= 0 or inventory[resource_id] < amount:
 		return false
 	
 	var old_amount = inventory[resource_id]
+	var res_data = resource_data[resource_id]
 	
 	# Remove the resource
 	inventory[resource_id] -= amount
 	
 	# Update used capacity
-	if not resource_data[resource_id][ResourceIndex.IS_CURRENCY]:
-		var weight_per_unit = resource_data[resource_id][ResourceIndex.WEIGHT]
-		var reduced_weight = amount * weight_per_unit
+	if not res_data.is_currency:
+		var reduced_weight = amount * res_data.weight
 		used_capacity -= reduced_weight
 	
 	# Emit signals
@@ -145,12 +175,12 @@ func get_available_cargo_space() -> float:
 
 # Check if there's enough cargo space for a resource amount
 func has_cargo_space_for(resource_id, amount) -> bool:
-	if resource_data[resource_id][ResourceIndex.IS_CURRENCY]:
+	var res_data = resource_data[resource_id]
+	
+	if res_data.is_currency:
 		return true
 	
-	var weight_per_unit = resource_data[resource_id][ResourceIndex.WEIGHT]
-	var required_space = amount * weight_per_unit
-	
+	var required_space = amount * res_data.weight
 	return get_available_cargo_space() >= required_space
 
 # Get the current amount of a resource
@@ -161,65 +191,71 @@ func get_resource_amount(resource_id) -> float:
 func has_resource(resource_id, amount) -> bool:
 	return inventory[resource_id] >= amount
 
-# Get the total value of cargo (excluding credits)
+# Get the total value of cargo (excluding credits) - optimized with fewer lookup operations
 func get_total_cargo_value() -> float:
 	var total_value = 0.0
 	
 	for resource_id in inventory:
 		if resource_id != ResourceType.CREDITS:
-			total_value += inventory[resource_id] * resource_data[resource_id][ResourceIndex.VALUE]
+			var amount = inventory[resource_id]
+			if amount > 0:
+				total_value += amount * resource_data[resource_id].base_value
 	
 	return total_value
 
 # Get the resource name
 func get_resource_name(resource_id) -> String:
 	if resource_data.has(resource_id):
-		return resource_data[resource_id][ResourceIndex.NAME]
+		return resource_data[resource_id].name
 	return "Unknown Resource"
 
-# Trade resources with a station
+# Trade resources with a station - optimized trade validation
 func trade_with_station(station_id, buy_resources, sell_resources) -> bool:
-	# Calculate costs and earnings
+	# Calculate costs and validate resources in one pass
 	var total_cost = 0.0
 	var total_earnings = 0.0
-	
-	for resource_id in buy_resources:
-		var amount = buy_resources[resource_id]
-		var price_per_unit = get_resource_price(resource_id, station_id)
-		total_cost += amount * price_per_unit
-	
-	for resource_id in sell_resources:
-		var amount = sell_resources[resource_id]
-		var price_per_unit = get_resource_price(resource_id, station_id)
-		total_earnings += amount * price_per_unit
-	
-	# Check if player has enough credits
-	if total_cost > inventory[ResourceType.CREDITS]:
-		return false
-	
-	# Check if player has the resources to sell
-	for resource_id in sell_resources:
-		if not has_resource(resource_id, sell_resources[resource_id]):
-			return false
-	
-	# Check cargo capacity
 	var required_capacity = 0.0
 	var freed_capacity = 0.0
 	
-	for resource_id in buy_resources:
-		if not resource_data[resource_id][ResourceIndex.IS_CURRENCY]:
-			required_capacity += buy_resources[resource_id] * resource_data[resource_id][ResourceIndex.WEIGHT]
-	
+	# Validate sell resources and calculate freed capacity
 	for resource_id in sell_resources:
-		if not resource_data[resource_id][ResourceIndex.IS_CURRENCY]:
-			freed_capacity += sell_resources[resource_id] * resource_data[resource_id][ResourceIndex.WEIGHT]
+		var amount = sell_resources[resource_id]
+		
+		# Check if player has this resource
+		if not has_resource(resource_id, amount):
+			return false
+			
+		# Calculate freed capacity and earnings
+		var res_data = resource_data[resource_id]
+		if not res_data.is_currency:
+			freed_capacity += amount * res_data.weight
+		
+		var price = get_resource_price(resource_id, station_id)
+		total_earnings += amount * price
 	
+	# Validate buy resources and calculate required capacity
+	for resource_id in buy_resources:
+		var amount = buy_resources[resource_id]
+		var res_data = resource_data[resource_id]
+		
+		if not res_data.is_currency:
+			required_capacity += amount * res_data.weight
+		
+		var price = get_resource_price(resource_id, station_id)
+		total_cost += amount * price
+	
+	# Check if player has enough credits
+	if total_cost > inventory[ResourceType.CREDITS] + total_earnings:
+		return false
+	
+	# Check cargo capacity
 	if get_available_cargo_space() + freed_capacity < required_capacity:
 		return false
 	
 	# Execute the trade
 	var credits_change = total_earnings - total_cost
 	
+	# Handle credits change
 	if credits_change != 0:
 		if credits_change > 0:
 			add_resource(ResourceType.CREDITS, credits_change)
@@ -238,25 +274,43 @@ func trade_with_station(station_id, buy_resources, sell_resources) -> bool:
 	if has_node("/root/EventManager"):
 		EventManager.safe_emit("trade_completed", [station_id, buy_resources, sell_resources, credits_change])
 	
+	# Clear cached prices
+	market_prices_cache.clear()
+	
 	return true
 
 # Set market price modifiers for a station
 func set_station_market_modifiers(station_id, modifiers) -> void:
 	market_modifiers[station_id] = modifiers
+	
+	# Clear cached prices for this station
+	var station_cache_key = "station_" + str(station_id)
+	for key in market_prices_cache.keys():
+		if key.begins_with(station_cache_key):
+			market_prices_cache.erase(key)
 
-# Get the price of a resource at a specific station
+# Get the price of a resource at a specific station - with caching
 func get_resource_price(resource_id, station_id = "") -> float:
-	var base_price = resource_data[resource_id][ResourceIndex.VALUE]
+	# Use cache if available
+	var cache_key = "station_" + str(station_id) + "_resource_" + str(resource_id)
+	if market_prices_cache.has(cache_key):
+		return market_prices_cache[cache_key]
+		
+	var base_price = resource_data[resource_id].base_value
 	
 	if station_id.is_empty() or not market_modifiers.has(station_id):
+		market_prices_cache[cache_key] = base_price
 		return base_price
 	
 	var station_modifiers = market_modifiers[station_id]
 	
 	if not station_modifiers.has(resource_id):
+		market_prices_cache[cache_key] = base_price
 		return base_price
 	
-	return base_price * station_modifiers[resource_id]
+	var price = base_price * station_modifiers[resource_id]
+	market_prices_cache[cache_key] = price
+	return price
 
 # Reset all resources
 func reset_resources() -> void:
@@ -278,15 +332,14 @@ func initialize_starting_resources() -> void:
 		add_resource(ResourceType.CREDITS, 1000)
 		add_resource(ResourceType.FUEL, 100)
 
-# Generate deterministic market modifiers
+# Generate deterministic market modifiers - fully integrated with SeedManager
 func _update_market_modifiers() -> void:
 	market_modifiers.clear()
+	market_prices_cache.clear()
 	
-	if not _seed_ready or not has_node("/root/SeedManager"):
+	if not _seed_manager:
 		return
 	
-	# Fixed: Renamed to _current_seed to indicate it's intentionally used
-	var _current_seed = SeedManager.get_seed()
 	var station_ids = ["station_1", "station_2", "station_3", "station_4"]
 	
 	for i in range(station_ids.size()):
@@ -297,13 +350,14 @@ func _update_market_modifiers() -> void:
 			if resource_id == ResourceType.CREDITS:
 				continue
 			
+			# Generate deterministic object ID
 			var object_id = hash(station_id) + resource_id * 100
 			
-			# Generate price modifier
-			var price_modifier = SeedManager.get_random_value(object_id, 0.7, 1.3)
+			# Get price modifier from SeedManager
+			var price_modifier = _seed_manager.get_random_value(object_id, 0.7, 1.3)
 			
 			# Resource availability
-			var availability_roll = SeedManager.get_random_value(object_id, 0.0, 1.0, 1)
+			var availability_roll = _seed_manager.get_random_value(object_id, 0.0, 1.0, 1)
 			
 			if availability_roll < 0.1:
 				price_modifier = 0.0  # Unavailable
@@ -313,3 +367,6 @@ func _update_market_modifiers() -> void:
 			station_modifiers[resource_id] = price_modifier
 		
 		market_modifiers[station_id] = station_modifiers
+	
+	if _debug_mode:
+		print("ResourceManager: Updated market modifiers with current seed")
