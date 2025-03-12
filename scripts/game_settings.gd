@@ -173,7 +173,7 @@ func _setup_debug_panel() -> void:
 	var debug_canvas = get_node_or_null("/root/DebugCanvas")
 	
 	if not debug_canvas:
-		# FIX: Add check for Engine.get_main_loop()
+		# Add check for Engine.get_main_loop()
 		var main_loop = Engine.get_main_loop()
 		if main_loop != null:
 			debug_canvas = CanvasLayer.new()
@@ -209,7 +209,7 @@ func _input(event: InputEvent) -> void:
 func _update_debug_panel_visibility() -> void:
 	# Find debug panel if we don't have a reference
 	if not _debug_panel:
-		# FIX: Add check for Engine.get_main_loop()
+		# Add check for Engine.get_main_loop()
 		var main_loop = Engine.get_main_loop()
 		if main_loop != null:
 			_debug_panel = main_loop.root.find_child("DebugPanel", true, false)
@@ -309,7 +309,7 @@ static func has_property(object: Object, property_name: String) -> bool:
 
 func _initialize_seed() -> void:
 	if use_random_seed or game_seed == 0:
-		generate_random_seed()
+		_generate_deterministic_random_seed()
 	else:
 		# Use the provided seed
 		seed_hash = _generate_seed_hash(game_seed)
@@ -328,24 +328,29 @@ func set_seed(new_seed: int) -> void:
 	
 	seed_changed.emit(new_seed)
 
-func generate_random_seed() -> void:
-	randomize()
-	var new_seed = randi()
+# Deterministic random seed generation
+func _generate_deterministic_random_seed() -> void:
+	# Use time-based seed but make it more deterministic
+	var current_time = Time.get_unix_time_from_system()
+	var new_seed = int(current_time * 1000) % 1000000
 	set_seed(new_seed)
 	use_random_seed = true
+	
+	if debug_mode:
+		print("GameSettings: Generated deterministic random seed: ", new_seed)
 
 # ---- GRID POSITION HELPERS ----
 
 # Get the starting position for the player in world coordinates
 func get_player_starting_position() -> Vector2:
 	# Player starts near the center of the grid
-	# FIX: Use floats for division to avoid integer division warnings
+	# Use floats for division to avoid integer division warnings
 	var center_cell = Vector2i(int(grid_size / 2.0), int(grid_size / 2.0))
 	return get_cell_world_position(center_cell)
 
 # Convert grid cell coordinates to world position (center of cell)
 func get_cell_world_position(cell_coords: Vector2i) -> Vector2:
-	# FIX: Use floats for division to avoid integer division warnings
+	# Use floats for division to avoid integer division warnings
 	var grid_center = Vector2(grid_cell_size * grid_size / 2.0, grid_cell_size * grid_size / 2.0)
 	var cell_position = Vector2(
 		cell_coords.x * grid_cell_size + grid_cell_size / 2.0,
@@ -449,7 +454,7 @@ func _generate_seed_hash(seed_value: int) -> String:
 	for i in range(6):
 		var index = temp_seed % characters.length()
 		hash_string += characters[index]
-		# FIX: Use float division to avoid integer division
+		# Use float division to avoid integer division
 		temp_seed = int(temp_seed / float(characters.length()))
 	
 	return hash_string

@@ -33,11 +33,16 @@ const STATION_SEED_OFFSET = 3000000
 const TERRAN_TYPE_OFFSET = 10000
 const GASEOUS_TYPE_OFFSET = 20000
 
+# Generation IDs to replace instance IDs
+var _generation_id: int = 0
+
 func _ready() -> void:
 	_initialize()
 	
 func _initialize() -> void:
-	# Reset entity counts
+	# Reset entity counts and generation ID
+	_generation_id = 0
+	
 	for type in ENTITY_TYPES.values():
 		_entity_counts[type] = 0
 	
@@ -55,14 +60,8 @@ func _initialize() -> void:
 		if not game_settings.is_connected("debug_settings_changed", _on_debug_settings_changed):
 			game_settings.connect("debug_settings_changed", _on_debug_settings_changed)
 	
-	# Connect to SeedManager
-	if Engine.has_singleton("SeedManager"):
-		seed_manager = Engine.get_singleton("SeedManager")
-		
-		# Wait for initialization if needed
-		if seed_manager.has_method("is_initialized") and not seed_manager.is_initialized:
-			if seed_manager.has_signal("seed_initialized"):
-				seed_manager.seed_initialized.connect(_on_seed_manager_initialized)
+	# Connect to SeedManager synchronously
+	seed_manager = get_node_or_null("/root/SeedManager")
 	
 	# Load essential scenes
 	_load_essential_scenes()
@@ -71,7 +70,8 @@ func _on_debug_settings_changed(debug_settings: Dictionary) -> void:
 	_debug_mode = debug_settings.get("master", false) and debug_settings.get("world_generator", false)
 
 func _on_seed_manager_initialized() -> void:
-	pass # SeedManager is now ready to use
+	# Reset to ensure deterministic generation
+	_generation_id = 0
 
 func _load_essential_scenes() -> void:
 	_load_scene("planet_spawner_terran", "res://scenes/world/planet_spawner_terran.tscn")
@@ -92,8 +92,14 @@ func _precalculate_candidate_cells(grid_size: int) -> void:
 			_all_candidate_cells.append(Vector2i(x, y))
 
 func generate_starter_world() -> Dictionary:
+	# Reset generation ID to ensure determinism
+	_generation_id = 0
+	
 	# Clear previous generation
 	clear_world()
+	
+	if _debug_mode:
+		print("WorldGenerator: Starting world generation with seed: ", game_settings.get_seed())
 	
 	world_generation_started.emit()
 	
@@ -140,6 +146,11 @@ func generate_starter_world() -> Dictionary:
 	
 	world_generation_completed.emit()
 	
+	if _debug_mode:
+		print("WorldGenerator: World generation completed")
+		print("Planets generated: ", 
+			_entity_counts[ENTITY_TYPES.TERRAN_PLANET] + _entity_counts[ENTITY_TYPES.GASEOUS_PLANET])
+	
 	return {
 		"player_planet_cell": player_planet_cell,
 		"gaseous_planet_cell": gaseous_planet_cell
@@ -160,6 +171,9 @@ func _calculate_max_planets() -> int:
 	return total_cells - _excluded_cells.size()
 
 func generate_entity(entity_type: String, params: Dictionary = {}) -> Vector2i:
+	# Increment generation ID for deterministic ordering
+	_generation_id += 1
+	
 	# Get scene key based on entity type
 	var scene_key = _get_scene_key_for_entity(entity_type)
 	if not _scene_cache.has(scene_key):
@@ -171,7 +185,9 @@ func generate_entity(entity_type: String, params: Dictionary = {}) -> Vector2i:
 	
 	# Get valid candidate cells
 	var candidate_cells = get_candidate_cells()
-	_shuffle_candidates(candidate_cells)
+	
+	# Shuffle deterministically using current seed and generation ID
+	_shuffle_candidates_deterministic(candidate_cells)
 	
 	# Try to find a valid cell for generation
 	for cell in candidate_cells:
@@ -199,6 +215,9 @@ func generate_entity(entity_type: String, params: Dictionary = {}) -> Vector2i:
 			if entity_type == ENTITY_TYPES.TERRAN_PLANET or entity_type == ENTITY_TYPES.GASEOUS_PLANET:
 				_planet_cells.append(cell)
 			
+			if _debug_mode:
+				print("Generated ", entity_type, " at cell ", cell, " with seed ", entity_seed)
+			
 			return cell
 	
 	return Vector2i(-1, -1)
@@ -218,22 +237,29 @@ func _generate_planet(planet_type: String, cell: Vector2i, cell_seed: int, is_pl
 	var planet_spawner = _scene_cache[scene_key].instantiate()
 	add_child(planet_spawner)
 	
-	# Determine planet type
+	# Deterministic generation of planet type
 	var planet_type_value
 	
 	if planet_type == ENTITY_TYPES.TERRAN_PLANET and is_player_starting and game_settings:
 		planet_type_value = game_settings.player_starting_planet_type
 	else:
+		# Create deterministic planet type based on cell and seed
+		var planet_type_seed = cell_seed * 10 + (1 if planet_type == ENTITY_TYPES.TERRAN_PLANET else 2)
+		
 		if seed_manager:
-			planet_type_value = seed_manager.get_random_int(cell_seed, 0, 6 if planet_type == ENTITY_TYPES.TERRAN_PLANET else 3)
+			planet_type_value = seed_manager.get_random_int(planet_type_seed, 0, 6 if planet_type == ENTITY_TYPES.TERRAN_PLANET else 3)
 		else:
 			var rng = RandomNumberGenerator.new()
-			rng.seed = cell_seed
+			rng.seed = planet_type_seed
 			planet_type_value = rng.randi_range(0, 6 if planet_type == ENTITY_TYPES.TERRAN_PLANET else 3)
 			
 		# Avoid duplicating player starting planet type
 		if planet_type == ENTITY_TYPES.TERRAN_PLANET and game_settings and planet_type_value == game_settings.player_starting_planet_type:
 			planet_type_value = (planet_type_value + 1) % 7
+	
+	# Add to planet_spawners group for cache clearing
+	if not planet_spawner.is_in_group("planet_spawners"):
+		planet_spawner.add_to_group("planet_spawners")
 	
 	# Configure spawner
 	if planet_type == ENTITY_TYPES.TERRAN_PLANET:
@@ -268,12 +294,16 @@ func _generate_asteroid_field(cell: Vector2i, field_seed: int) -> Node:
 	asteroid_field.global_position = world_pos
 	
 	if asteroid_field.has_method("generate"):
+		# Create deterministic parameters based on field_seed
+		var density_seed = field_seed
+		var size_seed = field_seed + 1
+		
 		var density = 1.0
 		var size = 1.0
 		
 		if seed_manager:
-			density = seed_manager.get_random_value(field_seed, 0.5, 1.5)
-			size = seed_manager.get_random_value(field_seed + 1, 0.7, 1.3)
+			density = seed_manager.get_random_value(density_seed, 0.5, 1.5)
+			size = seed_manager.get_random_value(size_seed, 0.7, 1.3)
 		else:
 			var rng = RandomNumberGenerator.new()
 			rng.seed = field_seed
@@ -295,14 +325,17 @@ func _generate_station(cell: Vector2i, station_seed: int) -> Node:
 	
 	var world_pos = _cell_to_world_position(cell)
 	
-	# Add a deterministic offset
+	# Add a deterministic offset using consistent seeds
 	var offset = Vector2.ZERO
 	var cell_size = game_settings.grid_cell_size if game_settings else 1024
 	
+	var offset_x_seed = station_seed
+	var offset_y_seed = station_seed + 1
+	
 	if seed_manager:
 		offset = Vector2(
-			seed_manager.get_random_value(station_seed, -cell_size/4.0, cell_size/4.0),
-			seed_manager.get_random_value(station_seed + 1, -cell_size/4.0, cell_size/4.0)
+			seed_manager.get_random_value(offset_x_seed, -cell_size/4.0, cell_size/4.0),
+			seed_manager.get_random_value(offset_y_seed, -cell_size/4.0, cell_size/4.0)
 		)
 	else:
 		var rng = RandomNumberGenerator.new()
@@ -336,7 +369,7 @@ func _generate_entity_seed(cell: Vector2i, entity_type: String, subtype_index: i
 	elif seed_manager:
 		base_seed = seed_manager.get_seed()
 	else:
-		base_seed = get_instance_id()
+		base_seed = 12345 # Default deterministic seed
 	
 	var type_offset
 	match entity_type:
@@ -348,14 +381,17 @@ func _generate_entity_seed(cell: Vector2i, entity_type: String, subtype_index: i
 	
 	return base_seed + type_offset + (cell.x * 1000) + (cell.y * 100) + subtype_index * 10
 
-func _shuffle_candidates(candidate_cells: Array) -> void:
+# Deterministic shuffling using fixed algorithm
+func _shuffle_candidates_deterministic(candidate_cells: Array) -> void:
 	if seed_manager:
-		seed_manager.shuffle_array(candidate_cells, get_instance_id())
+		# Use a deterministic factor for shuffling
+		var shuffle_seed = game_settings.get_seed() * 17 + _generation_id * 31
+		seed_manager.shuffle_array(candidate_cells, shuffle_seed)
 	else:
 		var rng = RandomNumberGenerator.new()
-		rng.seed = game_settings.get_seed() if game_settings else get_instance_id()
+		rng.seed = (game_settings.get_seed() if game_settings else 12345) + _generation_id
 		
-		# Fisher-Yates shuffle
+		# Fisher-Yates shuffle - deterministic order
 		for i in range(candidate_cells.size() - 1, 0, -1):
 			var j = rng.randi_range(0, i)
 			if i != j:
@@ -364,7 +400,7 @@ func _shuffle_candidates(candidate_cells: Array) -> void:
 				candidate_cells[j] = temp
 
 func get_candidate_cells() -> Array:
-	# Filter out excluded cells from precalculated candidates
+	# Create a fresh copy each time to ensure deterministic order
 	var candidates = []
 	for cell in _all_candidate_cells:
 		if not _excluded_cells.has(cell):

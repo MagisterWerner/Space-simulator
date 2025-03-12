@@ -26,12 +26,16 @@ var _stats = {
 	"last_cache_clear": 0
 }
 
+# Deterministic run counter to replace instance IDs
+var _run_id: int = 0
+
 func _ready() -> void:
+	# Increment run counter - provides deterministic ID across runs
+	_run_id = 0
 	call_deferred("_find_game_settings")
 
 func _find_game_settings() -> void:
-	await get_tree().process_frame
-	
+	# Skip frame yield to avoid non-deterministic timing
 	var main_scene = get_tree().current_scene
 	game_settings = main_scene.get_node_or_null("GameSettings")
 	
@@ -44,11 +48,25 @@ func _find_game_settings() -> void:
 			game_settings.connect("debug_settings_changed", _on_debug_settings_changed)
 		
 		if not game_settings._initialized:
-			await game_settings.settings_initialized
+			# Wait synchronously by checking again later
+			call_deferred("_check_game_settings_initialized")
+			return
 		
 		debug_mode = game_settings.debug_mode and game_settings.debug_seed_manager
 		_current_seed = game_settings.get_seed()
 	
+	_complete_initialization()
+
+func _check_game_settings_initialized() -> void:
+	if game_settings._initialized:
+		debug_mode = game_settings.debug_mode and game_settings.debug_seed_manager
+		_current_seed = game_settings.get_seed()
+		_complete_initialization()
+	else:
+		# Check again later
+		call_deferred("_check_game_settings_initialized")
+
+func _complete_initialization() -> void:
 	is_initialized = true
 	seed_initialized.emit()
 	_stats.last_cache_clear = Time.get_ticks_msec()
@@ -79,6 +97,10 @@ func get_seed_hash() -> String:
 		return game_settings.seed_hash
 	return _generate_seed_hash(_current_seed)
 
+# Get a deterministic run ID to replace instance IDs
+func get_run_id() -> int:
+	return _run_id
+
 # Debug tools
 func set_debug_mode(enable: bool) -> void:
 	debug_mode = enable
@@ -94,13 +116,12 @@ func print_cache_stats() -> void:
 	
 	var hit_percent = 0
 	if _stats.total_requests > 0:
-		# FIX: Use float division to avoid integer division warnings
 		hit_percent = int((_stats.cache_hits * 100.0) / _stats.total_requests)
 	
 	print("SeedManager: Cache hits: " + str(_stats.cache_hits) + " (" + str(hit_percent) + "%)")
 	print("SeedManager: Cache misses: " + str(_stats.cache_misses) + " (" + str(100 - hit_percent) + "%)")
 	
-	# FIX: Use float division to avoid integer division warnings
+	# Use float division to avoid integer division
 	var uptime = (Time.get_ticks_msec() - _stats.last_cache_clear) / 1000.0
 	print("SeedManager: Time since last cache clear: " + str(int(uptime)) + " seconds")
 
@@ -110,8 +131,8 @@ func print_cache_stats() -> void:
 func get_random_value(object_id: int, min_val: float, max_val: float, object_subid: int = 0) -> float:
 	_stats.total_requests += 1
 	
-	# Simplified cache key
-	var cache_key = str(object_id) + "_" + str(object_subid) + "_f_" + str(min_val) + "_" + str(max_val)
+	# Deterministic cache key using string formatting for consistency
+	var cache_key = "%d_%d_f_%.6f_%.6f" % [object_id, object_subid, min_val, max_val]
 	
 	if enable_cache and _value_cache.has(cache_key):
 		_stats.cache_hits += 1
@@ -119,7 +140,7 @@ func get_random_value(object_id: int, min_val: float, max_val: float, object_sub
 	
 	_stats.cache_misses += 1
 	
-	# Optimized hash calculation
+	# Deterministic hash calculation
 	var hash_seed = (_current_seed << 5) ^ object_id ^ object_subid
 	var temp_rng = RandomNumberGenerator.new()
 	temp_rng.seed = hash_seed
@@ -137,7 +158,7 @@ func get_random_value(object_id: int, min_val: float, max_val: float, object_sub
 func get_random_int(object_id: int, min_val: int, max_val: int, object_subid: int = 0) -> int:
 	_stats.total_requests += 1
 	
-	var cache_key = str(object_id) + "_" + str(object_subid) + "_i_" + str(min_val) + "_" + str(max_val)
+	var cache_key = "%d_%d_i_%d_%d" % [object_id, object_subid, min_val, max_val]
 	
 	if enable_cache and _value_cache.has(cache_key):
 		_stats.cache_hits += 1
@@ -162,7 +183,7 @@ func get_random_int(object_id: int, min_val: int, max_val: int, object_subid: in
 func get_random_bool(object_id: int, probability: float = 0.5, object_subid: int = 0) -> bool:
 	_stats.total_requests += 1
 	
-	var cache_key = str(object_id) + "_" + str(object_subid) + "_b_" + str(probability)
+	var cache_key = "%d_%d_b_%.6f" % [object_id, object_subid, probability]
 	
 	if enable_cache and _value_cache.has(cache_key):
 		_stats.cache_hits += 1
@@ -187,7 +208,7 @@ func get_random_bool(object_id: int, probability: float = 0.5, object_subid: int
 func get_random_point_in_circle(object_id: int, radius: float, object_subid: int = 0) -> Vector2:
 	_stats.total_requests += 1
 	
-	var cache_key = str(object_id) + "_" + str(object_subid) + "_c_" + str(radius)
+	var cache_key = "%d_%d_c_%.6f" % [object_id, object_subid, radius]
 	
 	if enable_cache and _value_cache.has(cache_key):
 		_stats.cache_hits += 1
@@ -262,19 +283,26 @@ func get_visual_random_vector(min_val: float, max_val: float) -> Vector2:
 		get_random_value(time_seed + 1, min_val, max_val)
 	)
 
-# Deterministically shuffle an array
+# Deterministically shuffle an array - fixed function to ensure consistent order
 func shuffle_array(array: Array, object_id: int = 0) -> void:
 	if array.size() <= 1:
 		return
+	
+	# Create a local copy to avoid modifying the original during sorting	
+	var temp_array = array.duplicate()
+	
+	# Fisher-Yates shuffle with deterministic RNG
+	var temp_rng = RandomNumberGenerator.new()
+	temp_rng.seed = (_current_seed << 5) ^ object_id
 		
-	# Fisher-Yates shuffle
 	for i in range(array.size() - 1, 0, -1):
-		var j = get_random_int(object_id + i, 0, i)
+		var j = temp_rng.randi_range(0, i)
 		
-		# Swap
-		var temp = array[i]
-		array[i] = array[j]
-		array[j] = temp
+		# Swap elements in the original array
+		if i != j:
+			var temp = array[i]
+			array[i] = array[j]
+			array[j] = temp
 
 # INTERNAL HELPERS
 
@@ -287,7 +315,7 @@ func _get_noise_generator(object_id: int) -> FastNoiseLite:
 	
 	return _noise_generators[object_id]
 
-# Clear caches
+# Clear caches - completely synchronous to avoid issues
 func _clear_caches() -> void:
 	_value_cache.clear()
 	_noise_generators.clear()
@@ -298,24 +326,26 @@ func _clear_caches() -> void:
 	_stats.total_requests = 0
 	_stats.last_cache_clear = Time.get_ticks_msec()
 	
-	# Attempt to clear texture cache using ClassDB instead of direct class access
-	if get_tree().root.has_node("Main"):
-		await get_tree().process_frame
-		
-		# Find any planet spawners in the scene and clear their caches
-		var planet_spawners = get_tree().get_nodes_in_group("planet_spawners")
-		for spawner in planet_spawners:
-			if spawner.has_method("clear_texture_cache"):
-				spawner.clear_texture_cache()
-		
-		# Try to find static method through ClassDB if no instances found
-		if planet_spawners.is_empty():
-			# Use a safer approach that doesn't rely on calling static methods directly
-			if ClassDB.class_exists("PlanetSpawnerBase"):
-				# If a static method exists, we can try to call it safely using a different approach
-				# For now, just log that we found the class but couldn't call the method
-				if debug_mode:
-					print("SeedManager: Found PlanetSpawnerBase class but couldn't clear texture cache (no instances)")
+	# Clear all static texture caches
+	PlanetSpawnerBase.clear_texture_cache()
+	
+	if debug_mode:
+		print("SeedManager: Cleared all caches")
+	
+	# Use call_deferred to clear other caches
+	call_deferred("_clear_additional_caches")
+
+func _clear_additional_caches() -> void:
+	# Find any planet spawners in the scene and clear their caches
+	var planet_spawners = get_tree().get_nodes_in_group("planet_spawners")
+	for spawner in planet_spawners:
+		if spawner.has_method("clear_texture_cache"):
+			spawner.clear_texture_cache()
+
+# Get next seed for variation
+func get_next_seed() -> int:
+	_run_id += 1
+	return _current_seed + _run_id
 
 # Generate a readable hash string from the seed
 func _generate_seed_hash(seed_value: int) -> String:
@@ -326,7 +356,7 @@ func _generate_seed_hash(seed_value: int) -> String:
 	for i in range(6):
 		var index = temp_seed % characters.length()
 		hash_string += characters[index]
-		# FIX: Use float conversion to avoid integer division warnings
+		# Use float conversion to avoid integer division warnings
 		temp_seed = int(temp_seed / float(characters.length()))
 	
 	return hash_string

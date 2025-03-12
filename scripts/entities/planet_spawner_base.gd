@@ -1,6 +1,5 @@
-# scripts/entities/planet_spawner_base.gd
-class_name PlanetSpawnerBase
 extends Node2D
+class_name PlanetSpawnerBase
 
 const PlanetThemes = preload("res://scripts/generators/planet_generator_base.gd").PlanetTheme
 const PlanetCategories = preload("res://scripts/generators/planet_generator_base.gd").PlanetCategory
@@ -43,7 +42,7 @@ var _initialized: bool = false
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var game_settings = null
 
-# Shared texture cache for all planet spawner types
+# Shared texture cache for all planet spawner types - with proper cache management
 static var texture_cache = {
 	"planets": {},
 	"atmospheres": {},
@@ -57,6 +56,7 @@ const MAX_CACHE_ENTRIES_TO_REMOVE = 10
 func _ready() -> void:
 	_cache_singletons()
 	call_deferred("_find_game_settings")
+	add_to_group("planet_spawners")
 
 func _cache_singletons() -> void:
 	_seed_manager = get_node_or_null("/root/SeedManager")
@@ -102,12 +102,17 @@ func _update_seed_value() -> void:
 		base_seed = int(Time.get_unix_time_from_system())
 	
 	if use_grid_position:
+		# Deterministic seed based on grid position and offset
 		_seed_value = base_seed + (grid_x * 1000) + (grid_y * 100) + local_seed_offset
 	else:
+		# Deterministic seed based on position hash and offset
 		var pos_hash = (int(global_position.x) * 13) + (int(global_position.y) * 7)
 		_seed_value = base_seed + pos_hash + local_seed_offset
 	
 	_rng.seed = _seed_value
+	
+	if debug_planet_generation and _initialized:
+		print("PlanetSpawner: Seed updated to ", _seed_value)
 
 func spawn_planet() -> Node2D:
 	# FIX: Using the planet_spawned signal in this base method
@@ -179,14 +184,20 @@ func _calculate_spawn_position() -> Vector2:
 	return global_position
 
 func get_deterministic_param(param_name: String, min_val: float, max_val: float, sub_id: int = 0) -> float:
-	if _seed_manager:
-		var object_id = _seed_value + hash(param_name)
-		return _seed_manager.get_random_value(object_id, min_val, max_val, sub_id)
-	elif game_settings:
-		var object_id = _seed_value + hash(param_name)
-		return game_settings.get_random_value(object_id, min_val, max_val, sub_id)
+	# Create a deterministic parameter ID
+	var param_id = hash(param_name) + sub_id
 	
-	return min_val + (max_val - min_val) * _rng.randf()
+	if _seed_manager:
+		var object_id = _seed_value + param_id
+		return _seed_manager.get_random_value(object_id, min_val, max_val, 0)
+	elif game_settings:
+		var object_id = _seed_value + param_id
+		return game_settings.get_random_value(object_id, min_val, max_val, 0)
+	
+	# Fallback to local RNG with consistent seed
+	var local_rng = RandomNumberGenerator.new()
+	local_rng.seed = _seed_value + param_id
+	return min_val + (max_val - min_val) * local_rng.randf()
 
 func get_planet_instance() -> Node2D:
 	return _planet_instance
@@ -207,8 +218,7 @@ static func _check_and_clean_cache() -> void:
 	for cache_type in ["planets", "atmospheres", "moons"]:
 		if texture_cache[cache_type].size() > MAX_CACHE_SIZE:
 			var keys = texture_cache[cache_type].keys()
-			keys.shuffle()  # Random removal to avoid patterns
-			
+			# Use deterministic cleanup - always remove the first entries
 			for i in range(min(MAX_CACHE_ENTRIES_TO_REMOVE, keys.size())):
 				texture_cache[cache_type].erase(keys[i])
 
@@ -219,6 +229,7 @@ static func clear_texture_cache() -> void:
 		"moons": {}
 	}
 	cache_cleanup_counter = 0
+	print("PlanetSpawnerBase: Texture cache cleared")
 
 # API compatibility methods
 func is_gaseous_planet() -> bool:
