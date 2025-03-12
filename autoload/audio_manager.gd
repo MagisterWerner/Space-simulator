@@ -44,8 +44,8 @@ var _music_bus_idx = -1
 var _sfx_bus_idx = -1
 
 # Precalculated culling distances for optimization
-const MAX_AUDIBLE_DISTANCE = 2000.0
-const FALLOFF_START_DISTANCE = 1600.0  # 80% of max distance
+const MAX_AUDIBLE_DISTANCE: float = 2000.0
+const FALLOFF_START_DISTANCE: float = 1600.0  # 80% of max distance
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
