@@ -12,8 +12,8 @@ signal weapon_switched(weapon_name)
 @onready var movement_component: MovementComponent = $MovementComponent
 @onready var shield_component: ShieldComponent = $ShieldComponent
 @onready var state_machine: StateMachine = $StateMachine
-@onready var laser_weapon: WeaponComponent = $LaserWeaponComponent
-@onready var missile_weapon: WeaponComponent = $MissileWeaponComponent
+@onready var laser_weapon: LaserWeaponComponent = $LaserWeaponComponent
+@onready var missile_weapon: MissileLauncherComponent = $MissileLauncherComponent
 
 @export var debug_mode: bool = false
 @export var input_enabled: bool = true

@@ -165,7 +165,7 @@ laser_width = 4.0
 projectile_speed = 1000.0
 projectile_scene = ExtResource("16_yjlin")
 
-[node name="MissileWeaponComponent" type="Node" parent="."]
+[node name="MissileLauncherComponent" type="Node" parent="."]
 script = ExtResource("16_qd4s4")
 weapon_name = "Missile Launcher"
 projectile_scene = ExtResource("18_nfb6c")
