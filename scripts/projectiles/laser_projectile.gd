@@ -138,8 +138,8 @@ func _on_body_entered(body: Node2D) -> void:
 			hit_target.emit(body)
 			hit_targets.append(body)
 			
-			# Create impact effect
-			_create_impact_effect(body)
+			# Play impact sound only
+			_play_impact_sound()
 			
 			# Check if we should pierce through this target
 			if not pierce_targets:
@@ -160,8 +160,8 @@ func _on_body_entered(body: Node2D) -> void:
 			hit_target.emit(body)
 			hit_targets.append(body)
 		
-		# Create impact effect
-		_create_impact_effect(body)
+		# Play impact sound only
+		_play_impact_sound()
 		
 		# Handle piercing logic
 		if not pierce_targets:
@@ -171,42 +171,8 @@ func _on_body_entered(body: Node2D) -> void:
 			if pierce_count <= 0:
 				queue_free()
 
-# Create laser impact effect at hit position
-func _create_impact_effect(body: Node2D) -> void:
-	# Create particles at impact point
-	var impact_particles = CPUParticles2D.new()
-	impact_particles.global_position = global_position
-	impact_particles.emitting = true
-	impact_particles.one_shot = true
-	impact_particles.explosiveness = 0.8
-	impact_particles.amount = 15
-	impact_particles.lifetime = 0.5
-	impact_particles.direction = Vector2(-1, 0)  # Opposite to laser direction
-	impact_particles.spread = 30.0
-	impact_particles.initial_velocity_min = 20.0
-	impact_particles.initial_velocity_max = 50.0
-	impact_particles.scale_amount_min = 1.0
-	impact_particles.scale_amount_max = 3.0
-	
-	# Set particle direction based on projectile rotation
-	impact_particles.rotation = rotation + PI  # Opposite direction
-	
-	# Create color gradient
-	var gradient = Gradient.new()
-	gradient.add_point(0.0, laser_color)
-	gradient.add_point(1.0, Color(laser_color.r, laser_color.g, laser_color.b, 0.0))
-	impact_particles.color_ramp = gradient
-	
-	get_tree().current_scene.add_child(impact_particles)
-	
-	# Auto-remove particles after they finish
-	var timer = Timer.new()
-	impact_particles.add_child(timer)
-	timer.wait_time = 0.6
-	timer.one_shot = true
-	timer.timeout.connect(func(): impact_particles.queue_free())
-	timer.start()
-	
+# Play impact sound only (no particles)
+func _play_impact_sound() -> void:
 	# Play impact sound if available
 	if Engine.has_singleton("AudioManager"):
 		AudioManager.play_sfx("laser_impact", global_position, randf_range(0.9, 1.1))
