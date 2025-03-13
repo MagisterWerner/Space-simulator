@@ -218,7 +218,8 @@ func _generate_polygon_collision() -> void:
 	# Use the simplified polygon for collision
 	if collision_polygon:
 		collision_polygon.polygon = points
-		collision_polygon.disabled = false
+		# FIX: Use set_deferred for changing disabled state
+		collision_polygon.set_deferred("disabled", false)
 	else:
 		# Create new collision polygon if it doesn't exist
 		var new_collision_polygon = CollisionPolygon2D.new()
@@ -229,7 +230,8 @@ func _generate_polygon_collision() -> void:
 	
 	# Disable the circle shape if we use a polygon
 	if collision_shape:
-		collision_shape.disabled = true
+		# FIX: Use set_deferred for changing disabled state
+		collision_shape.set_deferred("disabled", true)
 	
 	# Create simplified collision shape if the polygon is complex
 	if autogenerate_convex_shapes and points.size() > 8:
@@ -248,6 +250,8 @@ func _create_fallback_collision_shape() -> void:
 	if collision_shape and collision_shape.shape is CircleShape2D:
 		# Already has a circle shape, just update radius
 		collision_shape.shape.radius = radius
+		# FIX: Use set_deferred for changing disabled state
+		collision_shape.set_deferred("disabled", false)
 	else:
 		# Create new circle shape
 		var circle = CircleShape2D.new()
@@ -255,7 +259,8 @@ func _create_fallback_collision_shape() -> void:
 		
 		if collision_shape:
 			collision_shape.shape = circle
-			collision_shape.disabled = false
+			# FIX: Use set_deferred for changing disabled state
+			collision_shape.set_deferred("disabled", false)
 		else:
 			# Create new collision shape if it doesn't exist
 			var new_shape = CollisionShape2D.new()
@@ -266,7 +271,8 @@ func _create_fallback_collision_shape() -> void:
 	
 	# Disable the polygon if we're using a circle
 	if collision_polygon:
-		collision_polygon.disabled = true
+		# FIX: Use set_deferred for changing disabled state
+		collision_polygon.set_deferred("disabled", true)
 
 # Create simplified collision shape suitable for physics
 func _create_simplified_collision(points: PackedVector2Array) -> void:
@@ -301,7 +307,8 @@ func _create_simplified_collision(points: PackedVector2Array) -> void:
 	# Use the simplified polygon for collision
 	if collision_polygon:
 		collision_polygon.polygon = simplified_points
-		collision_polygon.disabled = false
+		# FIX: Use set_deferred for changing disabled state
+		collision_polygon.set_deferred("disabled", false)
 	else:
 		# Create new collision polygon if it doesn't exist
 		var new_collision_polygon = CollisionPolygon2D.new()
@@ -312,7 +319,8 @@ func _create_simplified_collision(points: PackedVector2Array) -> void:
 	
 	# Disable the circle shape if we use a polygon
 	if collision_shape:
-		collision_shape.disabled = true
+		# FIX: Use set_deferred for changing disabled state
+		collision_shape.set_deferred("disabled", true)
 		
 # Helper function to create a convex hull
 func _make_convex_hull(points: PackedVector2Array) -> PackedVector2Array:
