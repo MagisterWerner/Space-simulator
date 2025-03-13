@@ -504,109 +504,122 @@ func _configure_asteroid_texture(asteroid: Node, data: Dictionary) -> void:
 	# Scale sprite based on size and data scale
 	sprite.scale = Vector2(size_value, size_value) / texture.get_width() * data.scale
 
+# MODIFIED METHOD: Now handles specific fragment types for different asteroid sizes
 func _spawn_fragments(position: Vector2, size_category: String, count: int, parent_scale: float, parent_velocity: Vector2 = Vector2.ZERO) -> void:
 	# Don't spawn fragments for small asteroids
 	if size_category == "small":
 		return
 	
-	# Determine fragment size
-	var fragment_size = "small"
-	if size_category == "large":
-		fragment_size = "medium"
-	
 	if debug_mode:
-		print("AsteroidSpawner: Spawning %d fragments of size %s" % [count, fragment_size])
+		print("AsteroidSpawner: Spawning fragments for " + size_category + " asteroid")
 	
-	for i in range(count):
-		# Select appropriate scene
-		var asteroid_scene
+	# Special handling for large asteroids - spawn 1 medium and 1 small
+	if size_category == "large":
+		# Spawn medium fragment
+		_spawn_single_fragment("medium", position, parent_scale * 0.7, 0, 2, parent_velocity)
 		
-		# Try size-specific scene first
-		if _asteroid_scenes.has(fragment_size):
-			asteroid_scene = _asteroid_scenes[fragment_size]
+		# Spawn small fragment
+		_spawn_single_fragment("small", position, parent_scale * 0.5, 1, 2, parent_velocity)
+		return
+	
+	# Medium asteroids - spawn 2 small fragments
+	elif size_category == "medium":
+		for i in range(2):
+			_spawn_single_fragment("small", position, parent_scale * 0.6, i, 2, parent_velocity)
+		return
+
+# New helper function to spawn a single fragment with specific size
+func _spawn_single_fragment(fragment_size: String, position: Vector2, scale: float, index: int, total_fragments: int, parent_velocity: Vector2) -> void:
+	# Select appropriate scene
+	var asteroid_scene
+	
+	# Try size-specific scene first
+	if _asteroid_scenes.has(fragment_size):
+		asteroid_scene = _asteroid_scenes[fragment_size]
+	else:
+		# Fallback to default
+		asteroid_scene = _asteroid_scenes["default"]
+	
+	if not asteroid_scene:
+		return
+	
+	# Generate fragment position with angle based on index and total fragments
+	var angle = (TAU / total_fragments) * index + _rng.randf_range(-0.3, 0.3)
+	var distance = _rng.randf_range(10, 30) * scale
+	var pos = position + Vector2(cos(angle), sin(angle)) * distance
+	
+	var asteroid = asteroid_scene.instantiate()
+	
+	# Add to world directly for best physics
+	get_tree().current_scene.add_child(asteroid)
+	asteroid.global_position = pos
+	
+	# Generate rotation
+	var rot_speed = _rng.randf_range(-max_rotation_speed, max_rotation_speed) * 1.5
+	
+	# Calculate fragment velocity - inherit parent velocity plus explosion force
+	var explosion_speed = _rng.randf_range(30.0, 60.0)
+	var explosion_dir = Vector2(cos(angle), sin(angle))
+	var velocity = parent_velocity + explosion_dir * explosion_speed
+	
+	# Generate unique seed for fragment
+	var fragment_seed = _seed_value + index + _spawned_count * 10 + int(pos.x * 10) + int(pos.y * 10)
+	
+	# Configure texture
+	if _asteroid_generator_instance and asteroid.get_node_or_null("Sprite2D"):
+		var sprite = asteroid.get_node("Sprite2D")
+		var texture = null
+		
+		# Check cache first
+		var cache_key = str(fragment_seed)
+		if _texture_cache.has(cache_key):
+			texture = _texture_cache[cache_key]
 		else:
-			# Fallback to default
-			asteroid_scene = _asteroid_scenes["default"]
-		
-		if not asteroid_scene:
-			continue
-		
-		# Generate fragment position
-		var angle = (TAU / count) * i + _rng.randf_range(-0.3, 0.3)
-		var distance = _rng.randf_range(10, 30) * parent_scale
-		var pos = position + Vector2(cos(angle), sin(angle)) * distance
-		
-		var asteroid = asteroid_scene.instantiate()
-		
-		# Add to world directly for best physics
-		get_tree().current_scene.add_child(asteroid)
-		asteroid.global_position = pos
-		
-		# Generate rotation and scale
-		var rot_speed = _rng.randf_range(-max_rotation_speed, max_rotation_speed) * 1.5
-		var scale = parent_scale * (0.6 if fragment_size == "medium" else 0.4)
-		
-		# Calculate fragment velocity - inherit parent velocity plus explosion force
-		var explosion_speed = _rng.randf_range(30.0, 60.0)
-		var explosion_dir = Vector2(cos(angle), sin(angle))
-		var velocity = parent_velocity + explosion_dir * explosion_speed
-		
-		# Generate unique seed for fragment
-		var fragment_seed = _seed_value + i + _spawned_count * 10 + int(pos.x * 10) + int(pos.y * 10)
-		
-		# Configure texture
-		if _asteroid_generator_instance and asteroid.get_node_or_null("Sprite2D"):
-			var sprite = asteroid.get_node("Sprite2D")
-			var texture = null
+			# Apply seed to generator
+			_asteroid_generator_instance.seed_value = fragment_seed
 			
-			# Check cache first
-			var cache_key = str(fragment_seed)
-			if _texture_cache.has(cache_key):
-				texture = _texture_cache[cache_key]
-			else:
-				# Apply seed to generator
-				_asteroid_generator_instance.seed_value = fragment_seed
-				
-				# Generate texture
-				texture = _asteroid_generator_instance.create_asteroid_texture()
-				
-				# Cache with limit check
-				if _texture_cache.size() >= MAX_TEXTURE_CACHE_SIZE:
-					# Remove oldest entry
-					var first_key = _texture_cache.keys()[0]
-					_texture_cache.erase(first_key)
-				
-				_texture_cache[cache_key] = texture
+			# Generate texture
+			texture = _asteroid_generator_instance.create_asteroid_texture()
 			
-			# Apply texture
-			sprite.texture = texture
+			# Cache with limit check
+			if _texture_cache.size() >= MAX_TEXTURE_CACHE_SIZE:
+				# Remove oldest entry
+				var first_key = _texture_cache.keys()[0]
+				_texture_cache.erase(first_key)
 			
-			# Get appropriate size value
-			var size_value = fragment_size == "medium" if 32 else 16
-			
-			# Scale based on texture size
-			sprite.scale = Vector2(size_value, size_value) / texture.get_width() * scale
+			_texture_cache[cache_key] = texture
 		
-		# Setup fragment with new velocity argument
-		if asteroid.has_method("setup"):
-			asteroid.setup(
-				fragment_size,
-				_rng.randi_range(0, 3),
-				scale,
-				rot_speed,
-				velocity
-			)
+		# Apply texture
+		sprite.texture = texture
 		
-		# Add to active asteroids
-		_asteroids.append(asteroid)
-		_spawned_count += 1
+		# Get appropriate size value based on fragment size
+		var size_value = 16  # Default for small
+		if fragment_size == "medium":
+			size_value = 32
 		
-		# Register with entity manager
-		if _entity_manager and _entity_manager.has_method("register_entity"):
-			_entity_manager.register_entity(asteroid, "asteroid")
-		
-		# Emit signal
-		asteroid_spawned.emit(asteroid)
+		# Scale based on texture size
+		sprite.scale = Vector2(size_value, size_value) / texture.get_width() * scale
+	
+	# Setup fragment with new velocity argument
+	if asteroid.has_method("setup"):
+		asteroid.setup(
+			fragment_size,
+			_rng.randi_range(0, 3),
+			scale,
+			rot_speed,
+			velocity
+		)
+	
+	# Add to active asteroids
+	_asteroids.append(asteroid)
+	_spawned_count += 1
+	
+	# Register with entity manager
+	if _entity_manager and _entity_manager.has_method("register_entity"):
+		_entity_manager.register_entity(asteroid, "asteroid")
+	
+	# Emit signal
+	asteroid_spawned.emit(asteroid)
 
 func clear_field() -> void:
 	if debug_mode:

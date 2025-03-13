@@ -35,7 +35,7 @@ var explosion_scene_path: String = "res://scenes/explosion_effect.tscn"
 var _size_properties = {
 	"small": {"health": 15.0, "mass": 1.5, "scale": 0.5, "points": 50, "fragments": 0},
 	"medium": {"health": 35.0, "mass": 3.0, "scale": 1.0, "points": 100, "fragments": 2},
-	"large": {"health": 70.0, "mass": 6.0, "scale": 1.5, "points": 200, "fragments": 3}
+	"large": {"health": 70.0, "mass": 6.0, "scale": 1.5, "points": 200, "fragments": 2}  # Changed from 3 to 2 fragments
 }
 
 # Hit flash effect
@@ -240,18 +240,17 @@ func _create_fallback_collision_shape() -> void:
 	if not sprite:
 		return
 	
+	var radius = 16.0 * base_scale  # Default radius based on scale
+	
+	if sprite.texture:
+		radius = (sprite.texture.get_width() / 2) * sprite.scale.x * 0.9
+	
 	if collision_shape and collision_shape.shape is CircleShape2D:
 		# Already has a circle shape, just update radius
-		var radius = (sprite.texture.get_width() / 2) * sprite.scale.x * 0.9
 		collision_shape.shape.radius = radius
 	else:
 		# Create new circle shape
 		var circle = CircleShape2D.new()
-		var radius = 16.0 * base_scale
-		
-		if sprite and sprite.texture:
-			radius = (sprite.texture.get_width() / 2) * sprite.scale.x * 0.9
-		
 		circle.radius = radius
 		
 		if collision_shape:
@@ -399,7 +398,7 @@ func _on_damaged(amount: float, _type: String, _source: Node) -> void:
 		_hit_flash_timer = HIT_FLASH_DURATION
 		set_process(true)
 
-# Explosion and destruction handling
+# IMPROVED: Explosion and destruction handling with smart spawner detection
 func _on_destroyed() -> void:
 	# Use explosion component if available
 	if explosion_component and explosion_component.has_method("explode"):
@@ -411,26 +410,26 @@ func _on_destroyed() -> void:
 	# Create a sound player for the debris explosion sound
 	_play_debris_sound()
 	
-	# Spawn fragments based on size category
+	# Get fragment count from size properties
 	var fragment_count = _size_properties[size_category]["fragments"]
 	
-	# Get asteroid spawner reference - try parent first as it might be the spawner
-	var asteroid_spawner = get_parent()
-	
-	# Check if parent is actually an asteroid spawner
-	if not (asteroid_spawner and asteroid_spawner.has_method("_spawn_fragments")):
-		# Otherwise look for global asteroid spawner
-		asteroid_spawner = get_node_or_null("/root/Main/AsteroidSpawner")
-	
-	# Spawn fragments if spawner found
-	if asteroid_spawner and asteroid_spawner.has_method("_spawn_fragments") and fragment_count > 0:
-		asteroid_spawner._spawn_fragments(
-			global_position,
-			size_category,
-			fragment_count,
-			base_scale,
-			linear_velocity  # Pass current velocity for more realistic fragments
-		)
+	# Only proceed if we need to create fragments
+	if fragment_count > 0:
+		# Try different methods to find an asteroid spawner
+		var asteroid_spawner = _find_asteroid_spawner()
+		
+		if asteroid_spawner and asteroid_spawner.has_method("_spawn_fragments"):
+			# Use the spawner's method if available
+			asteroid_spawner._spawn_fragments(
+				global_position,
+				size_category,
+				fragment_count,
+				base_scale,
+				linear_velocity
+			)
+		else:
+			# If no spawner found, try direct creation using asteroid generator
+			_spawn_fragments_directly()
 	
 	# Emit destroyed signal with position, size and points
 	asteroid_destroyed.emit(global_position, size_category, points_value)
@@ -440,6 +439,141 @@ func _on_destroyed() -> void:
 		EntityManager.deregister_entity(self)
 	
 	queue_free()
+
+# Find an asteroid spawner using multiple methods
+func _find_asteroid_spawner() -> Node:
+	# Method 1: Check if parent is a spawner
+	var parent = get_parent()
+	if parent and parent.has_method("_spawn_fragments"):
+		return parent
+	
+	# Method 2: Search for spawners in the asteroid_fields group
+	var spawners = get_tree().get_nodes_in_group("asteroid_fields")
+	if not spawners.is_empty():
+		return spawners[0]  # Use the first spawner found
+	
+	# Method 3: Look for specific paths
+	var specific_paths = [
+		"/root/Main/AsteroidSpawner",
+		"/root/Main/AsteroidField",
+		"/root/Main/World/AsteroidSpawner"
+	]
+	
+	for path in specific_paths:
+		var node = get_node_or_null(path)
+		if node and node.has_method("_spawn_fragments"):
+			return node
+	
+	# Not found
+	return null
+
+# Spawn fragments directly using an asteroid generator
+func _spawn_fragments_directly() -> void:
+	# Skip for small asteroids
+	if size_category == "small":
+		return
+	
+	# Find or create asteroid generator
+	var generator = _find_or_create_generator()
+	if not generator:
+		print("Failed to find or create asteroid generator")
+		return
+	
+	# Load the default asteroid scene
+	var asteroid_scene = load("res://scenes/entities/asteroid.tscn")
+	if not asteroid_scene:
+		print("Failed to load asteroid scene")
+		return
+	
+	var rng = RandomNumberGenerator.new()
+	rng.seed = hash(global_position.x + global_position.y + Time.get_ticks_msec())
+	
+	if size_category == "large":
+		# Spawn 1 medium and 1 small asteroid
+		_spawn_fragment_with_generator(asteroid_scene, generator, "medium", 0.7, 0, 2, rng)
+		_spawn_fragment_with_generator(asteroid_scene, generator, "small", 0.5, 1, 2, rng)
+	elif size_category == "medium":
+		# Spawn 2 small asteroids
+		_spawn_fragment_with_generator(asteroid_scene, generator, "small", 0.6, 0, 2, rng)
+		_spawn_fragment_with_generator(asteroid_scene, generator, "small", 0.6, 1, 2, rng)
+
+# Find or create an asteroid generator
+func _find_or_create_generator() -> Node:
+	# Method 1: Look for generators in the scene
+	var generators = get_tree().get_nodes_in_group("planet_spawners")  # Asteroid generator is in this group
+	for gen in generators:
+		if gen.get_script() and gen.get_script().resource_path.find("asteroid_generator") != -1:
+			return gen
+	
+	# Method 2: Try to create a new generator
+	var generator_script = load("res://scripts/generators/asteroid_generator.gd")
+	if generator_script:
+		var new_generator = generator_script.new()
+		get_tree().current_scene.add_child(new_generator)
+		return new_generator
+	
+	return null
+
+# Spawn a fragment with texture generation
+func _spawn_fragment_with_generator(scene: PackedScene, generator: Node, fragment_size: String, scale_factor: float, index: int, total_fragments: int, rng: RandomNumberGenerator) -> void:
+	# Generate fragment position with angle based on index and total fragments
+	var angle = (TAU / total_fragments) * index + rng.randf_range(-0.3, 0.3)
+	var distance = rng.randf_range(10, 30) * base_scale
+	var pos = global_position + Vector2(cos(angle), sin(angle)) * distance
+	
+	# Create the asteroid
+	var asteroid = scene.instantiate()
+	get_tree().current_scene.add_child(asteroid)
+	asteroid.global_position = pos
+	
+	# Generate rotation speed
+	var rot_speed = rng.randf_range(-1.5, 1.5) 
+	
+	# Calculate fragment velocity - inherit parent velocity plus explosion force
+	var explosion_speed = rng.randf_range(30.0, 60.0)
+	var explosion_dir = Vector2(cos(angle), sin(angle))
+	var new_velocity = linear_velocity + explosion_dir * explosion_speed
+	
+	# Generate a unique seed for this fragment
+	var fragment_seed = hash(str(global_position) + str(index) + str(Time.get_ticks_msec()))
+	
+	# Generate texture with the generator
+	if generator and generator.has_method("create_asteroid_texture"):
+		# Set the seed for deterministic generation
+		if generator.has_property("seed_value"):
+			generator.seed_value = fragment_seed
+		
+		# Generate the texture
+		var texture = generator.create_asteroid_texture()
+		
+		# Apply the texture to the asteroid
+		if asteroid.has_node("Sprite2D") and texture:
+			var sprite = asteroid.get_node("Sprite2D")
+			sprite.texture = texture
+			
+			# Calculate appropriate scale based on size
+			var size_value = 16  # Default for small
+			if fragment_size == "medium":
+				size_value = 32
+			elif fragment_size == "large":
+				size_value = 64
+			
+			# Set sprite scale
+			sprite.scale = Vector2(size_value, size_value) / texture.get_width() * base_scale * scale_factor
+	
+	# Set up the asteroid
+	if asteroid.has_method("setup"):
+		asteroid.setup(
+			fragment_size,
+			rng.randi_range(0, 3),   # Random variant
+			base_scale * scale_factor,
+			rot_speed,
+			new_velocity
+		)
+	
+	# Register with entity manager
+	if has_node("/root/EntityManager") and EntityManager.has_method("register_entity"):
+		EntityManager.register_entity(asteroid, "asteroid")
 
 # Play debris sound with special handling to ensure it plays completely
 func _play_debris_sound() -> void:
