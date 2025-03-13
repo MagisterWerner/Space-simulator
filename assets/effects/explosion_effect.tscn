@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://cm4a1sj7jrsci"]
+
+[ext_resource type="Script" uid="uid://coon38lkbkpbx" path="res://scripts/effects/explosion_effect.gd" id="1_0b4j7"]
+
+[node name="ExplosionEffect" type="Node2D"]
+script = ExtResource("1_0b4j7")

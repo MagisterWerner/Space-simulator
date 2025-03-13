@@ -10,54 +10,42 @@ signal hit_target(target)
 @export var lifespan: float = 5.0
 
 # Missile properties
-@export var acceleration: float = 150.0
-@export var max_speed: float = 500.0
-@export var turn_rate: float = 2.0
-@export var smoke_trail: bool = true
+@export var acceleration: float = 20.0
+@export var max_speed: float = 600.0
 @export var explosion_radius: float = 100.0
 @export var explosion_damage: float = 30.0
-@export var explosion_knockback: float = 300.0
-
-# Targeting properties
-@export var homing_enabled: bool = true
-@export var lead_target: bool = true
-@export var lead_factor: float = 1.5
-@export var max_distance_to_target: float = 1500.0
+@export var explosion_knockback: float = 200.0
+@export var smoke_trail: bool = true
 
 # Internal state
 var velocity: Vector2 = Vector2.ZERO
+var current_speed: float = 0.0
 var lifetime: float = 0.0
 var shooter: Node = null
-var hit_targets: Array = []
-var target: Node2D = null
-var current_speed: float = 0.0
 var exploded: bool = false
-var _target_last_position: Vector2 = Vector2.ZERO
-var _target_velocity: Vector2 = Vector2.ZERO
-var _target_update_timer: float = 0.0
+
+# Timers
 var _smoke_timer: float = 0.0
 var _smoke_interval: float = 0.05
-var _initial_acceleration_time: float = 0.5
-var _initial_acceleration_timer: float = 0.0
-var _engine_particles: CPUParticles2D = null
-var _smoke_trail_points: Array = []
 
 # Cached references
-var _audio_manager = null
 var _sprite: Sprite2D = null
+var _engine_particles: CPUParticles2D = null
+var _collision_shape: CollisionShape2D = null
+var _audio_manager = null
 
 func _ready() -> void:
 	# Set up collision properties
-	collision_layer = 8  # Projectile layer
-	collision_mask = 4   # Asteroid layer (layer 3)
+	collision_layer = 8   # Projectile layer
+	collision_mask = 5    # Asteroid/enemy layers
 	
-	# Get engine particles
+	# Get node references
+	_sprite = get_node_or_null("Sprite2D")
 	_engine_particles = get_node_or_null("EngineParticles")
+	_collision_shape = get_node_or_null("CollisionShape2D")
 	
-	# Store initial speed
+	# Initialize velocity
 	current_speed = speed
-	
-	# Calculate initial velocity
 	velocity = Vector2(current_speed, 0).rotated(rotation)
 	
 	# Connect signals
@@ -66,106 +54,48 @@ func _ready() -> void:
 	# Get audio manager
 	if Engine.has_singleton("AudioManager"):
 		_audio_manager = Engine.get_singleton("AudioManager")
-	
-	# Play rocket sound
-	if _audio_manager and _audio_manager.has_method("play_sfx"):
-		_audio_manager.play_sfx("missile_launch", global_position, randf_range(0.9, 1.1))
-	
-	# Cache sprite reference
-	_sprite = get_node_or_null("Sprite2D")
+		
+		# Play launch sound
+		if _audio_manager.has_method("play_sfx"):
+			_audio_manager.play_sfx("missile_launch", global_position, randf_range(0.9, 1.1))
 
 func _process(delta: float) -> void:
 	if exploded:
 		return
 	
-	# Update timers
-	_update_timers(delta)
-	
-	# Update target tracking
-	_update_target_tracking(delta)
-	
-	# Handle missile movement
-	_update_missile_movement(delta)
+	# Update missile
+	_update_missile(delta)
 	
 	# Handle smoke trail
 	if smoke_trail:
 		_update_smoke_trail(delta)
 	
-	# Update position using velocity
-	position += velocity * delta
-	
-	# Update lifetime - explode at end
+	# Update lifetime
 	lifetime += delta
 	if lifetime >= lifespan:
 		explode()
 
-func _update_timers(delta: float) -> void:
-	_smoke_timer += delta
-	
-	# Initial acceleration phase
-	if _initial_acceleration_timer < _initial_acceleration_time:
-		_initial_acceleration_timer += delta
-	
-	# Track target position changes
-	_target_update_timer += delta
-
-func _update_target_tracking(delta: float) -> void:
-	# Skip if no target or homing disabled
-	if not target or not homing_enabled or not is_instance_valid(target):
+func _physics_process(delta: float) -> void:
+	if exploded:
 		return
-	
-	# Check if target is still in range
-	if global_position.distance_to(target.global_position) > max_distance_to_target:
-		target = null
-		return
-	
-	# Calculate target velocity (used for leading the target)
-	if _target_update_timer >= 0.1:
-		# Update every 0.1 seconds
-		_target_update_timer = 0.0
 		
-		if _target_last_position != Vector2.ZERO:
-			_target_velocity = (target.global_position - _target_last_position) / 0.1
-		
-		_target_last_position = target.global_position
+	# Apply position change based on velocity
+	position += velocity * delta
 
-func _update_missile_movement(delta: float) -> void:
+func _update_missile(delta: float) -> void:
 	# Accelerate missile
-	if _initial_acceleration_timer < _initial_acceleration_time:
-		# Slower acceleration at the start
-		current_speed += acceleration * delta * 0.5
-	else:
-		current_speed += acceleration * delta
-	
-	current_speed = min(current_speed, max_speed)
-	
-	if target and homing_enabled and is_instance_valid(target):
-		# Calculate direction to target
-		var target_pos = target.global_position
-		
-		# Lead target if enabled
-		if lead_target and _target_velocity != Vector2.ZERO:
-			var dist_to_target = global_position.distance_to(target_pos)
-			var time_to_impact = dist_to_target / current_speed
-			target_pos += _target_velocity * time_to_impact * lead_factor
-		
-		var direction_to_target = global_position.direction_to(target_pos)
-		var current_direction = Vector2(cos(rotation), sin(rotation))
-		
-		# Calculate the angle to turn
-		var angle_to_target = current_direction.angle_to(direction_to_target)
-		
-		# Apply turn rate limit
-		var max_turn = turn_rate * delta
-		angle_to_target = clamp(angle_to_target, -max_turn, max_turn)
-		
-		# Rotate missile
-		rotation += angle_to_target
+	current_speed = min(current_speed + acceleration * delta, max_speed)
 	
 	# Update velocity based on current rotation and speed
 	velocity = Vector2(current_speed, 0).rotated(rotation)
+	
+	# Update engine particles if they exist
+	if _engine_particles and not _engine_particles.emitting:
+		_engine_particles.emitting = true
 
 func _update_smoke_trail(delta: float) -> void:
+	_smoke_timer += delta
+	
 	if _smoke_timer >= _smoke_interval:
 		_smoke_timer = 0.0
 		_emit_smoke_particle()
@@ -178,16 +108,16 @@ func _emit_smoke_particle() -> void:
 	smoke.one_shot = true
 	smoke.explosiveness = 1.0
 	smoke.amount = 1
-	smoke.lifetime = 1.0
+	smoke.lifetime = 0.8
 	
 	# Configure particle properties
-	smoke.direction = Vector3(-1, 0, 0)  # Opposite to missile direction
+	smoke.direction = Vector2(-1, 0)  # Opposite to missile direction
 	smoke.spread = 15.0
-	smoke.gravity = Vector3(0, 0, 0)
+	smoke.gravity = Vector2.ZERO
 	smoke.initial_velocity_min = 5.0
-	smoke.initial_velocity_max = 15.0
-	smoke.scale_amount_min = 5.0
-	smoke.scale_amount_max = 10.0
+	smoke.initial_velocity_max = 10.0
+	smoke.scale_amount_min = 2.0
+	smoke.scale_amount_max = 4.0
 	
 	# Create gradient
 	var gradient = Gradient.new()
@@ -199,24 +129,18 @@ func _emit_smoke_particle() -> void:
 	get_tree().current_scene.add_child(smoke)
 	
 	# Auto-remove after lifetime
-	var timer = Timer.new()
-	timer.wait_time = 1.2
-	timer.one_shot = true
-	timer.timeout.connect(func(): smoke.queue_free())
-	smoke.add_child(timer)
-	timer.start()
+	get_tree().create_timer(1.0).timeout.connect(func():
+		if is_instance_valid(smoke):
+			smoke.queue_free()
+	)
 
 # Handle missile hit
 func _on_body_entered(body: Node2D) -> void:
 	if body == shooter or exploded:
 		return
 	
-	# Process asteroid collisions specifically
-	if body.is_in_group("asteroids"):
-		explode()
-	# Process other collidable objects
-	elif body.has_node("HealthComponent") or body.has_method("take_damage"):
-		explode()
+	hit_target.emit(body)
+	explode()
 
 # Explode the missile
 func explode() -> void:
@@ -224,9 +148,6 @@ func explode() -> void:
 		return
 		
 	exploded = true
-	
-	# Apply area damage
-	_apply_area_damage()
 	
 	# Create explosion effect
 	_create_explosion_effect()
@@ -242,187 +163,211 @@ func explode() -> void:
 	if _engine_particles:
 		_engine_particles.emitting = false
 	
-	# Don't destroy immediately, allow explosion effect to play
-	set_deferred("monitorable", false)
+	# Disable collision
+	if _collision_shape:
+		_collision_shape.set_deferred("disabled", true)
+	
 	set_deferred("monitoring", false)
+	set_deferred("monitorable", false)
+	
+	# Apply area damage (after we've disabled our own collision)
+	call_deferred("_apply_area_damage")
 	
 	# Remove after explosion finishes
-	var timer = Timer.new()
-	add_child(timer)
-	timer.wait_time = 1.0
-	timer.one_shot = true
-	timer.timeout.connect(queue_free)
-	timer.start()
+	get_tree().create_timer(0.8).timeout.connect(queue_free)
 
 # Apply area damage to all bodies in explosion radius
 func _apply_area_damage() -> void:
-	var space_state = get_world_2d().direct_space_state
-	var query = PhysicsShapeQueryParameters2D.new()
+	# Create a temporary Area2D for explosion radius detection
+	var explosion_area = Area2D.new()
+	explosion_area.collision_layer = 0
+	explosion_area.collision_mask = collision_mask
 	
+	# Create collision shape
+	var collision_shape = CollisionShape2D.new()
 	var shape = CircleShape2D.new()
 	shape.radius = explosion_radius
+	collision_shape.shape = shape
 	
-	query.shape = shape
-	query.transform = Transform2D(0, global_position)
-	query.collision_mask = collision_mask
-	query.exclude = [self]
-	if shooter:
-		query.exclude.append(shooter)
+	# Add to scene temporarily
+	explosion_area.add_child(collision_shape)
+	get_tree().current_scene.add_child(explosion_area)
+	explosion_area.global_position = global_position
 	
-	var results = space_state.intersect_shape(query)
+	# Wait one physics frame to ensure collision detection works
+	await get_tree().physics_frame
 	
-	for result in results:
-		var collider = result.collider
-		
-		if collider == shooter:
+	# Get overlapping bodies
+	var bodies = explosion_area.get_overlapping_bodies()
+	
+	# Apply damage to each body
+	for body in bodies:
+		if body == shooter:
 			continue
 		
 		# Calculate damage based on distance from explosion center
-		var distance = global_position.distance_to(collider.global_position)
+		var distance = global_position.distance_to(body.global_position)
 		var damage_factor = 1.0 - min(1.0, distance / explosion_radius)
 		var damage_amount = explosion_damage * damage_factor
 		
-		# Handle asteroids specifically
-		if collider.is_in_group("asteroids"):
-			# Try to use health component 
-			var health = collider.get_node_or_null("HealthComponent")
-			if health is HealthComponent:
+		# Apply damage
+		if body.has_node("HealthComponent"):
+			var health = body.get_node("HealthComponent")
+			if health and health.has_method("apply_damage"):
 				health.apply_damage(damage_amount, "explosion", shooter)
-			# Fall back to direct damage method
-			elif collider.has_method("take_damage"):
-				collider.take_damage(damage_amount, shooter)
-				
-			# Apply knockback
-			if collider is RigidBody2D:
-				var knockback_direction = (collider.global_position - global_position).normalized()
-				var knockback_force = knockback_direction * explosion_knockback * damage_factor
-				collider.apply_central_impulse(knockback_force)
+		elif body.has_method("take_damage"):
+			body.take_damage(damage_amount, shooter)
 		
-		# Apply damage to other entities with health components
-		elif collider.has_node("HealthComponent"):
-			var health = collider.get_node("HealthComponent")
-			if health is HealthComponent:
-				health.apply_damage(damage_amount, "explosion", shooter)
-		
-		# Apply knockback to other physics bodies
-		if collider is RigidBody2D:
-			var knockback_direction = (collider.global_position - global_position).normalized()
+		# Apply knockback to physics bodies
+		if body is RigidBody2D:
+			var knockback_direction = (body.global_position - global_position).normalized()
 			var knockback_force = knockback_direction * explosion_knockback * damage_factor
-			collider.apply_central_impulse(knockback_force)
+			body.apply_central_impulse(knockback_force)
+	
+	# Clean up
+	explosion_area.queue_free()
 
 # Create explosion visual effect
 func _create_explosion_effect() -> void:
+	# Create parent node for explosion effects
 	var explosion = Node2D.new()
-	explosion.name = "Explosion"
+	explosion.name = "ExplosionEffect"
 	get_tree().current_scene.add_child(explosion)
 	explosion.global_position = global_position
 	
-	# Add particles
+	# Create explosion particles
 	var particles = CPUParticles2D.new()
-	particles.name = "ExplosionParticles"
+	explosion.add_child(particles)
+	
+	# Configure particle properties
 	particles.emitting = true
 	particles.one_shot = true
 	particles.explosiveness = 1.0
-	particles.amount = 50
-	particles.lifetime = 0.8
-	
-	# Configure particle properties
-	particles.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
-	particles.emission_sphere_radius = 10.0
-	particles.direction = Vector3(0, 0, 0)
+	particles.amount = 30
+	particles.lifetime = 0.6
+	particles.direction = Vector2.ZERO
 	particles.spread = 180.0
-	particles.gravity = Vector2(0, 0)
-	particles.initial_velocity_min = 100.0
-	particles.initial_velocity_max = 200.0
-	particles.damping_min = 150.0
-	particles.damping_max = 200.0
-	particles.scale_amount_min = 5.0
-	particles.scale_amount_max = 10.0
+	particles.gravity = Vector2.ZERO
+	particles.initial_velocity_min = 30.0
+	particles.initial_velocity_max = 80.0
+	particles.scale_amount_min = 3.0
+	particles.scale_amount_max = 6.0
 	
 	# Create gradient
 	var gradient = Gradient.new()
-	gradient.add_point(0.0, Color(1.0, 1.0, 0.3, 1.0))
+	gradient.add_point(0.0, Color(1.0, 0.9, 0.3, 1.0))
 	gradient.add_point(0.2, Color(1.0, 0.5, 0.1, 1.0))
-	gradient.add_point(0.5, Color(0.8, 0.2, 0.1, 0.8))
-	gradient.add_point(1.0, Color(0.1, 0.1, 0.1, 0.0))
+	gradient.add_point(0.6, Color(0.6, 0.2, 0.1, 0.6))
+	gradient.add_point(1.0, Color(0.2, 0.1, 0.1, 0.0))
 	particles.color_ramp = gradient
 	
-	explosion.add_child(particles)
+	# Create area of effect visualization - using a simpler, more reliable approach
+	var aoe_visual = ColorRect.new()
+	aoe_visual.name = "AreaOfEffectVisual"
+	explosion.add_child(aoe_visual)
 	
-	# Add light
+	# Make sure it's placed correctly
+	aoe_visual.z_index = -1
+	aoe_visual.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	
+	# Size and position the visualization
+	var size = explosion_radius * 2
+	aoe_visual.size = Vector2(size, size)
+	aoe_visual.position = Vector2(-explosion_radius, -explosion_radius)
+	
+	# Set initial color (extremely transparent)
+	aoe_visual.color = Color(1.0, 0.5, 0.1, 0.07)
+	
+	# Create a simple circle shape using a shader
+	var shader = Shader.new()
+	shader.code = """
+	shader_type canvas_item;
+	
+	uniform vec4 inner_color : source_color = vec4(1.0, 0.4, 0.1, 0.07);
+	
+	void fragment() {
+		float dist = length(UV - vec2(0.5));
+		
+		// Create a simple circle with no outline
+		if (dist > 0.5) {
+			// Outside the circle
+			COLOR.a = 0.0;
+		} else {
+			// Inside - with soft edge
+			float edge_softness = 0.03;
+			float edge_factor = smoothstep(0.5 - edge_softness, 0.5, dist);
+			COLOR = inner_color;
+			COLOR.a = inner_color.a * (1.0 - edge_factor);
+		}
+	}
+	"""
+	
+	var material = ShaderMaterial.new()
+	material.shader = shader
+	aoe_visual.material = material
+	
+	# Animate the fade-out (half the time)
+	var aoe_tween = aoe_visual.create_tween()
+	aoe_tween.tween_property(aoe_visual, "modulate:a", 0.0, 0.4)
+	aoe_tween.tween_callback(aoe_visual.queue_free)
+	
+	# Create light effect
 	var light = PointLight2D.new()
-	light.name = "ExplosionLight"
-	light.color = Color(1.0, 0.7, 0.2)
-	light.energy = 2.0
-	light.texture = _create_light_texture()
-	light.texture_scale = 4.0
 	explosion.add_child(light)
+	light.texture = _create_light_texture()
+	light.color = Color(1.0, 0.6, 0.2)
+	light.energy = 1.0
+	light.texture_scale = 2.0
 	
-	# Animate the light
+	# Animate light
 	var tween = light.create_tween()
 	tween.tween_property(light, "energy", 0.0, 0.5)
-	tween.parallel().tween_property(light, "texture_scale", 1.0, 0.5)
+	tween.parallel().tween_property(light, "texture_scale", 0.5, 0.5)
 	
-	# Remove explosion after it finishes
+	# Auto-remove after lifetime
 	var timer = Timer.new()
 	explosion.add_child(timer)
-	timer.wait_time = 1.0
+	timer.wait_time = 0.8
 	timer.one_shot = true
 	timer.timeout.connect(func(): explosion.queue_free())
 	timer.start()
 
 # Create light texture
 func _create_light_texture() -> Texture2D:
-	var image = Image.create(32, 32, false, Image.FORMAT_RGBA8)
-	image.fill(Color(1, 1, 1, 1))
+	var image = Image.create(64, 64, false, Image.FORMAT_RGBA8)
 	
 	# Create a circular gradient
-	for x in range(32):
-		for y in range(32):
-			var dist = Vector2(x - 16, y - 16).length()
-			var alpha = 1.0 - min(1.0, dist / 16.0)
+	for x in range(64):
+		for y in range(64):
+			var dist = Vector2(x - 32, y - 32).length()
+			var alpha = 1.0 - min(1.0, dist / 32.0)
 			var color = Color(1, 1, 1, alpha)
 			image.set_pixel(x, y, color)
 	
 	return ImageTexture.create_from_image(image)
 
-# Set target for homing missile
-func set_target(new_target: Node2D) -> void:
-	target = new_target
-	if target:
-		_target_last_position = target.global_position
+# API methods for configuration
+func set_explosion_properties(radius: float, damage_amount: float) -> void:
+	explosion_radius = radius
+	explosion_damage = damage_amount
 
-# Set turn rate for homing
-func set_turn_rate(rate: float) -> void:
-	turn_rate = rate
-
-# Set acceleration
 func set_acceleration(accel: float) -> void:
 	acceleration = accel
 
-# Set explosion radius
-func set_explosion_radius(radius: float) -> void:
-	explosion_radius = radius
-
-# Set explosion damage
-func set_explosion_damage(dmg: float) -> void:
-	explosion_damage = dmg
-
-# Set damage
 func set_damage(value: float) -> void:
 	damage = value
-	explosion_damage = value * 0.6  # Explosion damage is 60% of direct hit damage
+	# Set explosion damage to be proportional to direct hit damage
+	explosion_damage = value * 0.6
 
-# Set speed
 func set_speed(value: float) -> void:
 	speed = value
 	current_speed = value
-	velocity = Vector2(current_speed, 0).rotated(rotation)
+	# Update velocity immediately
+	if is_inside_tree():
+		velocity = Vector2(current_speed, 0).rotated(rotation)
 
-# Set lifespan
 func set_lifespan(value: float) -> void:
 	lifespan = value
 
-# Set shooter
 func set_shooter(node: Node) -> void:
 	shooter = node
