@@ -1,11 +1,29 @@
 extends Node
 
+# Core signals
+signal music_changed(track_name)
+signal volume_changed(bus_name, volume_db)
+signal music_finished
+signal sfx_pool_created(sfx_name, pool_size)
+signal audio_buses_initialized
+
+# Label-specific signals
+signal label_created(entity, label_type)
+signal celestial_name_generated(entity, name, entity_type)
+
 # Configuration properties
 @export var show_damage_numbers: bool = true
 @export var show_entity_labels: bool = true
 @export var show_world_messages: bool = true
 @export var label_scale: float = 1.0
 @export var max_visible_distance: float = 5000.0
+
+# Celestial body label configuration
+@export var show_celestial_labels: bool = true
+@export var planet_label_offset: float = -45.0
+@export var moon_label_offset: float = -25.0
+@export var celestial_label_fade_start: float = 3000.0
+@export var celestial_label_max_distance: float = 5000.0
 
 # Pool sizing
 @export var entity_label_pool_size: int = 20
@@ -29,6 +47,12 @@ var _active_labels = {
 	"message": {}
 }
 
+# Celestial body labels tracking
+var _celestial_labels = {
+	"planet": {},  # Keyed by entity_id
+	"moon": {}     # Keyed by entity_id
+}
+
 # Label scenes - cached
 var _label_scenes = {
 	"entity": null,
@@ -43,6 +67,7 @@ var _viewport_size = Vector2.ZERO
 var _entity_manager = null
 var _event_manager = null
 var _resource_manager = null
+var _seed_manager = null  # Reference to SeedManager for deterministic generation
 
 # Update timers for throttling
 var _entity_label_check_time: float = 0.0
@@ -67,12 +92,47 @@ const ENTITY_LABEL_PATH = "res://scenes/ui/labels/entity_label.tscn"
 const FLOATING_NUMBER_PATH = "res://scenes/ui/labels/floating_number.tscn"
 const WORLD_MESSAGE_PATH = "res://scenes/ui/labels/world_message.tscn"
 
+# Celestial body style definitions
+var _celestial_styles = {
+	"planet_terran": {
+		"color": Color(0.7, 1.0, 0.7),
+		"outline": Color(0.0, 0.3, 0.0, 0.7),
+		"size": 18,
+		"offset": Vector2(0, -45)
+	},
+	"planet_gaseous": {
+		"color": Color(0.9, 0.9, 0.6),
+		"outline": Color(0.4, 0.3, 0.0, 0.7),
+		"size": 20,
+		"offset": Vector2(0, -55)
+	},
+	"moon_rocky": {
+		"color": Color(0.8, 0.8, 0.8),
+		"outline": Color(0.2, 0.2, 0.2, 0.7),
+		"size": 14,
+		"offset": Vector2(0, -25)
+	},
+	"moon_icy": {
+		"color": Color(0.7, 0.9, 1.0),
+		"outline": Color(0.0, 0.2, 0.4, 0.7),
+		"size": 14,
+		"offset": Vector2(0, -25)
+	},
+	"moon_volcanic": {
+		"color": Color(1.0, 0.6, 0.4),
+		"outline": Color(0.4, 0.1, 0.0, 0.7),
+		"size": 14,
+		"offset": Vector2(0, -25)
+	}
+}
+
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	
 	_find_game_settings()
 	_initialize_resources()
 	_connect_signals()
+	_cache_managers()
 
 func _initialize_resources() -> void:
 	# Create label container
@@ -86,11 +146,20 @@ func _initialize_resources() -> void:
 	
 	# Initialize label pools
 	_initialize_label_pools()
-	
+
+func _cache_managers() -> void:
 	# Find entity manager
 	_entity_manager = get_node_or_null("/root/EntityManager")
 	_event_manager = get_node_or_null("/root/EventManager")
 	_resource_manager = get_node_or_null("/root/ResourceManager")
+	_seed_manager = get_node_or_null("/root/SeedManager")
+	
+	# Connect to entity spawned events if possible
+	if _entity_manager and _entity_manager.has_signal("entity_spawned") and not _entity_manager.is_connected("entity_spawned", _on_entity_spawned):
+		_entity_manager.connect("entity_spawned", _on_entity_spawned)
+	
+	if _event_manager:
+		_event_manager.safe_connect("entity_spawned", _on_entity_spawned)
 
 func _find_game_settings() -> void:
 	var main_scene = get_tree().current_scene
@@ -363,7 +432,13 @@ func _on_entity_spawned(entity: Node, entity_type: String) -> void:
 	if not show_entity_labels:
 		return
 	
-	# Only create labels for planets and stations
+	# Handle automatic celestial body registration
+	if entity_type == "planet":
+		register_planet(entity)
+	elif entity_type == "moon":
+		register_moon(entity)
+	
+	# Original entity label creation logic for planets and stations
 	if entity_type in ["planet", "station"]:
 		var entity_id = -1
 		if entity.has_meta("entity_id"):
@@ -381,6 +456,12 @@ func _on_entity_despawned(entity: Node, _entity_type: String) -> void:
 	if entity.has_meta("entity_id"):
 		var entity_id = entity.get_meta("entity_id")
 		remove_entity_label(entity_id)
+		
+		# Also remove from celestial tracking if present
+		if _celestial_labels.planet.has(entity_id):
+			_celestial_labels.planet.erase(entity_id)
+		if _celestial_labels.moon.has(entity_id):
+			_celestial_labels.moon.erase(entity_id)
 
 func _get_entity_name(entity: Node) -> String:
 	# Try various methods to get name - most efficient checks first
@@ -550,3 +631,369 @@ func _debug_print(message: String) -> void:
 # Enable or disable culling (for performance testing)
 func set_culling_enabled(enabled: bool) -> void:
 	_culling_enabled = enabled
+
+#
+# CELESTIAL BODY LABEL MANAGEMENT
+# New methods for planet and moon name generation and display
+#
+
+# Register a planet for labeling with name generation
+func register_planet(planet: Node2D) -> void:
+	if not planet or not is_instance_valid(planet) or not show_celestial_labels:
+		return
+	
+	# Skip if already registered
+	if planet.has_meta("entity_id"):
+		var entity_id = planet.get_meta("entity_id")
+		if _celestial_labels.planet.has(entity_id):
+			return
+	
+	# Determine if planet is gaseous based on class name or properties
+	var is_gaseous = false
+	if "is_gaseous_planet" in planet:
+		is_gaseous = planet.is_gaseous_planet
+	elif planet is PlanetGaseous or planet.get_script() and planet.get_script().resource_path.find("gaseous") != -1:
+		is_gaseous = true
+	
+	# Get theme ID
+	var theme_id = -1
+	if "theme_id" in planet:
+		theme_id = planet.theme_id
+	
+	# Generate planet name if not set
+	var planet_name = ""
+	if "planet_name" in planet and not planet.planet_name.is_empty():
+		planet_name = planet.planet_name
+	else:
+		# Generate a name based on seed value
+		var seed_value = 0
+		if "seed_value" in planet:
+			seed_value = planet.seed_value
+		
+		# Use the generator function
+		planet_name = _generate_planet_name(seed_value, is_gaseous, theme_id)
+		
+		# Try to set the planet name property
+		if "planet_name" in planet:
+			planet.planet_name = planet_name
+	
+	# Create the label with appropriate style
+	var label_type = "planet_gaseous" if is_gaseous else "planet_terran"
+	var label = create_entity_label(planet, planet_name, label_type)
+	
+	# Apply styling if EntityLabel has style support
+	if label and label.has_method("set_style"):
+		label.set_style(label_type)
+	
+	# Apply colors if it has that method instead
+	elif label and label.has_method("set_colors"):
+		var style = _celestial_styles[label_type]
+		label.set_colors(style.color, style.outline)
+		label.label_offset = style.offset
+	
+	# Track the label
+	if planet.has_meta("entity_id"):
+		var entity_id = planet.get_meta("entity_id")
+		_celestial_labels.planet[entity_id] = {
+			"label": label,
+			"planet": planet,
+			"name": planet_name
+		}
+	
+	# Connect to planet signals for moon handling
+	if planet.has_signal("planet_loaded") and not planet.is_connected("planet_loaded", _on_planet_loaded):
+		planet.connect("planet_loaded", _on_planet_loaded)
+	
+	celestial_name_generated.emit(planet, planet_name, "planet")
+	
+	if debug_mode:
+		print("[LabelManager] Registered planet name: " + planet_name)
+
+# Register a moon for labeling with name generation
+func register_moon(moon: Node2D) -> void:
+	if not moon or not is_instance_valid(moon) or not show_celestial_labels:
+		return
+	
+	# Skip if already registered
+	if moon.has_meta("entity_id"):
+		var entity_id = moon.get_meta("entity_id")
+		if _celestial_labels.moon.has(entity_id):
+			return
+	
+	# Get moon type
+	var moon_type = 0  # Default to rocky
+	if "moon_type" in moon:
+		moon_type = moon.moon_type
+	
+	# Get parent planet reference and name
+	var parent_planet = null
+	var parent_name = "Planet"
+	var moon_index = 0
+	
+	if "parent_planet" in moon:
+		parent_planet = moon.parent_planet
+		if parent_planet and "planet_name" in parent_planet:
+			parent_name = parent_planet.planet_name
+		
+		# Get moon index
+		if parent_planet and "moons" in parent_planet:
+			moon_index = parent_planet.moons.find(moon)
+			if moon_index < 0:
+				moon_index = 0
+	
+	# Generate moon name if not set
+	var moon_name = ""
+	if "moon_name" in moon and not moon.moon_name.is_empty():
+		moon_name = moon.moon_name
+	else:
+		# Get seed value
+		var seed_value = 0
+		if "seed_value" in moon:
+			seed_value = moon.seed_value
+		
+		# Generate name
+		moon_name = _generate_moon_name(seed_value, parent_name, moon_type, moon_index)
+		
+		# Set name property if available
+		if "moon_name" in moon:
+			moon.moon_name = moon_name
+	
+	# Determine label style based on moon type
+	var label_type = "moon_rocky"  # Default
+	match moon_type:
+		0: label_type = "moon_rocky"
+		1: label_type = "moon_icy"
+		2: label_type = "moon_volcanic"
+	
+	# Create the label
+	var label = create_entity_label(moon, moon_name, label_type)
+	
+	# Apply styling if supported
+	if label:
+		if label.has_method("set_style"):
+			label.set_style(label_type)
+		elif label.has_method("set_colors") and _celestial_styles.has(label_type):
+			var style = _celestial_styles[label_type]
+			label.set_colors(style.color, style.outline)
+			label.label_offset = style.offset
+	
+	# Track the label
+	if moon.has_meta("entity_id"):
+		var entity_id = moon.get_meta("entity_id")
+		_celestial_labels.moon[entity_id] = {
+			"label": label,
+			"moon": moon,
+			"name": moon_name,
+			"parent": parent_planet,
+			"type": moon_type,
+			"index": moon_index
+		}
+	
+	celestial_name_generated.emit(moon, moon_name, "moon")
+	
+	if debug_mode:
+		print("[LabelManager] Registered moon name: " + moon_name)
+
+# Name generation functions that leverage the SeedManager
+func _generate_planet_name(seed_value: int, is_gaseous: bool = false, theme_id: int = -1) -> String:
+	# Cache key for consistent names
+	var cache_key = "planet_%d_%s_%d" % [seed_value, str(is_gaseous), theme_id]
+	
+	# Use static generator class if available
+	if ResourceLoader.exists("res://scripts/generators/planet_name_generator.gd"):
+		var PlanetNameGenerator = load("res://scripts/generators/planet_name_generator.gd")
+		if PlanetNameGenerator.has_method("generate_planet_name"):
+			return PlanetNameGenerator.generate_planet_name(seed_value, is_gaseous, theme_id)
+	
+	# Fallback implementation using SeedManager
+	var style = _get_random_int(seed_value, 0, 2)
+	var name = ""
+	
+	match style:
+		0: name = _generate_compound_name(seed_value, is_gaseous)
+		1: name = _generate_designation_name(seed_value, is_gaseous)
+		2: name = _generate_descriptive_name(seed_value, is_gaseous, theme_id)
+	
+	return name
+
+func _generate_moon_name(seed_value: int, parent_name: String, moon_type: int, moon_index: int = 0) -> String:
+	# Use static generator class if available
+	if ResourceLoader.exists("res://scripts/generators/planet_name_generator.gd"):
+		var PlanetNameGenerator = load("res://scripts/generators/planet_name_generator.gd")
+		if PlanetNameGenerator.has_method("generate_moon_name"):
+			return PlanetNameGenerator.generate_moon_name(seed_value, parent_name, moon_type, moon_index)
+	
+	# Fallback implementation
+	var style = _get_random_int(seed_value, 0, 1)
+	var name = ""
+	
+	match style:
+		0: name = _generate_moon_compound_name(seed_value)
+		1: name = _generate_moon_designation(parent_name, moon_index)
+	
+	return name
+
+# Handle planets loading their moons
+func _on_planet_loaded(planet: Node) -> void:
+	# Register moons of this planet
+	if not is_instance_valid(planet) or not "moons" in planet:
+		return
+	
+	for moon in planet.moons:
+		if is_instance_valid(moon):
+			register_moon(moon)
+
+# Name generation helpers
+func _generate_compound_name(seed_value: int, is_gaseous: bool) -> String:
+	const PLANET_PREFIXES = [
+		"Aet", "Aeg", "Aqu", "Ast", "Ath", "Bor", "Cal", "Chro", "Cir", "Cor"
+	]
+	const PLANET_SUFFIXES = [
+		"on", "us", "um", "ux", "ax", "ix", "os", "is", "ia", "ium"
+	]
+	
+	var prefix_index = _get_random_int(seed_value, 0, PLANET_PREFIXES.size() - 1)
+	var suffix_index = _get_random_int(seed_value + 1, 0, PLANET_SUFFIXES.size() - 1)
+	
+	return PLANET_PREFIXES[prefix_index] + PLANET_SUFFIXES[suffix_index]
+
+func _generate_designation_name(seed_value: int, is_gaseous: bool) -> String:
+	var prefix_length = _get_random_int(seed_value, 1, 3)
+	var number_length = _get_random_int(seed_value + 1, 3, 5)
+	
+	const LETTERS = "abcdefghijklmnopqrstuvwxyz"
+	const NUMBERS = "0123456789"
+	
+	var prefix = ""
+	for i in range(prefix_length):
+		var letter_idx = _get_random_int(seed_value + 10 + i, 0, LETTERS.length() - 1)
+		prefix += LETTERS[letter_idx].to_upper()
+	
+	var number = ""
+	for i in range(number_length):
+		var digit_idx = _get_random_int(seed_value + 20 + i, 0, NUMBERS.length() - 1)
+		number += NUMBERS[digit_idx]
+	
+	return prefix + "-" + number
+
+func _generate_descriptive_name(seed_value: int, is_gaseous: bool, theme_id: int) -> String:
+	const TERRAN_DESCRIPTORS = {
+		0: ["Arid", "Dusty", "Sandy", "Barren"], # Arid
+		1: ["Frozen", "Icy", "Glacial", "Frigid"], # Ice
+		2: ["Molten", "Volcanic", "Burning", "Infernal"], # Lava
+		3: ["Verdant", "Lush", "Fertile", "Vibrant"], # Lush
+		4: ["Desert", "Dune", "Parched", "Desolate"], # Desert
+		5: ["Alpine", "Mountainous", "Craggy", "Rugged"], # Alpine
+		6: ["Oceanic", "Aquatic", "Abyssal", "Maritime"], # Ocean
+		-1: ["Mysterious", "Enigmatic", "Unknown", "Distant"] # Generic
+	}
+	
+	const GAS_DESCRIPTORS = {
+		0: ["Colossal", "Mammoth", "Banded", "Massive"], # Jupiter-like
+		1: ["Ringed", "Crowned", "Encircled", "Belted"], # Saturn-like
+		2: ["Cyan", "Tilted", "Sideways", "Azure"], # Uranus-like
+		3: ["Stormy", "Deep", "Cobalt", "Sapphire"], # Neptune-like
+		-1: ["Gaseous", "Nebulous", "Swirling", "Cloudy"] # Generic
+	}
+	
+	var descriptor_array = []
+	
+	if is_gaseous:
+		if theme_id >= 8 and GAS_DESCRIPTORS.has(theme_id - 8):
+			descriptor_array = GAS_DESCRIPTORS[theme_id - 8]
+		else:
+			descriptor_array = GAS_DESCRIPTORS[-1]
+	else:
+		if theme_id >= 0 and theme_id < 7 and TERRAN_DESCRIPTORS.has(theme_id):
+			descriptor_array = TERRAN_DESCRIPTORS[theme_id]
+		else:
+			descriptor_array = TERRAN_DESCRIPTORS[-1]
+	
+	var descriptor_idx = _get_random_int(seed_value, 0, descriptor_array.size() - 1)
+	var descriptor = descriptor_array[descriptor_idx]
+	
+	return descriptor + " " + _generate_compound_name(seed_value + 100, is_gaseous)
+
+func _generate_moon_compound_name(seed_value: int) -> String:
+	const MOON_PREFIXES = [
+		"Lun", "Phob", "Deim", "Eur", "Gan", "Call", "Teth", "Rhe", "Tita"
+	]
+	const MOON_SUFFIXES = [
+		"a", "os", "is", "us", "o", "ia", "ius", "on", "ar"
+	]
+	
+	var prefix_index = _get_random_int(seed_value, 0, MOON_PREFIXES.size() - 1)
+	var suffix_index = _get_random_int(seed_value + 1, 0, MOON_SUFFIXES.size() - 1)
+	
+	return MOON_PREFIXES[prefix_index] + MOON_SUFFIXES[suffix_index]
+
+func _generate_moon_designation(parent_name: String, moon_index: int) -> String:
+	var parent_initial = ""
+	
+	if parent_name.length() >= 2:
+		parent_initial = parent_name.substr(0, 2).to_upper()
+	else:
+		parent_initial = parent_name.to_upper()
+	
+	return parent_initial + "-" + ('I'.repeat(moon_index + 1))
+
+# Helper method for SeedManager integration
+func _get_random_int(object_id: int, min_val: int, max_val: int) -> int:
+	if _seed_manager and _seed_manager.has_method("get_random_int"):
+		return _seed_manager.get_random_int(object_id, min_val, max_val)
+	else:
+		var rng = RandomNumberGenerator.new()
+		rng.seed = object_id
+		return rng.randi_range(min_val, max_val)
+
+# Public utilities for celestial labeling
+func set_celestial_label_visibility(visible: bool) -> void:
+	show_celestial_labels = visible
+	
+	# Update all existing labels
+	for entity_id in _celestial_labels.planet:
+		var data = _celestial_labels.planet[entity_id]
+		if is_instance_valid(data.label):
+			data.label.visible = visible
+	
+	for entity_id in _celestial_labels.moon:
+		var data = _celestial_labels.moon[entity_id]
+		if is_instance_valid(data.label):
+			data.label.visible = visible
+
+func update_celestial_label_style(theme_id: int, is_gaseous: bool, planet) -> void:
+	# Find the entity in our tracking
+	var entity_id = -1
+	if planet.has_meta("entity_id"):
+		entity_id = planet.get_meta("entity_id")
+	else:
+		return
+	
+	# Skip if not tracked
+	if not _celestial_labels.planet.has(entity_id):
+		return
+	
+	var data = _celestial_labels.planet[entity_id]
+	var label = data.label
+	
+	if not is_instance_valid(label):
+		return
+	
+	# Determine style
+	var label_type = "planet_gaseous" if is_gaseous else "planet_terran"
+	
+	# Apply styling if supported
+	if label.has_method("set_style"):
+		label.set_style(label_type)
+	elif label.has_method("set_colors") and _celestial_styles.has(label_type):
+		var style = _celestial_styles[label_type]
+		label.set_colors(style.color, style.outline)
+		label.label_offset = style.offset
+		
+	# Update name if needed
+	if "planet_name" in planet and not planet.planet_name.is_empty():
+		# If the name changed, update the label
+		if planet.planet_name != data.name:
+			data.name = planet.planet_name
+			if label.has_method("set_text"):
+				label.set_text(planet.planet_name)
