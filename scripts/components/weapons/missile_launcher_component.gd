@@ -9,15 +9,9 @@ class_name MissileLauncherComponent
 @export var missile_speed: float = 300.0
 @export var missile_acceleration: float = 20.0
 
-# Ammunition settings
-@export_category("Ammunition")
-@export var missile_capacity: int = 10
-
 # Sound settings
 @export_category("Audio")
 @export var fire_sound: String = "missile_launch"
-@export var reload_sound: String = "missile_reload"
-@export var empty_sound: String = "empty_click"
 
 # Visual effects
 @export_category("Visual Effects")
@@ -37,10 +31,7 @@ func setup() -> void:
 	projectile_lifespan = 5.0  # Long-lived projectile
 	
 	# Set ammunition settings
-	unlimited_ammo = false
-	max_ammo = missile_capacity
-	current_ammo = missile_capacity
-	reload_time = 2.0  # Set parent's reload_time property
+	unlimited_ammo = true   # Unlimited ammo, no reload needed
 	
 	# If projectile scene is not set, load the missile projectile
 	if not projectile_scene:
@@ -56,8 +47,7 @@ func setup() -> void:
 	if enable_audio:
 		# These will be used by the parent class WeaponComponent
 		fire_sound_name = fire_sound
-		reload_sound_name = reload_sound
-		empty_sound_name = empty_sound
+		empty_sound_name = ""  # No empty click sound
 
 func _create_projectile() -> Node:
 	var projectile = super._create_projectile()
@@ -96,10 +86,3 @@ func _spawn_muzzle_flash() -> void:
 		if is_instance_valid(flash):
 			flash.queue_free()
 	)
-
-# Override to play custom reload sound
-func _on_reload_complete() -> void:
-	super._on_reload_complete() 
-	
-	if debug_mode:
-		_debug_print("Missiles reloaded")

@@ -23,6 +23,10 @@ var current_speed: float = 0.0
 var lifetime: float = 0.0
 var shooter: Node = null
 var exploded: bool = false
+var sound_started: bool = false
+
+# Sound IDs
+var missile_sound_id: int = -1
 
 # Timers
 var _smoke_timer: float = 0.0
@@ -55,9 +59,26 @@ func _ready() -> void:
 	if Engine.has_singleton("AudioManager"):
 		_audio_manager = Engine.get_singleton("AudioManager")
 		
-		# Play launch sound
-		if _audio_manager.has_method("play_sfx"):
-			_audio_manager.play_sfx("missile_launch", global_position, randf_range(0.9, 1.1))
+		# Start missile sound after a slight delay to ensure the object is fully set up
+		if _audio_manager.has_method("preload_sfx"):
+			# Make sure the sound is loaded
+			if not _audio_manager.is_sfx_loaded("missile_launch"):
+				_audio_manager.preload_sfx("missile_launch", "res://assets/audio/missile.sfxr")
+			
+			# Start playing the sound with a slight delay to ensure everything is initialized
+			get_tree().create_timer(0.05).timeout.connect(_start_missile_sound)
+	
+	# Make sure we clean up properly when this node is freed
+	tree_exiting.connect(_on_tree_exiting)
+
+func _start_missile_sound() -> void:
+	if _audio_manager and _audio_manager.has_method("play_sfx") and not exploded:
+		var sound_player = _audio_manager.play_sfx("missile_launch", global_position, 1.0, 0.0)
+		sound_started = true
+		
+		# Try to get a sound ID if the AudioManager supports it
+		if _audio_manager.has_method("get_last_sound_id"):
+			missile_sound_id = _audio_manager.get_last_sound_id()
 
 func _process(delta: float) -> void:
 	if exploded:
@@ -81,6 +102,10 @@ func _physics_process(delta: float) -> void:
 		
 	# Apply position change based on velocity
 	position += velocity * delta
+	
+	# Update sound position for AudioManager
+	if sound_started and _audio_manager and _audio_manager.has_method("update_sfx_position"):
+		_audio_manager.update_sfx_position("missile_launch", global_position)
 
 func _update_missile(delta: float) -> void:
 	# Accelerate missile
@@ -140,7 +165,24 @@ func _on_body_entered(body: Node2D) -> void:
 		return
 	
 	hit_target.emit(body)
+	
+	# If hitting an asteroid, play the debris sound after explosion
+	if body.is_in_group("asteroid") or body.is_in_group("asteroids"):
+		call_deferred("_play_debris_sound")
+		
 	explode()
+	
+func _play_debris_sound() -> void:
+	# Small delay for better audio effect
+	await get_tree().create_timer(0.1).timeout
+	
+	if _audio_manager and _audio_manager.has_method("play_sfx") and not is_queued_for_deletion():
+		# Make sure the sound is loaded
+		if not _audio_manager.is_sfx_loaded("explosion_debris"):
+			_audio_manager.preload_sfx("explosion_debris", "res://assets/audio/explosion_debris.wav")
+			
+		# Play at maximum volume
+		_audio_manager.play_sfx("explosion_debris", global_position, 1.0, 0.0)
 
 # Explode the missile
 func explode() -> void:
@@ -149,12 +191,20 @@ func explode() -> void:
 		
 	exploded = true
 	
+	# Stop missile sound immediately
+	_stop_missile_sound()
+	
 	# Create explosion effect
 	_create_explosion_effect()
 	
-	# Play explosion sound
+	# Play explosion sound with maximum volume
 	if _audio_manager and _audio_manager.has_method("play_sfx"):
-		_audio_manager.play_sfx("explosion", global_position, randf_range(0.9, 1.1))
+		# Make sure the sound is loaded
+		if not _audio_manager.is_sfx_loaded("explosion_fire"):
+			_audio_manager.preload_sfx("explosion_fire", "res://assets/audio/explosion_fire.wav")
+			
+		# Play at maximum volume
+		_audio_manager.play_sfx("explosion_fire", global_position, 1.0, 0.0)
 	
 	# Hide missile graphics
 	if _sprite:
@@ -175,6 +225,26 @@ func explode() -> void:
 	
 	# Remove after explosion finishes
 	get_tree().create_timer(0.8).timeout.connect(queue_free)
+
+# Stop missile sound using multiple approaches to ensure it stops
+func _stop_missile_sound() -> void:
+	if _audio_manager:
+		# Try all possible methods to stop the sound
+		if _audio_manager.has_method("stop_sfx"):
+			_audio_manager.stop_sfx("missile_launch")
+			
+		if missile_sound_id >= 0 and _audio_manager.has_method("stop_sound_by_id"):
+			_audio_manager.stop_sound_by_id(missile_sound_id)
+			
+		if _audio_manager.has_method("stop_all_sfx"):
+			_audio_manager.stop_all_sfx()
+			
+	sound_started = false
+	missile_sound_id = -1
+
+# Handle tree exit event
+func _on_tree_exiting() -> void:
+	_stop_missile_sound()
 
 # Apply area damage to all bodies in explosion radius
 func _apply_area_damage() -> void:

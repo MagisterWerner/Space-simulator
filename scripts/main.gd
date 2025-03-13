@@ -14,6 +14,11 @@ var player_start_cell: Vector2i = Vector2i(-1, -1)
 var initialization_complete = false
 
 func _ready() -> void:
+	# Load missile sounds
+	AudioManager.preload_sfx("missile_launch", "res://assets/audio/missile.sfxr")
+	AudioManager.preload_sfx("explosion_fire", "res://assets/audio/explosion_fire.wav")
+	AudioManager.preload_sfx("explosion_debris", "res://assets/audio/explosion_debris.wav")
+	
 	screen_size = get_viewport_rect().size
 	
 	# Wait for game settings to initialize if needed
