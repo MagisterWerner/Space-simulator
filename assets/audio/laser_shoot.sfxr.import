@@ -1,0 +1,17 @@
+[remap]
+
+importer="com.timothyqiu.gdfxr.importer"
+type="AudioStreamWAV"
+uid="uid://hmbasxfm32gb"
+path="res://.godot/imported/laser_shoot.sfxr-2e801a530caa6eeafb82b75907f79cb7.sample"
+
+[deps]
+
+source_file="res://assets/audio/laser_shoot.sfxr"
+dest_files=["res://.godot/imported/laser_shoot.sfxr-2e801a530caa6eeafb82b75907f79cb7.sample"]
+
+[params]
+
+loop=false
+bit_depth=0
+sample_rate=0

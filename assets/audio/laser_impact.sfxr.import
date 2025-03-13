@@ -1,0 +1,17 @@
+[remap]
+
+importer="com.timothyqiu.gdfxr.importer"
+type="AudioStreamWAV"
+uid="uid://bkgl4xvcp4bcg"
+path="res://.godot/imported/laser_impact.sfxr-cd921e843d376f3bbe5ca80d946c7969.sample"
+
+[deps]
+
+source_file="res://assets/audio/laser_impact.sfxr"
+dest_files=["res://.godot/imported/laser_impact.sfxr-cd921e843d376f3bbe5ca80d946c7969.sample"]
+
+[params]
+
+loop=false
+bit_depth=0
+sample_rate=0

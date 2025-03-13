@@ -1,4 +1,4 @@
-# health_component.gd - Optimized implementation
+# scripts/components/health_component.gd - Optimized implementation
 extends Component
 class_name HealthComponent
 
@@ -20,6 +20,18 @@ signal died
 @export var recovery_rate: float = 5.0
 @export var recovery_delay: float = 3.0
 @export var critical_health_percentage: float = 0.25
+
+# Damage event settings for better gameplay
+@export_category("Damage Events")
+@export var damage_threshold: float = 0.0  # Minimum damage to register (useful for asteroids)
+@export var damage_multipliers: Dictionary = {
+	"projectile": 1.0,   # Standard multiplier for projectiles
+	"laser": 1.0,        # Laser weapons
+	"missile": 1.5,      # Missiles do 50% more damage
+	"explosion": 1.2,    # Explosions do 20% more damage
+	"impact": 0.8,       # Physical impacts do less damage
+	"collision": 0.6     # Collisions do even less damage
+}
 
 # State tracking
 var last_damage_time: float = 0.0
@@ -51,6 +63,10 @@ func apply_damage(amount: float, damage_type: String = "normal", source: Node = 
 	if invulnerable or _is_dead or amount <= 0:
 		return 0.0
 	
+	# Apply damage threshold filter - ignore tiny damage amounts
+	if amount < damage_threshold:
+		return 0.0
+	
 	# Batch damage in the same frame
 	_current_frame = Engine.get_physics_frames()
 	
@@ -62,6 +78,10 @@ func apply_damage(amount: float, damage_type: String = "normal", source: Node = 
 	_damage_this_frame = amount
 	_last_damage_frame = _current_frame
 	
+	# Apply damage type multipliers if available
+	if damage_multipliers.has(damage_type):
+		amount *= damage_multipliers[damage_type]
+	
 	# Apply modifiers
 	var actual_damage = _calculate_modified_damage(amount, damage_type)
 	
@@ -72,7 +92,7 @@ func apply_damage(amount: float, damage_type: String = "normal", source: Node = 
 		
 		# Update cache and emit signal
 		_health_percent = current_health / max_health
-		damaged.emit(actual_damage, source)
+		damaged.emit(actual_damage, damage_type, source)
 		health_changed.emit(current_health, max_health)
 		
 		if debug_mode:

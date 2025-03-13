@@ -1,0 +1,17 @@
+[remap]
+
+importer="com.timothyqiu.gdfxr.importer"
+type="AudioStreamWAV"
+uid="uid://l6vkcoseyxy1"
+path="res://.godot/imported/asteroid_hit.sfxr-5b3c117926f8228f38e2e9da63988785.sample"
+
+[deps]
+
+source_file="res://assets/audio/asteroid_hit.sfxr"
+dest_files=["res://.godot/imported/asteroid_hit.sfxr-5b3c117926f8228f38e2e9da63988785.sample"]
+
+[params]
+
+loop=false
+bit_depth=0
+sample_rate=0

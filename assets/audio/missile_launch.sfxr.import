@@ -1,0 +1,17 @@
+[remap]
+
+importer="com.timothyqiu.gdfxr.importer"
+type="AudioStreamWAV"
+uid="uid://bn4xjsrx5edyo"
+path="res://.godot/imported/missile_launch.sfxr-713796796c7a774c14d98150e0d2267d.sample"
+
+[deps]
+
+source_file="res://assets/audio/missile_launch.sfxr"
+dest_files=["res://.godot/imported/missile_launch.sfxr-713796796c7a774c14d98150e0d2267d.sample"]
+
+[params]
+
+loop=false
+bit_depth=0
+sample_rate=0

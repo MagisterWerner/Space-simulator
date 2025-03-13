@@ -1,6 +1,13 @@
 # scripts/projectiles/missile_projectile.gd
-extends "res://scripts/entities/projectile.gd"
+extends Area2D
 class_name MissileProjectile
+
+signal hit_target(target)
+
+# Core properties
+@export var speed: float = 300.0
+@export var damage: float = 50.0
+@export var lifespan: float = 5.0
 
 # Missile properties
 @export var acceleration: float = 150.0
@@ -18,6 +25,10 @@ class_name MissileProjectile
 @export var max_distance_to_target: float = 1500.0
 
 # Internal state
+var velocity: Vector2 = Vector2.ZERO
+var lifetime: float = 0.0
+var shooter: Node = null
+var hit_targets: Array = []
 var target: Node2D = null
 var current_speed: float = 0.0
 var exploded: bool = false
@@ -28,7 +39,7 @@ var _smoke_timer: float = 0.0
 var _smoke_interval: float = 0.05
 var _initial_acceleration_time: float = 0.5
 var _initial_acceleration_timer: float = 0.0
-var _engine_particles: GPUParticles2D = null
+var _engine_particles: CPUParticles2D = null
 var _smoke_trail_points: Array = []
 
 # Cached references
@@ -36,10 +47,9 @@ var _audio_manager = null
 var _sprite: Sprite2D = null
 
 func _ready() -> void:
-	super._ready()
-	
-	# Setup components
-	_setup_components()
+	# Set up collision properties
+	collision_layer = 8  # Projectile layer
+	collision_mask = 4   # Asteroid layer (layer 3)
 	
 	# Get engine particles
 	_engine_particles = get_node_or_null("EngineParticles")
@@ -47,8 +57,11 @@ func _ready() -> void:
 	# Store initial speed
 	current_speed = speed
 	
+	# Calculate initial velocity
+	velocity = Vector2(current_speed, 0).rotated(rotation)
+	
 	# Connect signals
-	body_entered.connect(_on_missile_hit_body)
+	body_entered.connect(_on_body_entered)
 	
 	# Get audio manager
 	if Engine.has_singleton("AudioManager"):
@@ -57,18 +70,9 @@ func _ready() -> void:
 	# Play rocket sound
 	if _audio_manager and _audio_manager.has_method("play_sfx"):
 		_audio_manager.play_sfx("missile_launch", global_position, randf_range(0.9, 1.1))
-
-func _setup_components() -> void:
+	
 	# Cache sprite reference
 	_sprite = get_node_or_null("Sprite2D")
-	
-	# Setup smoke trail
-	if smoke_trail:
-		_setup_smoke_trail()
-
-func _setup_smoke_trail() -> void:
-	# We'll create smoke particles at points along the missile's path
-	_smoke_trail_points.clear()
 
 func _process(delta: float) -> void:
 	if exploded:
@@ -87,8 +91,13 @@ func _process(delta: float) -> void:
 	if smoke_trail:
 		_update_smoke_trail(delta)
 	
-	# Update position using velocity from parent class
+	# Update position using velocity
 	position += velocity * delta
+	
+	# Update lifetime - explode at end
+	lifetime += delta
+	if lifetime >= lifespan:
+		explode()
 
 func _update_timers(delta: float) -> void:
 	_smoke_timer += delta
@@ -96,6 +105,9 @@ func _update_timers(delta: float) -> void:
 	# Initial acceleration phase
 	if _initial_acceleration_timer < _initial_acceleration_time:
 		_initial_acceleration_timer += delta
+	
+	# Track target position changes
+	_target_update_timer += delta
 
 func _update_target_tracking(delta: float) -> void:
 	# Skip if no target or homing disabled
@@ -108,7 +120,6 @@ func _update_target_tracking(delta: float) -> void:
 		return
 	
 	# Calculate target velocity (used for leading the target)
-	_target_update_timer += delta
 	if _target_update_timer >= 0.1:
 		# Update every 0.1 seconds
 		_target_update_timer = 0.0
@@ -161,14 +172,30 @@ func _update_smoke_trail(delta: float) -> void:
 
 # Create a smoke particle at current position
 func _emit_smoke_particle() -> void:
-	var smoke = GPUParticles2D.new()
+	var smoke = CPUParticles2D.new()
 	smoke.global_position = global_position
 	smoke.emitting = true
 	smoke.one_shot = true
 	smoke.explosiveness = 1.0
 	smoke.amount = 1
 	smoke.lifetime = 1.0
-	smoke.process_material = _create_smoke_material()
+	
+	# Configure particle properties
+	smoke.direction = Vector3(-1, 0, 0)  # Opposite to missile direction
+	smoke.spread = 15.0
+	smoke.gravity = Vector3(0, 0, 0)
+	smoke.initial_velocity_min = 5.0
+	smoke.initial_velocity_max = 15.0
+	smoke.scale_amount_min = 5.0
+	smoke.scale_amount_max = 10.0
+	
+	# Create gradient
+	var gradient = Gradient.new()
+	gradient.add_point(0.0, Color(0.7, 0.7, 0.7, 0.7))
+	gradient.add_point(0.5, Color(0.5, 0.5, 0.5, 0.4))
+	gradient.add_point(1.0, Color(0.2, 0.2, 0.2, 0.0))
+	smoke.color_ramp = gradient
+	
 	get_tree().current_scene.add_child(smoke)
 	
 	# Auto-remove after lifetime
@@ -179,35 +206,17 @@ func _emit_smoke_particle() -> void:
 	smoke.add_child(timer)
 	timer.start()
 
-# Create smoke particle material
-func _create_smoke_material() -> ParticleProcessMaterial:
-	var material = ParticleProcessMaterial.new()
-	material.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_POINT
-	material.direction = Vector3(-1, 0, 0)  # Opposite to missile direction
-	material.spread = 15.0
-	material.gravity = Vector3(0, 0, 0)
-	material.initial_velocity_min = 5.0
-	material.initial_velocity_max = 15.0
-	material.scale_min = 5.0
-	material.scale_max = 10.0
-	material.color = Color(0.7, 0.7, 0.7, 0.7)
-	material.color_ramp = _create_smoke_gradient()
-	return material
-
-# Create color gradient for smoke
-func _create_smoke_gradient() -> Gradient:
-	var gradient = Gradient.new()
-	gradient.add_point(0.0, Color(0.7, 0.7, 0.7, 0.7))
-	gradient.add_point(0.5, Color(0.5, 0.5, 0.5, 0.4))
-	gradient.add_point(1.0, Color(0.2, 0.2, 0.2, 0.0))
-	return gradient
-
 # Handle missile hit
-func _on_missile_hit_body(body: Node2D) -> void:
+func _on_body_entered(body: Node2D) -> void:
 	if body == shooter or exploded:
 		return
 	
-	explode()
+	# Process asteroid collisions specifically
+	if body.is_in_group("asteroids"):
+		explode()
+	# Process other collidable objects
+	elif body.has_node("HealthComponent") or body.has_method("take_damage"):
+		explode()
 
 # Explode the missile
 func explode() -> void:
@@ -273,13 +282,29 @@ func _apply_area_damage() -> void:
 		var damage_factor = 1.0 - min(1.0, distance / explosion_radius)
 		var damage_amount = explosion_damage * damage_factor
 		
-		# Apply damage if health component exists
-		if collider.has_node("HealthComponent"):
+		# Handle asteroids specifically
+		if collider.is_in_group("asteroids"):
+			# Try to use health component 
+			var health = collider.get_node_or_null("HealthComponent")
+			if health is HealthComponent:
+				health.apply_damage(damage_amount, "explosion", shooter)
+			# Fall back to direct damage method
+			elif collider.has_method("take_damage"):
+				collider.take_damage(damage_amount, shooter)
+				
+			# Apply knockback
+			if collider is RigidBody2D:
+				var knockback_direction = (collider.global_position - global_position).normalized()
+				var knockback_force = knockback_direction * explosion_knockback * damage_factor
+				collider.apply_central_impulse(knockback_force)
+		
+		# Apply damage to other entities with health components
+		elif collider.has_node("HealthComponent"):
 			var health = collider.get_node("HealthComponent")
 			if health is HealthComponent:
 				health.apply_damage(damage_amount, "explosion", shooter)
 		
-		# Apply knockback if it's a physics body
+		# Apply knockback to other physics bodies
 		if collider is RigidBody2D:
 			var knockback_direction = (collider.global_position - global_position).normalized()
 			var knockback_force = knockback_direction * explosion_knockback * damage_factor
@@ -293,14 +318,35 @@ func _create_explosion_effect() -> void:
 	explosion.global_position = global_position
 	
 	# Add particles
-	var particles = GPUParticles2D.new()
+	var particles = CPUParticles2D.new()
 	particles.name = "ExplosionParticles"
 	particles.emitting = true
 	particles.one_shot = true
 	particles.explosiveness = 1.0
 	particles.amount = 50
 	particles.lifetime = 0.8
-	particles.process_material = _create_explosion_material()
+	
+	# Configure particle properties
+	particles.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
+	particles.emission_sphere_radius = 10.0
+	particles.direction = Vector3(0, 0, 0)
+	particles.spread = 180.0
+	particles.gravity = Vector2(0, 0)
+	particles.initial_velocity_min = 100.0
+	particles.initial_velocity_max = 200.0
+	particles.damping_min = 150.0
+	particles.damping_max = 200.0
+	particles.scale_amount_min = 5.0
+	particles.scale_amount_max = 10.0
+	
+	# Create gradient
+	var gradient = Gradient.new()
+	gradient.add_point(0.0, Color(1.0, 1.0, 0.3, 1.0))
+	gradient.add_point(0.2, Color(1.0, 0.5, 0.1, 1.0))
+	gradient.add_point(0.5, Color(0.8, 0.2, 0.1, 0.8))
+	gradient.add_point(1.0, Color(0.1, 0.1, 0.1, 0.0))
+	particles.color_ramp = gradient
+	
 	explosion.add_child(particles)
 	
 	# Add light
@@ -324,33 +370,6 @@ func _create_explosion_effect() -> void:
 	timer.one_shot = true
 	timer.timeout.connect(func(): explosion.queue_free())
 	timer.start()
-
-# Create explosion particle material
-func _create_explosion_material() -> ParticleProcessMaterial:
-	var material = ParticleProcessMaterial.new()
-	material.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
-	material.emission_sphere_radius = 10.0
-	material.direction = Vector3(0, 0, 0)
-	material.spread = 180.0
-	material.gravity = Vector3(0, 0, 0)
-	material.initial_velocity_min = 100.0
-	material.initial_velocity_max = 200.0
-	material.damping_min = 150.0
-	material.damping_max = 200.0
-	material.scale_min = 5.0
-	material.scale_max = 10.0
-	material.color = Color(1.0, 0.5, 0.1, 1.0)
-	material.color_ramp = _create_explosion_gradient()
-	return material
-
-# Create color gradient for explosion
-func _create_explosion_gradient() -> Gradient:
-	var gradient = Gradient.new()
-	gradient.add_point(0.0, Color(1.0, 1.0, 0.3, 1.0))
-	gradient.add_point(0.2, Color(1.0, 0.5, 0.1, 1.0))
-	gradient.add_point(0.5, Color(0.8, 0.2, 0.1, 0.8))
-	gradient.add_point(1.0, Color(0.1, 0.1, 0.1, 0.0))
-	return gradient
 
 # Create light texture
 func _create_light_texture() -> Texture2D:
@@ -388,3 +407,22 @@ func set_explosion_radius(radius: float) -> void:
 # Set explosion damage
 func set_explosion_damage(dmg: float) -> void:
 	explosion_damage = dmg
+
+# Set damage
+func set_damage(value: float) -> void:
+	damage = value
+	explosion_damage = value * 0.6  # Explosion damage is 60% of direct hit damage
+
+# Set speed
+func set_speed(value: float) -> void:
+	speed = value
+	current_speed = value
+	velocity = Vector2(current_speed, 0).rotated(rotation)
+
+# Set lifespan
+func set_lifespan(value: float) -> void:
+	lifespan = value
+
+# Set shooter
+func set_shooter(node: Node) -> void:
+	shooter = node

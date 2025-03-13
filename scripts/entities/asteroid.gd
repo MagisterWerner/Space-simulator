@@ -1,4 +1,4 @@
-# scripts/entities/asteroid.gd - Enhanced implementation with RigidBody2D physics and accurate collision shapes
+# scripts/entities/asteroid.gd - Enhanced for destructibility
 extends RigidBody2D
 class_name Asteroid
 
@@ -24,7 +24,7 @@ var explosion_scene_path: String = "res://scenes/explosion_effect.tscn"
 @export var max_linear_velocity: float = 30.0
 @export var min_angular_velocity: float = -1.5
 @export var max_angular_velocity: float = 1.5
-@export var mass_multiplier: float = 1.0
+@export var mass_multiplier: float = 2.5  # Increased from 1.0 to make asteroids heavier
 @export var damping_factor: float = 0.0  # Use this to set both linear and angular damp
 @export var generate_polygon_collision: bool = true
 @export var collision_precision: int = 16
@@ -33,9 +33,9 @@ var explosion_scene_path: String = "res://scenes/explosion_effect.tscn"
 
 # Size-specific properties
 var _size_properties = {
-	"small": {"health": 10.0, "mass": 1.0, "scale": 0.5, "points": 50, "fragments": 0},
-	"medium": {"health": 25.0, "mass": 2.5, "scale": 1.0, "points": 100, "fragments": 2},
-	"large": {"health": 50.0, "mass": 5.0, "scale": 1.5, "points": 200, "fragments": 3}
+	"small": {"health": 15.0, "mass": 1.5, "scale": 0.5, "points": 50, "fragments": 0},
+	"medium": {"health": 35.0, "mass": 3.0, "scale": 1.0, "points": 100, "fragments": 2},
+	"large": {"health": 70.0, "mass": 6.0, "scale": 1.5, "points": 200, "fragments": 3}
 }
 
 # Hit flash effect
@@ -108,7 +108,7 @@ func setup(size: String, variant: int, scale_value: float, rot_speed: float = 0.
 		health_component.max_health = size_props["health"]
 		health_component.current_health = health_component.max_health
 	
-	# Set physics properties
+	# Set physics properties - increased mass multiplier for all asteroids
 	mass = size_props["mass"] * mass_multiplier * scale_value
 	points_value = size_props["points"]
 	

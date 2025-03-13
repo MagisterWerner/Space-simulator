@@ -1,118 +1,96 @@
 # scripts/projectiles/laser_projectile.gd
-extends "res://scripts/entities/projectile.gd"
+extends Area2D
 class_name LaserProjectile
 
-# Laser specific properties
+signal hit_target(target)
+
+@export var speed: float = 1000.0
+@export var damage: float = 10.0
+@export var lifespan: float = 2.0
+@export var pierce_targets: bool = false
+@export var pierce_count: int = 0  # 0 means no piercing, > 0 is number of targets that can be pierced
 @export var laser_color: Color = Color(1.0, 0.2, 0.2, 1.0)
 @export var laser_width: float = 2.0
-@export var laser_glow_strength: float = 0.8
-@export var trail_length: int = 10
+@export var impact_effect_scene: PackedScene = null
 
-# Visual components
+var velocity: Vector2 = Vector2.ZERO
+var lifetime: float = 0.0
+var shooter: Node = null
+var hit_targets: Array = []
+
+# Visual components 
+var _sprite: Sprite2D = null
 var _trail: Line2D = null
 var _light: PointLight2D = null
-var _sprite: Sprite2D = null
-var _particles: GPUParticles2D = null
-
-# Trail history
-var _trail_points: Array = []
-var _max_trail_points: int = 10
 
 func _ready() -> void:
-	super._ready()
+	# Set up collision properties
+	collision_layer = 8  # Projectile layer
+	collision_mask = 4   # Asteroid layer (layer 3)
 	
-	# Setup visual components
+	# Pre-calculate velocity once
+	velocity = Vector2.RIGHT.rotated(rotation) * speed
+	
+	# Connect collision signal
+	body_entered.connect(_on_body_entered)
+	
+	# Set up visuals
 	_setup_visual_components()
 	
-	# Adjust collision shape
+	# Cache sprite reference
+	_sprite = get_node_or_null("Sprite2D")
+	if _sprite:
+		_sprite.modulate = laser_color
+
+func _setup_visual_components() -> void:
+	# Setup trail effect
+	_setup_trail()
+	
+	# Setup light effect for better visibility
+	_setup_light()
+	
+	# Update collision shape based on laser width
 	var collision_shape = get_node_or_null("CollisionShape2D")
 	if collision_shape and collision_shape is CollisionShape2D:
 		var shape = collision_shape.shape
 		if shape is RectangleShape2D:
-			shape.size.x = laser_width + 2
-			shape.size.y = laser_width + 2
-	
-	# Connect additional signals
-	body_entered.connect(_on_laser_hit_body)
-
-func _setup_visual_components() -> void:
-	# Setup sprite if it exists
-	_sprite = get_node_or_null("Sprite2D")
-	if _sprite:
-		_sprite.modulate = laser_color
-	
-	# Create trail effect
-	_setup_trail()
-	
-	# Setup light
-	_setup_light()
-	
-	# Setup particles
-	_setup_particles()
+			shape.size.x = 16.0  # Length along X axis
+			shape.size.y = laser_width  # Width along Y axis
 
 func _setup_trail() -> void:
-	if not _trail:
-		_trail = Line2D.new()
-		_trail.name = "LaserTrail"
-		_trail.width = laser_width
-		_trail.default_color = laser_color
-		_trail.joint_mode = Line2D.LINE_JOINT_ROUND
-		_trail.begin_cap_mode = Line2D.LINE_CAP_ROUND
-		_trail.end_cap_mode = Line2D.LINE_CAP_ROUND
-		_trail.z_index = -1  # Behind the projectile
-		add_child(_trail)
-		
-		# Initialize trail points
-		_trail_points.clear()
-		for i in range(_max_trail_points):
-			_trail_points.append(Vector2.ZERO)
-			_trail.add_point(Vector2.ZERO)
+	# Remove any existing trail
+	if has_node("LaserTrail"):
+		get_node("LaserTrail").queue_free()
+	
+	# Create new trail
+	_trail = Line2D.new()
+	_trail.name = "LaserTrail"
+	_trail.width = laser_width
+	_trail.default_color = laser_color
+	_trail.joint_mode = Line2D.LINE_JOINT_ROUND
+	_trail.begin_cap_mode = Line2D.LINE_CAP_ROUND
+	_trail.end_cap_mode = Line2D.LINE_CAP_ROUND
+	_trail.z_index = -1  # Behind the projectile
+	add_child(_trail)
+	
+	# Set up trail points - pointing back along local X axis
+	_trail.add_point(Vector2(-20, 0))  # Tail of laser
+	_trail.add_point(Vector2(0, 0))    # Head of laser at projectile position
 
 func _setup_light() -> void:
-	if not _light:
-		_light = PointLight2D.new()
-		_light.name = "LaserGlow"
-		_light.color = laser_color
-		_light.energy = laser_glow_strength
-		_light.texture = _create_light_texture()
-		_light.texture_scale = laser_width * 0.5
-		add_child(_light)
-
-func _setup_particles() -> void:
-	if not _particles:
-		_particles = GPUParticles2D.new()
-		_particles.name = "LaserParticles"
-		_particles.amount = 10
-		_particles.lifetime = 0.5
-		_particles.local_coords = false
-		_particles.emitting = true
-		_particles.process_material = _create_particle_material()
-		add_child(_particles)
-
-func _process(delta: float) -> void:
-	super._process(delta)
+	# Remove any existing light
+	if has_node("LaserGlow"):
+		get_node("LaserGlow").queue_free()
 	
-	# Update trail effect
-	_update_trail()
+	# Create new light
+	_light = PointLight2D.new()
+	_light.name = "LaserGlow"
+	_light.color = laser_color
+	_light.energy = 0.8
+	_light.texture = _create_light_texture()
+	_light.texture_scale = laser_width * 0.5
+	add_child(_light)
 
-# Update the trail effect by shifting positions
-func _update_trail() -> void:
-	if not _trail:
-		return
-	
-	# Shift trail points
-	for i in range(_trail_points.size() - 1, 0, -1):
-		_trail_points[i] = _trail_points[i - 1]
-	
-	# Set the first point to current position
-	_trail_points[0] = Vector2.ZERO  # Local coordinates
-	
-	# Update line points
-	for i in range(_trail_points.size()):
-		if i < _trail.get_point_count():
-			_trail.set_point_position(i, _trail_points[i])
-
-# Create a simple light texture
 func _create_light_texture() -> Texture2D:
 	var image = Image.create(32, 32, false, Image.FORMAT_RGBA8)
 	image.fill(Color(1, 1, 1, 1))
@@ -127,47 +105,98 @@ func _create_light_texture() -> Texture2D:
 	
 	return ImageTexture.create_from_image(image)
 
-# Create particle material
-func _create_particle_material() -> ParticleProcessMaterial:
-	var material = ParticleProcessMaterial.new()
-	material.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_POINT
-	material.direction = Vector3(0, 0, 0)
-	material.spread = 180.0
-	material.gravity = Vector3(0, 0, 0)
-	material.initial_velocity_min = 5.0
-	material.initial_velocity_max = 15.0
-	material.scale_min = 1.0
-	material.scale_max = 2.0
-	material.color = laser_color
-	material.color_ramp = _create_color_gradient()
-	return material
+func _process(delta: float) -> void:
+	# Apply movement
+	position += velocity * delta
+	
+	# Update lifetime - queue_free at end
+	lifetime += delta
+	if lifetime >= lifespan:
+		queue_free()
 
-# Create color gradient for particles
-func _create_color_gradient() -> Gradient:
-	var gradient = Gradient.new()
-	gradient.add_point(0.0, laser_color)
-	gradient.add_point(1.0, Color(laser_color.r, laser_color.g, laser_color.b, 0.0))
-	return gradient
-
-# Handle laser hit
-func _on_laser_hit_body(body: Node2D) -> void:
-	if body == shooter:
+func _on_body_entered(body: Node2D) -> void:
+	# Skip already hit bodies and shooter
+	if body == shooter or hit_targets.has(body):
 		return
 	
-	# Create impact effect on hit
-	_create_impact_effect(body)
+	# Process asteroid collisions
+	if body.is_in_group("asteroids"):
+		# Apply damage to asteroid via its HealthComponent or take_damage method
+		var damage_applied = false
+		
+		# Try to get health component directly
+		var health = body.get_node_or_null("HealthComponent")
+		if health and health.has_method("apply_damage"):
+			health.apply_damage(damage, "laser", shooter)
+			damage_applied = true
+		# Alternatively try direct take_damage method
+		elif body.has_method("take_damage"):
+			body.take_damage(damage, shooter)
+			damage_applied = true
+			
+		if damage_applied:
+			hit_target.emit(body)
+			hit_targets.append(body)
+			
+			# Create impact effect
+			_create_impact_effect(body)
+			
+			# Check if we should pierce through this target
+			if not pierce_targets:
+				queue_free()
+				return
+				
+			# Limited piercing
+			if pierce_count > 0:
+				pierce_count -= 1
+				if pierce_count <= 0:
+					queue_free()
+	
+	# Process other types of collisions
+	elif body.has_node("HealthComponent"):
+		var health = body.get_node("HealthComponent")
+		if health and health.has_method("apply_damage"):
+			health.apply_damage(damage, "laser", shooter)
+			hit_target.emit(body)
+			hit_targets.append(body)
+		
+		# Create impact effect
+		_create_impact_effect(body)
+		
+		# Handle piercing logic
+		if not pierce_targets:
+			queue_free()
+		elif pierce_count > 0:
+			pierce_count -= 1
+			if pierce_count <= 0:
+				queue_free()
 
 # Create laser impact effect at hit position
 func _create_impact_effect(body: Node2D) -> void:
 	# Create particles at impact point
-	var impact_particles = GPUParticles2D.new()
+	var impact_particles = CPUParticles2D.new()
 	impact_particles.global_position = global_position
 	impact_particles.emitting = true
 	impact_particles.one_shot = true
 	impact_particles.explosiveness = 0.8
 	impact_particles.amount = 15
 	impact_particles.lifetime = 0.5
-	impact_particles.process_material = _create_impact_material()
+	impact_particles.direction = Vector2(-1, 0)  # Opposite to laser direction
+	impact_particles.spread = 30.0
+	impact_particles.initial_velocity_min = 20.0
+	impact_particles.initial_velocity_max = 50.0
+	impact_particles.scale_amount_min = 1.0
+	impact_particles.scale_amount_max = 3.0
+	
+	# Set particle direction based on projectile rotation
+	impact_particles.rotation = rotation + PI  # Opposite direction
+	
+	# Create color gradient
+	var gradient = Gradient.new()
+	gradient.add_point(0.0, laser_color)
+	gradient.add_point(1.0, Color(laser_color.r, laser_color.g, laser_color.b, 0.0))
+	impact_particles.color_ramp = gradient
+	
 	get_tree().current_scene.add_child(impact_particles)
 	
 	# Auto-remove particles after they finish
@@ -177,21 +206,18 @@ func _create_impact_effect(body: Node2D) -> void:
 	timer.one_shot = true
 	timer.timeout.connect(func(): impact_particles.queue_free())
 	timer.start()
+	
+	# Play impact sound if available
+	if Engine.has_singleton("AudioManager"):
+		AudioManager.play_sfx("laser_impact", global_position, randf_range(0.9, 1.1))
 
-# Create impact particle material
-func _create_impact_material() -> ParticleProcessMaterial:
-	var material = ParticleProcessMaterial.new()
-	material.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_POINT
-	material.direction = Vector3(-1, 0, 0)  # Opposite to laser direction
-	material.spread = 30.0
-	material.gravity = Vector3(0, 0, 0)
-	material.initial_velocity_min = 20.0
-	material.initial_velocity_max = 50.0
-	material.scale_min = 1.0
-	material.scale_max = 3.0
-	material.color = laser_color
-	material.color_ramp = _create_color_gradient()
-	return material
+# Set direction method - use this to ensure proper movement direction
+func set_direction(direction: Vector2) -> void:
+	# Apply the rotation to match the direction vector
+	rotation = direction.angle()
+	
+	# Set velocity to move in that direction
+	velocity = direction.normalized() * speed
 
 # Set the laser color
 func set_laser_color(color: Color) -> void:
@@ -206,9 +232,6 @@ func set_laser_color(color: Color) -> void:
 	
 	if _light:
 		_light.color = color
-	
-	if _particles and _particles.process_material:
-		_particles.process_material.color = color
 
 # Set the laser width
 func set_laser_width(width: float) -> void:
@@ -225,5 +248,24 @@ func set_laser_width(width: float) -> void:
 	if collision_shape and collision_shape is CollisionShape2D:
 		var shape = collision_shape.shape
 		if shape is RectangleShape2D:
-			shape.size.x = width + 2
-			shape.size.y = width + 2
+			shape.size.y = width  # Width is on Y axis when rotated correctly
+
+# Set other properties with efficient method signatures
+func set_damage(value: float) -> void:
+	damage = value
+
+func set_speed(value: float) -> void:
+	speed = value
+	# Update velocity with new speed
+	if is_inside_tree():
+		velocity = velocity.normalized() * speed
+
+func set_lifespan(value: float) -> void:
+	lifespan = value
+
+func set_shooter(node: Node) -> void:
+	shooter = node
+
+func set_piercing(value: bool, count: int = 0) -> void:
+	pierce_targets = value
+	pierce_count = count

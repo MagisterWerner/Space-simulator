@@ -1,0 +1,17 @@
+[remap]
+
+importer="com.timothyqiu.gdfxr.importer"
+type="AudioStreamWAV"
+uid="uid://bnjqcrpo3xs3a"
+path="res://.godot/imported/asteroid_break.sfxr-04827265bd650c6a1a3a0d85919b19c3.sample"
+
+[deps]
+
+source_file="res://assets/audio/asteroid_break.sfxr"
+dest_files=["res://.godot/imported/asteroid_break.sfxr-04827265bd650c6a1a3a0d85919b19c3.sample"]
+
+[params]
+
+loop=false
+bit_depth=0
+sample_rate=0

@@ -140,6 +140,11 @@ func _create_projectile() -> Node:
 		
 		if projectile.has_method("set_laser_width"):
 			projectile.set_laser_width(laser_width)
+			
+		# IMPORTANT: Set direction for proper laser orientation and movement
+		if projectile.has_method("set_direction"):
+			var firing_dir = Vector2.RIGHT.rotated(owner_entity.global_rotation)
+			projectile.set_direction(firing_dir)
 	
 	return projectile
 
