@@ -48,6 +48,9 @@ var _original_modulate: Color = Color.WHITE
 var _cached_thrust_direction: Vector2 = Vector2.ZERO
 var _collision_polygon_points: PackedVector2Array
 
+# Audio reference 
+var _audio_manager = null
+
 # Debug properties
 var debug_mode: bool = false
 var debug_collision_shapes: bool = false
@@ -76,6 +79,21 @@ func _ready() -> void:
 
 	# Delayed collision shape generation (after texture is loaded)
 	call_deferred("_setup_collision_shape")
+	
+	# Make sure we're connected to tree_exiting for audio cleanup
+	tree_exiting.connect(_on_tree_exiting)
+	
+	# Get AudioManager reference
+	_audio_manager = get_node_or_null("/root/AudioManager")
+	
+	# Preload asteroid sounds
+	_preload_sounds()
+
+func _preload_sounds() -> void:
+	if _audio_manager:
+		# Only preload explosion debris sound
+		if not _audio_manager.is_sfx_loaded("explosion_debris"):
+			_audio_manager.preload_sfx("explosion_debris", "res://assets/audio/explosion_debris.wav", 20)
 
 # Process function for hit flash effect
 func _process(delta: float) -> void:
@@ -380,10 +398,6 @@ func _on_damaged(amount: float, _type: String, _source: Node) -> void:
 		_is_hit_flashing = true
 		_hit_flash_timer = HIT_FLASH_DURATION
 		set_process(true)
-	
-	# Play hit sound if audio manager is available
-	if Engine.has_singleton("AudioManager"):
-		AudioManager.play_sfx("asteroid_hit", global_position)
 
 # Explosion and destruction handling
 func _on_destroyed() -> void:
@@ -393,6 +407,9 @@ func _on_destroyed() -> void:
 	else:
 		# Fallback explosion
 		_create_explosion()
+	
+	# Create a sound player for the debris explosion sound
+	_play_debris_sound()
 	
 	# Spawn fragments based on size category
 	var fragment_count = _size_properties[size_category]["fragments"]
@@ -423,6 +440,25 @@ func _on_destroyed() -> void:
 		EntityManager.deregister_entity(self)
 	
 	queue_free()
+
+# Play debris sound with special handling to ensure it plays completely
+func _play_debris_sound() -> void:
+	if _audio_manager:
+		# Create a standalone player for the explosion debris sound
+		var player = _audio_manager.play_sfx("explosion_debris", global_position, 1.0, 0.0)
+		
+		# Make sure sound can complete even after asteroid is gone
+		if player:
+			# Reparent the player to the scene instead of the asteroid
+			if player.get_parent() == self:
+				remove_child(player)
+				get_tree().current_scene.add_child(player)
+				player.global_position = global_position
+
+# When tree exiting - ensure sound cleanup
+func _on_tree_exiting() -> void:
+	# No specific cleanup needed now that we're reparenting the sound
+	pass
 
 # Create explosion effect
 func _create_explosion() -> void:
@@ -462,10 +498,6 @@ func _create_explosion() -> void:
 		# Auto cleanup with timer
 		get_tree().current_scene.add_child(particles)
 		get_tree().create_timer(0.8).timeout.connect(func(): particles.queue_free())
-	
-	# Play sound if audio manager is available
-	if Engine.has_singleton("AudioManager"):
-		AudioManager.play_sfx("explosion", global_position)
 
 # Apply force in direction
 func apply_force_in_direction(direction: Vector2, force: float) -> void:
