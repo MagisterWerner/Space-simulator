@@ -50,8 +50,10 @@ var _original_modulate: Color = Color.WHITE
 var _cached_thrust_direction: Vector2 = Vector2.ZERO
 var _collision_polygon_points: PackedVector2Array
 
-# Audio reference 
+# Manager references
 var _audio_manager = null
+var _fragment_pool_manager = null
+var _effect_pool_manager = null
 
 # Debug properties
 var debug_mode: bool = false
@@ -82,13 +84,15 @@ func _ready() -> void:
 	# Make sure we're connected to tree_exiting for audio cleanup
 	tree_exiting.connect(_on_tree_exiting)
 	
-	# Get AudioManager reference
+	# Get manager references
 	_audio_manager = get_node_or_null("/root/AudioManager")
+	_fragment_pool_manager = get_node_or_null("/root/FragmentPoolManager")
+	_effect_pool_manager = get_node_or_null("/root/EffectPoolManager")
 	
-	# Preload asteroid sounds
+	# Preload sounds
 	_preload_sounds()
 
-# New method to set up from AsteroidData
+# Setting up from asteroid data
 func setup_from_data(asteroid_data: AsteroidData) -> void:
 	# Set core properties
 	entity_id = asteroid_data.entity_id
@@ -190,9 +194,6 @@ func _create_collision_from_points(points: PackedVector2Array) -> void:
 	if collision_shape:
 		collision_shape.set_deferred("disabled", true)
 
-# The rest of the original Asteroid class implementation follows...
-# (Only the new or modified methods are shown above)
-
 func _preload_sounds() -> void:
 	if _audio_manager:
 		# Only preload explosion debris sound
@@ -271,7 +272,44 @@ func _setup_collision_shape() -> void:
 	else:
 		_create_fallback_collision_shape()
 
-# Generate polygon collision shape from texture
+# Create primitive collision shape as fallback
+func _create_fallback_collision_shape() -> void:
+	if not sprite:
+		return
+	
+	var radius = 16.0 * base_scale  # Default radius based on scale
+	
+	if sprite.texture:
+		radius = (sprite.texture.get_width() / 2) * sprite.scale.x * 0.9
+	
+	if collision_shape and collision_shape.shape is CircleShape2D:
+		# Already has a circle shape, just update radius
+		collision_shape.shape.radius = radius
+		# FIX: Use set_deferred for changing disabled state
+		collision_shape.set_deferred("disabled", false)
+	else:
+		# Create new circle shape
+		var circle = CircleShape2D.new()
+		circle.radius = radius
+		
+		if collision_shape:
+			collision_shape.shape = circle
+			# FIX: Use set_deferred for changing disabled state
+			collision_shape.set_deferred("disabled", false)
+		else:
+			# Create new collision shape if it doesn't exist
+			var new_shape = CollisionShape2D.new()
+			new_shape.name = "CollisionShape2D"
+			new_shape.shape = circle
+			add_child(new_shape)
+			collision_shape = new_shape
+	
+	# Disable the polygon if we're using a circle
+	if collision_polygon:
+		# FIX: Use set_deferred for changing disabled state
+		collision_polygon.set_deferred("disabled", true)
+
+# Generate polygon collision from sprite
 func _generate_polygon_collision() -> void:
 	if not sprite or not sprite.texture:
 		_create_fallback_collision_shape()
@@ -319,105 +357,8 @@ func _generate_polygon_collision() -> void:
 	# Store the points for later
 	_collision_polygon_points = points
 	
-	# Create collision from these points
-	_create_collision_from_points(points)
-	
-	# Create simplified collision shape if the polygon is complex
-	if autogenerate_convex_shapes and points.size() > 8:
-		_create_simplified_collision(points)
-
-# Create primitive collision shape as fallback
-func _create_fallback_collision_shape() -> void:
-	if not sprite:
-		return
-	
-	var radius = 16.0 * base_scale  # Default radius based on scale
-	
-	if sprite.texture:
-		radius = (sprite.texture.get_width() / 2) * sprite.scale.x * 0.9
-	
-	if collision_shape and collision_shape.shape is CircleShape2D:
-		# Already has a circle shape, just update radius
-		collision_shape.shape.radius = radius
-		# FIX: Use set_deferred for changing disabled state
-		collision_shape.set_deferred("disabled", false)
-	else:
-		# Create new circle shape
-		var circle = CircleShape2D.new()
-		circle.radius = radius
-		
-		if collision_shape:
-			collision_shape.shape = circle
-			# FIX: Use set_deferred for changing disabled state
-			collision_shape.set_deferred("disabled", false)
-		else:
-			# Create new collision shape if it doesn't exist
-			var new_shape = CollisionShape2D.new()
-			new_shape.name = "CollisionShape2D"
-			new_shape.shape = circle
-			add_child(new_shape)
-			collision_shape = new_shape
-	
-	# Disable the polygon if we're using a circle
-	if collision_polygon:
-		# FIX: Use set_deferred for changing disabled state
-		collision_polygon.set_deferred("disabled", true)
-
-# Create simplified collision shape suitable for physics
-func _create_simplified_collision(points: PackedVector2Array) -> void:
-	# We'll use a single simplified convex polygon instead of trying
-	# to do complex convex decomposition which is failing
-	
-	# First, check if we have enough points
-	if points.size() < 3:
-		_create_fallback_collision_shape()
-		return
-	
-	# Simple convexification by using a subset of the points
-	# This creates a simplified but usable collision shape
-	var simplified_points = PackedVector2Array()
-	
-	# Take a smaller number of points for better physics stability
-	var total_points = min(8, points.size())
-	var step = max(1, points.size() / total_points)
-	
-	for i in range(0, points.size(), step):
-		if simplified_points.size() < total_points:
-			simplified_points.append(points[i])
-	
-	# Make sure we have enough points for a polygon
-	if simplified_points.size() < 3:
-		_create_fallback_collision_shape()
-		return
-	
-	# Ensure the polygon is convex
-	simplified_points = _make_convex_hull(simplified_points)
-	
 	# Use the simplified polygon for collision
-	if collision_polygon:
-		collision_polygon.polygon = simplified_points
-		# FIX: Use set_deferred for changing disabled state
-		collision_polygon.set_deferred("disabled", false)
-	else:
-		# Create new collision polygon if it doesn't exist
-		var new_collision_polygon = CollisionPolygon2D.new()
-		new_collision_polygon.name = "CollisionPolygon2D"
-		new_collision_polygon.polygon = simplified_points
-		add_child(new_collision_polygon)
-		collision_polygon = new_collision_polygon
-	
-	# Disable the circle shape if we use a polygon
-	if collision_shape:
-		# FIX: Use set_deferred for changing disabled state
-		collision_shape.set_deferred("disabled", true)
-		
-# Helper function to create a convex hull
-func _make_convex_hull(points: PackedVector2Array) -> PackedVector2Array:
-	# Implementation of convex hull algorithm from original code...
-	# (For brevity, I've omitted most of the implementation details)
-	
-	# Simple placeholder implementation
-	return points
+	_create_collision_from_points(points)
 
 # Event handlers
 func _on_damaged(amount: float, _type: String, _source: Node) -> void:
@@ -436,7 +377,7 @@ func _on_destroyed() -> void:
 		# Fallback explosion
 		_create_explosion()
 	
-	# Create a sound player for the debris explosion sound
+	# Play debris sound
 	_play_debris_sound()
 	
 	# Get fragment count from size properties
@@ -444,21 +385,41 @@ func _on_destroyed() -> void:
 	
 	# Only proceed if we need to create fragments
 	if fragment_count > 0:
-		# Try different methods to find an asteroid spawner
-		var asteroid_spawner = _find_asteroid_spawner()
-		
-		if asteroid_spawner and asteroid_spawner.has_method("_spawn_fragments"):
-			# Use the spawner's method if available
-			asteroid_spawner._spawn_fragments(
+		# Use the fragment pool manager if available
+		if _fragment_pool_manager and _fragment_pool_manager.has_method("spawn_fragments_for_asteroid"):
+			# Convert size category from string to enum
+			var size_enum
+			match size_category:
+				"small": size_enum = AsteroidData.SizeCategory.SMALL
+				"medium": size_enum = AsteroidData.SizeCategory.MEDIUM
+				"large": size_enum = AsteroidData.SizeCategory.LARGE
+				_: size_enum = AsteroidData.SizeCategory.MEDIUM
+			
+			# Create temporary asteroid data
+			var temp_data = AsteroidData.new(
+				entity_id, # use our entity ID
 				global_position,
-				size_category,
-				fragment_count,
-				base_scale,
-				linear_velocity
+				seed_value,
+				size_enum
 			)
+			temp_data.scale_factor = base_scale
+			temp_data.linear_velocity = linear_velocity
+			
+			# Use pool to spawn fragments
+			_fragment_pool_manager.spawn_fragments_for_asteroid(temp_data)
 		else:
-			# If no spawner found, try direct creation using asteroid generator
+			# Fallback to direct creation if fragment pool not available
 			_spawn_fragments_directly()
+	
+	# Create visual explosion effect using pool if available
+	if _effect_pool_manager:
+		var scale_multiplier = 1.0
+		if size_category == "large":
+			scale_multiplier = 1.5
+		elif size_category == "small":
+			scale_multiplier = 0.7
+			
+		_effect_pool_manager.explosion(global_position, size_category, 0, base_scale * scale_multiplier)
 	
 	# Emit destroyed signal with position, size and points
 	asteroid_destroyed.emit(global_position, size_category, points_value)
@@ -469,5 +430,138 @@ func _on_destroyed() -> void:
 	
 	queue_free()
 
-# The rest of the Asteroid class remains the same...
-# (Only showing the most relevant parts for data-driven updates)
+# Fallback explosion creation
+func _create_explosion() -> void:
+	# Skip if effect pool manager is available
+	if _effect_pool_manager:
+		return
+		
+	# Create a simple explosion effect
+	var particles = CPUParticles2D.new()
+	particles.emitting = true
+	particles.one_shot = true
+	particles.explosiveness = 1.0
+	particles.amount = 50
+	particles.lifetime = 0.5
+	particles.local_coords = false
+	particles.direction = Vector2.ZERO
+	particles.spread = 180
+	particles.gravity = Vector2.ZERO
+	particles.initial_velocity_min = 100
+	particles.initial_velocity_max = 300
+	
+	# Scale based on asteroid size
+	var scale_multiplier = 1.0
+	if size_category == "large":
+		scale_multiplier = 1.5
+		particles.amount = 75
+	elif size_category == "small":
+		scale_multiplier = 0.7
+		particles.amount = 30
+	
+	particles.scale_amount = base_scale * scale_multiplier
+	
+	# Create gradient
+	var gradient = Gradient.new()
+	gradient.add_point(0.0, Color(1.0, 0.7, 0.3, 1.0))
+	gradient.add_point(0.5, Color(1.0, 0.3, 0.1, 0.8))
+	gradient.add_point(1.0, Color(0.2, 0.2, 0.2, 0))
+	particles.color_ramp = gradient
+	
+	get_parent().add_child(particles)
+	particles.global_position = global_position
+	
+	# Auto-cleanup
+	get_tree().create_timer(2.0).timeout.connect(particles.queue_free)
+
+# Play sound for asteroid destruction
+func _play_debris_sound() -> void:
+	if _audio_manager:
+		_audio_manager.play_sfx("explosion_debris", global_position)
+
+# Fallback fragment spawning if fragment pool unavailable
+func _spawn_fragments_directly() -> void:
+	# Try different methods to find an asteroid spawner
+	var asteroid_spawner = _find_asteroid_spawner()
+	
+	if asteroid_spawner and asteroid_spawner.has_method("_spawn_fragments"):
+		# Use the spawner's method if available
+		asteroid_spawner._spawn_fragments(
+			global_position,
+			size_category,
+			_size_properties[size_category]["fragments"],
+			base_scale,
+			linear_velocity
+		)
+	else:
+		# Direct creation of simple fragments if no spawner
+		_create_simple_fragments()
+
+# Find asteroid spawner
+func _find_asteroid_spawner() -> Node:
+	# Try to find existing spawner
+	var spawners = get_tree().get_nodes_in_group("spawners")
+	for spawner in spawners:
+		if spawner.get_script() and (
+			spawner.get_script().resource_path.find("asteroid_spawner.gd") != -1 or
+			spawner.get_script().resource_path.find("fragment_spawner.gd") != -1
+		):
+			return spawner
+	return null
+
+# Create simple fragments in case no spawner or pool is available
+func _create_simple_fragments() -> void:
+	var rng = RandomNumberGenerator.new()
+	rng.randomize()
+	
+	var fragment_count = _size_properties[size_category]["fragments"]
+	if fragment_count <= 0:
+		return
+		
+	for i in range(fragment_count):
+		var fragment = Node2D.new()
+		fragment.name = "SimpleFragment_" + str(i)
+		
+		# Setup visible representation
+		var sprite = Sprite2D.new()
+		sprite.name = "Sprite"
+		
+		# Use a circle as a simple shape if no texture
+		if not sprite.texture:
+			var radius = 8 if size_category == "large" else 5
+			var img = Image.create(radius * 2, radius * 2, false, Image.FORMAT_RGBA8)
+			img.fill(Color(0.5, 0.5, 0.5, 1.0))
+			
+			# Draw a circle
+			for x in range(radius * 2):
+				for y in range(radius * 2):
+					var dist = Vector2(x - radius, y - radius).length()
+					if dist <= radius:
+						img.set_pixel(x, y, Color(0.7, 0.7, 0.7, 1.0))
+			
+			sprite.texture = ImageTexture.create_from_image(img)
+		
+		fragment.add_child(sprite)
+		get_parent().add_child(fragment)
+		
+		# Position and initial velocity
+		var angle = (TAU / fragment_count) * i + rng.randf_range(-0.3, 0.3)
+		var distance = rng.randf_range(10, 30)
+		fragment.global_position = global_position + Vector2(cos(angle), sin(angle)) * distance
+		
+		# Setup animation to fade out
+		var tween = create_tween()
+		tween.tween_property(sprite, "modulate", Color(1, 1, 1, 0), 1.0)
+		tween.tween_callback(fragment.queue_free)
+		
+		# Add simple movement
+		var anim = fragment.create_tween()
+		var explosion_dir = Vector2(cos(angle), sin(angle))
+		var target_pos = fragment.global_position + explosion_dir * rng.randf_range(50, 100)
+		anim.tween_property(fragment, "global_position", target_pos, 1.0)
+
+func _on_tree_exiting() -> void:
+	# Clean up any references
+	# This ensures no memory leaks from signals
+	if sprite:
+		_original_modulate = Color.WHITE
