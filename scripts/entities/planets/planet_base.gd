@@ -1,35 +1,18 @@
 # scripts/entities/planets/planet_base.gd
-# Base class for all planets with moon orbit system
 extends Node2D
 class_name PlanetBase
 
-## Constants and Enums
+# Existing signal declarations
+signal planet_loaded(planet)
+
+# Constants and Enums
 const PlanetThemes = preload("res://scripts/generators/planet_generator_base.gd").PlanetTheme
 const PlanetCategories = preload("res://scripts/generators/planet_generator_base.gd").PlanetCategory
-const ORBIT_COLLISION_MARGIN: float = 16.0
 const DEFAULT_Z_INDEX: int = -7
 
 enum MoonType { ROCKY, ICY, VOLCANIC }
 
-## Signals
-signal planet_loaded(planet)
-
-## Planet Configuration
-@export_group("Planet Properties")
-@export var max_moons: int = 2
-@export var moon_chance: int = 40
-
-@export_group("Moon Orbit Configuration")
-@export var min_moon_distance_factor: float = 1.8
-@export var max_moon_distance_factor: float = 2.5
-@export var max_orbit_deviation: float = 0.15
-@export var moon_orbit_factor: float = 0.05
-
-@export_group("Debug Options")
-@export var debug_draw_orbits: bool = false
-@export var debug_orbit_line_width: float = 1.0
-
-## Internal properties
+# Planet properties
 var seed_value: int = 0
 var planet_texture: Texture2D
 var atmosphere_texture: Texture2D
@@ -39,11 +22,24 @@ var pixel_size: int = 256
 var moons = []
 var is_gaseous_planet: bool = false
 var use_texture_cache: bool = true
+var debug_planet_generation: bool = false
 var grid_x: int = 0
 var grid_y: int = 0
 var atmosphere_data: Dictionary = {}
 
-# Moon type configuration
+# Moon orbit properties
+var max_moons: int = 2
+var moon_chance: int = 40
+var min_moon_distance_factor: float = 1.8
+var max_moon_distance_factor: float = 2.5
+var max_orbit_deviation: float = 0.15
+var moon_orbit_factor: float = 0.05
+
+# Debug options
+var debug_draw_orbits: bool = false
+var debug_orbit_line_width: float = 1.0
+
+# Moon configuration by type
 var _moon_params = {
 	"distance_ranges": {
 		MoonType.VOLCANIC: Vector2(1.3, 1.6),
@@ -61,92 +57,150 @@ var _moon_params = {
 		MoonType.ICY: Color(0.5, 0.8, 1.0, 0.4)
 	},
 	"z_indices": {
-		# Ensure all moon z-indices are negative to stay behind the player
-		# but still allow for depth ordering between moons
 		MoonType.VOLCANIC: -6,
 		MoonType.ROCKY: -7,
 		MoonType.ICY: -8
 	}
 }
 
+# Moon scene references
 var _moon_scenes = {}
 var _initialized: bool = false
-var _init_params: Dictionary = {}
 
 func _ready() -> void:
 	z_index = -10
 	_load_moon_scenes()
 	
-	if not SeedManager.is_connected("seed_changed", _on_seed_changed):
+	if Engine.has_singleton("SeedManager") and not SeedManager.is_connected("seed_changed", _on_seed_changed):
 		SeedManager.connect("seed_changed", _on_seed_changed)
 
 func _process(delta: float) -> void:
 	queue_redraw()
 	_update_moons(delta)
 
-func initialize(params: Dictionary) -> void:
+# Setup from data method
+func setup_from_data(planet_data: PlanetData) -> void:
 	if _initialized:
 		return
+		
+	# Set core planet properties
+	seed_value = planet_data.seed_value
+	grid_x = planet_data.grid_cell.x
+	grid_y = planet_data.grid_cell.y
+	is_gaseous_planet = planet_data.is_gaseous
+	theme_id = planet_data.planet_theme
+	planet_name = planet_data.planet_name
+	pixel_size = planet_data.pixel_size
+	atmosphere_data = planet_data.atmosphere_data
 	
-	_init_params = params.duplicate()
+	# Generate textures
+	_generate_planet_texture()
+	_generate_atmosphere_texture()
 	
-	seed_value = params.seed_value
-	grid_x = params.get("grid_x", 0)
-	grid_y = params.get("grid_y", 0)
-	is_gaseous_planet = params.get("category_override", PlanetCategories.TERRAN) == PlanetCategories.GASEOUS
-	
-	_apply_config_params(params)
-	_perform_specialized_initialization(params)
-	
-	planet_name = _get_planet_type_name() + "-" + str(seed_value % 1000)
-	call_deferred("_create_moons")
+	# Create moons
+	for moon_data in planet_data.moons:
+		_create_moon_from_data(moon_data)
 	
 	_initialized = true
+	planet_loaded.emit(self)
 
-# Fixed: Added underscore to parameter name to indicate it's intentionally unused
-func _on_seed_changed(_new_seed: int) -> void:
-	if not _initialized or _init_params.is_empty():
-		return
+# Create moon from MoonData
+func _create_moon_from_data(moon_data: MoonData) -> Node:
+	# Get the appropriate scene for this moon type
+	var scene_key = "moon_base"
+	match moon_data.moon_type:
+		MoonType.ROCKY: scene_key = "moon_rocky"
+		MoonType.ICY: scene_key = "moon_icy" 
+		MoonType.VOLCANIC: scene_key = "moon_volcanic"
 	
-	if has_node("/root/SeedManager"):
-		var base_seed = SeedManager.get_seed()
-		var seed_offset = seed_value % 1000
-		_init_params.seed_value = base_seed + seed_offset
+	# Fall back to base moon if needed
+	if not _moon_scenes.has(scene_key):
+		scene_key = "moon_base"
+		
+	if not _moon_scenes.has(scene_key):
+		push_error("PlanetBase: Moon scene not found")
+		return null
 	
-	for moon in moons:
-		if is_instance_valid(moon):
-			moon.queue_free()
-	moons.clear()
+	# Instantiate the moon
+	var moon = _moon_scenes[scene_key].instantiate()
+	add_child(moon)
 	
-	initialize(_init_params)
+	# Set up the moon with its data
+	if moon.has_method("setup_from_data"):
+		moon.setup_from_data(moon_data)
+	
+	# Add to moons array
+	moons.append(moon)
+	
+	return moon
 
+# Load moon scenes
 func _load_moon_scenes() -> void:
 	var scenes = {
-		MoonType.ROCKY: "res://scenes/world/moon_rocky.tscn",
-		MoonType.ICY: "res://scenes/world/moon_icy.tscn",
-		MoonType.VOLCANIC: "res://scenes/world/moon_volcanic.tscn"
+		"moon_base": "res://scenes/world/moon_base.tscn",
+		"moon_rocky": "res://scenes/world/moon_rocky.tscn",
+		"moon_icy": "res://scenes/world/moon_icy.tscn",
+		"moon_volcanic": "res://scenes/world/moon_volcanic.tscn"
 	}
 	
-	for type in scenes:
-		var path = scenes[type]
+	for key in scenes:
+		var path = scenes[key]
 		if ResourceLoader.exists(path):
-			_moon_scenes[type] = load(path)
+			_moon_scenes[key] = load(path)
+
+# Handle seed changes
+func _on_seed_changed(_new_seed: int) -> void:
+	# Reload with the same data if we have it
+	if _initialized:
+		# This would ideally reload from the same data with new seed
+		# Implementation depends on how data is stored globally
+		pass
+
+# Virtual method for texture generation - to be overridden
+func _generate_planet_texture() -> void:
+	push_error("PlanetBase: _generate_planet_texture must be overridden")
+
+# Virtual method for atmosphere generation - to be overridden
+func _generate_atmosphere_texture() -> void:
+	push_error("PlanetBase: _generate_atmosphere_texture must be overridden")
+
+# Update moon positions
+func _update_moons(delta: float) -> void:
+	var time = Time.get_ticks_msec() / 1000.0
+	
+	for moon in moons:
+		if not is_instance_valid(moon):
+			continue
+			
+		var moon_angle = moon.base_angle + time * moon.orbit_speed + moon.phase_offset
+		var orbit_position = calculate_orbit_position(moon, moon_angle)
+		
+		moon.position = orbit_position
+		
+		# Set z-index to keep moons behind player but respect planet orbit
+		if is_gaseous_planet:
+			var moon_z = _get_moon_property(moon, "z_index")
+			moon.z_as_relative = true
+			moon.z_index = moon_z
 		else:
-			push_error("Planet: Failed to load moon scene: %s" % path)
+			moon.z_as_relative = true
+			moon.z_index = sin(moon_angle) > 0 if -2 else -12
 
-func _apply_config_params(params: Dictionary) -> void:
-	var props = ["max_moons", "moon_chance", "min_moon_distance_factor", 
-				"max_moon_distance_factor", "max_orbit_deviation", "moon_orbit_factor",
-				"use_texture_cache", "debug_draw_orbits", "debug_orbit_line_width",
-				"is_gaseous_planet"]
-	
-	for prop in props:
-		if params.has(prop):
-			set(prop, params[prop])
-	
-	if params.has("moon_orbit_speed_factor") and params.moon_orbit_speed_factor != 1.0:
-		moon_orbit_factor *= params.moon_orbit_speed_factor
+# Calculate orbit position
+func calculate_orbit_position(moon, angle: float) -> Vector2:
+	if is_gaseous_planet:
+		return Vector2(cos(angle), sin(angle)) * moon.distance
+	else:
+		var deviation = sin(angle * 2) * moon.orbit_deviation
+		var radius = moon.distance * (1.0 + deviation * 0.3)
+		
+		var tilt_factor = 0.4
+		var orbit_x = cos(angle) * radius
+		var orbit_y = sin(angle) * radius * tilt_factor
+		
+		return Vector2(orbit_x, orbit_y)
 
+# Draw the planet and debug orbits
 func _draw() -> void:
 	if atmosphere_texture:
 		var size = Vector2(atmosphere_texture.get_width(), atmosphere_texture.get_height()) / 2
@@ -158,6 +212,7 @@ func _draw() -> void:
 	if debug_draw_orbits:
 		_draw_debug_orbits()
 
+# Draw debug orbits
 func _draw_debug_orbits() -> void:
 	const SEGMENTS = 64
 	for moon in moons:
@@ -178,345 +233,7 @@ func _draw_debug_orbits() -> void:
 		var current_pos = calculate_orbit_position(moon, current_angle)
 		draw_circle(current_pos, 3.0, orbit_color)
 
-func _update_moons(_delta: float) -> void:
-	var time = Time.get_ticks_msec() / 1000.0
-	
-	for moon in moons:
-		if not is_instance_valid(moon):
-			continue
-			
-		var moon_angle = moon.base_angle + time * moon.orbit_speed + moon.phase_offset
-		var orbit_position = calculate_orbit_position(moon, moon_angle)
-		
-		moon.position = orbit_position
-		
-		# Set z-index to keep moons behind player but respect planet orbit
-		if is_gaseous_planet:
-			# Keep the relative z-index for gaseous planets but ensure it's negative
-			var moon_z = _get_moon_property(moon, "z_index")
-			moon.z_as_relative = true
-			moon.z_index = moon_z
-		else:
-			# For terran planets, use a smaller z-index range to properly orbit
-			moon.z_as_relative = true  # Make z-index relative to parent
-			moon.z_index = sin(moon_angle) > 0 if -2 else -12  # Much smaller z-index values
-
-func calculate_orbit_position(moon, angle: float) -> Vector2:
-	if is_gaseous_planet:
-		return Vector2(cos(angle), sin(angle)) * moon.distance
-	else:
-		var deviation = sin(angle * 2) * moon.orbit_deviation
-		var radius = moon.distance * (1.0 + deviation * 0.3)
-		
-		var tilt_factor = 0.4
-		var orbit_x = cos(angle) * radius
-		var orbit_y = sin(angle) * radius * tilt_factor
-		
-		return Vector2(orbit_x, orbit_y)
-
-func _create_moons() -> void:
-	if _moon_scenes.is_empty():
-		push_error("Planet: Moon scenes not available")
-		emit_signal("planet_loaded", self)
-		return
-	
-	var rng = RandomNumberGenerator.new()
-	rng.seed = seed_value
-	
-	var num_moons = 1
-	
-	if is_gaseous_planet:
-		num_moons = 3
-		
-		for i in range(3):  # Check for additional moons (40% chance each)
-			if rng.randi() % 100 < 40:
-				num_moons += 1
-	else:
-		if not (rng.randi() % 100 < moon_chance):
-			emit_signal("planet_loaded", self)
-			return
-			
-		if max_moons > 1 and rng.randi() % 100 < 40:
-			num_moons = 2
-	
-	var moon_distribution = _calculate_moon_distribution(num_moons)
-	var orbital_params = _generate_orbital_parameters(num_moons, rng, moon_distribution)
-	var existing_orbits = []
-	
-	for m in range(num_moons):
-		var moon_type = _determine_moon_type(m, moon_distribution)
-		var moon_instance = _create_moon(m, moon_type, orbital_params, existing_orbits, rng)
-		
-		if moon_instance:
-			moons.append(moon_instance)
-	
-	emit_signal("planet_loaded", self)
-
-func _calculate_moon_distribution(num_moons: int) -> Dictionary:
-	if is_gaseous_planet:
-		var volcanic_count = 1
-		var rocky_count = 1
-		var icy_count = 1
-		
-		var remaining = num_moons - 3
-		
-		if remaining > 0:
-			var rng = RandomNumberGenerator.new()
-			rng.seed = seed_value
-			
-			var types_to_increase = []
-			var priority_seed = (seed_value % 3)
-			
-			if priority_seed == 0:
-				types_to_increase = [MoonType.VOLCANIC, MoonType.ROCKY, MoonType.ICY]
-			elif priority_seed == 1:
-				types_to_increase = [MoonType.ROCKY, MoonType.ICY, MoonType.VOLCANIC]
-			else:
-				types_to_increase = [MoonType.ICY, MoonType.VOLCANIC, MoonType.ROCKY]
-			
-			for i in range(remaining):
-				var type = types_to_increase[i % 3]
-				
-				if type == MoonType.VOLCANIC and volcanic_count < 2:
-					volcanic_count += 1
-				elif type == MoonType.ROCKY and rocky_count < 2:
-					rocky_count += 1
-				elif type == MoonType.ICY and icy_count < 2:
-					icy_count += 1
-				else:
-					if volcanic_count < 2:
-						volcanic_count += 1
-					elif rocky_count < 2:
-						rocky_count += 1
-					elif icy_count < 2:
-						icy_count += 1
-		
-		return {
-			MoonType.VOLCANIC: volcanic_count,
-			MoonType.ROCKY: rocky_count,
-			MoonType.ICY: icy_count
-		}
-	else:
-		return {
-			MoonType.ROCKY: num_moons
-		}
-
-func _generate_orbital_parameters(num_moons: int, rng: RandomNumberGenerator, 
-								 distribution: Dictionary) -> Array:
-	var params = []
-	
-	if is_gaseous_planet:
-		var _index = 0
-		
-		for type in [MoonType.VOLCANIC, MoonType.ROCKY, MoonType.ICY]:
-			if distribution.has(type):
-				var count = distribution[type]
-				var distance_range = _moon_params.distance_ranges[type]
-				var speed_mod = _moon_params.speed_modifiers[type]
-				
-				for i in range(count):
-					params.append(_generate_single_moon_params(
-						i, count, type, rng, speed_mod, distance_range
-					))
-					_index += 1
-	else:
-		var planet_radius = pixel_size / 2.0
-		var min_distance = planet_radius * min_moon_distance_factor
-		var max_distance = planet_radius * max_moon_distance_factor
-		var distance_step = (max_distance - min_distance) / max(1, num_moons)
-		
-		for i in range(num_moons):
-			var base_distance = min_distance + i * distance_step
-			var jitter = distance_step * 0.2 * rng.randf_range(-1.0, 1.0)
-			var distance = clamp(base_distance + jitter, min_distance, max_distance)
-			
-			var speed_factor = 1.0 / sqrt(distance / min_distance)
-			var orbit_speed = rng.randf_range(0.2, 0.4) * moon_orbit_factor * speed_factor * _get_orbit_speed_modifier()
-			
-			var phase_offset = (i * TAU / float(num_moons)) + rng.randf_range(-0.2, 0.2)
-			var orbit_deviation = rng.randf_range(0.05, max_orbit_deviation) * (distance / max_distance)
-			
-			params.append({
-				"center_x": 0,
-				"center_y": 0,
-				"distance": distance,
-				"base_angle": 0.0,
-				"orbit_speed": orbit_speed,
-				"orbit_deviation": orbit_deviation,
-				"phase_offset": phase_offset
-			})
-	
-	return params
-
-func _generate_single_moon_params(index: int, count: int, _type: int, rng: RandomNumberGenerator,
-								speed_mod: float, distance_range: Vector2) -> Dictionary:
-	var planet_radius = pixel_size / 2.0
-	
-	var distance_percent = float(index) / max(1, count)
-	var distance = planet_radius * lerp(distance_range.x, distance_range.y, distance_percent)
-	
-	var base_speed = rng.randf_range(0.2, 0.4) * moon_orbit_factor * _get_orbit_speed_modifier()
-	var orbit_speed = base_speed * speed_mod
-	
-	var phase_offset = (index * TAU / count) + rng.randf_range(-0.1, 0.1)
-	
-	return {
-		"center_x": 0,
-		"center_y": 0,
-		"distance": distance,
-		"base_angle": 0.0,
-		"orbit_speed": orbit_speed,
-		"orbit_deviation": 0.0,
-		"phase_offset": phase_offset
-	}
-
-func _determine_moon_type(index: int, distribution: Dictionary) -> int:
-	if is_gaseous_planet:
-		var volcanic_count = distribution.get(MoonType.VOLCANIC, 0)
-		var rocky_count = distribution.get(MoonType.ROCKY, 0)
-		
-		if index < volcanic_count:
-			return MoonType.VOLCANIC
-		elif index < volcanic_count + rocky_count:
-			return MoonType.ROCKY
-		else:
-			return MoonType.ICY
-	
-	return _get_moon_type_for_position(index)
-
-func _create_moon(index: int, moon_type: int, params: Array, existing_orbits: Array, 
-				  rng: RandomNumberGenerator) -> Node:
-	if not _moon_scenes.has(moon_type):
-		push_warning("Planet: Moon type not available: " + str(moon_type))
-		return null
-	
-	var moon_scene = _moon_scenes[moon_type]
-	var moon_instance = moon_scene.instantiate()
-	if not moon_instance:
-		return null
-	
-	if not is_gaseous_planet and moon_instance is Node2D:
-		moon_instance.z_as_relative = false
-		
-	var moon_seed = seed_value + index * 100 + rng.randi() % 1000
-	
-	var param_index = min(index, params.size() - 1)
-	var moon_params = params[param_index].duplicate()
-	
-	var moon_generator = MoonGenerator.new()
-	var moon_size = moon_generator.get_moon_size(moon_seed, is_gaseous_planet)
-	
-	moon_params["moon_size"] = moon_size
-	
-	if _check_orbit_collision(moon_params, existing_orbits):
-		if not _resolve_orbit_collision(moon_params, existing_orbits, moon_type, rng):
-			push_warning("Planet: Skipping moon due to unresolvable collision")
-			moon_instance.queue_free()
-			return null
-	
-	existing_orbits.append(moon_params)
-	
-	var prefix = _get_moon_type_prefix(moon_type)
-	var moon_name = prefix + " Moon-" + str(moon_seed % 1000)
-	
-	var moon_init_params = {
-		"seed_value": moon_seed,
-		"parent_planet": self,
-		"distance": moon_params.distance,
-		"base_angle": moon_params.base_angle,
-		"orbit_speed": moon_params.orbit_speed,
-		"orbit_deviation": moon_params.orbit_deviation,
-		"phase_offset": moon_params.phase_offset,
-		"parent_name": planet_name,
-		"use_texture_cache": use_texture_cache,
-		"moon_type": moon_type,
-		"size_scale": _get_moon_size_scale(),
-		"is_gaseous": is_gaseous_planet,
-		"moon_name": moon_name,
-		"orbital_inclination": 1.0,
-		"orbit_vertical_offset": 0.0
-	}
-	
-	add_child(moon_instance)
-	
-	moon_instance.initialize(moon_init_params)
-	
-	var start_angle = moon_params.base_angle + moon_params.phase_offset
-	var start_position = calculate_orbit_position(moon_params, start_angle)
-	moon_instance.position = start_position
-	
-	return moon_instance
-
-# Simple but effective orbit collision resolver
-func _resolve_orbit_collision(moon_params: Dictionary, existing_orbits: Array, 
-							  moon_type: int, rng: RandomNumberGenerator) -> bool:
-	var max_attempts = 10
-	
-	for attempt in range(max_attempts):
-		# Simple approach: Just move the orbit outwards
-		var adjustment = 30 + (attempt * 15)
-		moon_params.distance += adjustment
-		
-		# For gas giants, limit to type-specific range but with relaxed upper bound
-		if is_gaseous_planet:
-			var distance_range = _moon_params.distance_ranges[moon_type]
-			# Allow up to 2x the normal max distance for greater success
-			moon_params.distance = max(
-				pixel_size/2.0 * distance_range.x, 
-				min(moon_params.distance, pixel_size/2.0 * distance_range.y * 2.0)
-			)
-		else:
-			# For terran planets, allow exceeding the normal range
-			var min_dist = pixel_size/2.0 * min_moon_distance_factor
-			var max_dist = pixel_size/2.0 * max_moon_distance_factor * 1.8  # Allow 80% further
-			moon_params.distance = clamp(moon_params.distance, min_dist, max_dist)
-		
-		# Try a different phase offset
-		moon_params.phase_offset = rng.randf() * TAU
-		
-		if not _check_orbit_collision(moon_params, existing_orbits):
-			return true
-	
-	# Last resort: Just try a much larger distance
-	if is_gaseous_planet:
-		var distance_range = _moon_params.distance_ranges[moon_type]
-		moon_params.distance = pixel_size/2.0 * distance_range.y * 3.0
-	else:
-		moon_params.distance = pixel_size/2.0 * max_moon_distance_factor * 3.0
-	
-	moon_params.phase_offset = rng.randf() * TAU
-	
-	return not _check_orbit_collision(moon_params, existing_orbits)
-
-func _check_orbit_collision(new_orbit: Dictionary, existing_orbits: Array) -> bool:
-	if existing_orbits.is_empty():
-		return false
-	
-	var new_moon_size = new_orbit.get("moon_size", 32)
-	
-	for orbit in existing_orbits:
-		var existing_moon_size = orbit.get("moon_size", 32)
-		var safe_distance = (new_moon_size + existing_moon_size) / 2.0 + ORBIT_COLLISION_MARGIN
-		
-		if is_gaseous_planet:
-			var radii_difference = abs(new_orbit.distance - orbit.distance)
-			if radii_difference < safe_distance:
-				return true
-		else:
-			var new_max = new_orbit.distance * (1.0 + new_orbit.orbit_deviation * 0.3)
-			var new_min = new_orbit.distance * (1.0 - new_orbit.orbit_deviation * 0.3)
-			
-			var existing_max = orbit.distance * (1.0 + orbit.orbit_deviation * 0.3)
-			var existing_min = orbit.distance * (1.0 - orbit.orbit_deviation * 0.3)
-			
-			var outer_gap = new_min - existing_max
-			var inner_gap = existing_min - new_max
-			
-			if (outer_gap < safe_distance and outer_gap > -safe_distance) or (inner_gap < safe_distance and inner_gap > -safe_distance):
-				return true
-	
-	return false
-
+# Get moon property
 func _get_moon_property(moon, property_name: String):
 	var moon_type = MoonType.ROCKY
 	
@@ -535,13 +252,7 @@ func _get_moon_property(moon, property_name: String):
 	
 	return null
 
-func _get_moon_type_prefix(moon_type: int) -> String:
-	match moon_type:
-		MoonType.ROCKY: return "Rocky"
-		MoonType.ICY: return "Icy"
-		MoonType.VOLCANIC: return "Volcanic"
-	return "Moon"
-
+# Get the planet type name
 func get_theme_name() -> String:
 	match theme_id:
 		PlanetThemes.ARID: return "Arid"
@@ -557,27 +268,12 @@ func get_theme_name() -> String:
 		PlanetThemes.NEPTUNE: return "Neptune-like"
 	return "Unknown"
 
-# Virtual methods (to be overridden by subclasses)
-func _perform_specialized_initialization(_params: Dictionary) -> void:
-	push_error("PlanetBase: _perform_specialized_initialization must be overridden")
-
-func _get_moon_type_for_position(_position: int) -> int:
-	return MoonType.ROCKY
-
-func _get_orbit_speed_modifier() -> float:
-	return 1.0
-
-func _get_moon_size_scale() -> float:
-	return 1.0
-
-func _get_planet_type_name() -> String:
-	return "Planet"
-
-# Public API Methods
+# Toggle orbit debug drawing
 func toggle_orbit_debug(enabled: bool = true) -> void:
 	debug_draw_orbits = enabled
 	queue_redraw()
 
+# Set orbit line width
 func set_orbit_line_width(width: float) -> void:
 	debug_orbit_line_width = width
 	queue_redraw()
