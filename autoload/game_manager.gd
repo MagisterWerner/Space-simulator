@@ -1,45 +1,63 @@
 extends Node
 
+# Game lifecycle signals
 signal game_started
 signal game_paused
 signal game_resumed
 signal game_over
 signal game_restarted
-signal player_credits_changed(new_amount)
-signal upgrade_purchased(upgrade, component)
 signal save_game_created(save_id)
 signal save_game_loaded(save_id)
 
+# Game state signals
+signal player_credits_changed(new_amount)
+signal player_fuel_changed(new_amount)
+signal player_resource_changed(resource_id, new_amount, old_amount)
+signal upgrade_purchased(upgrade, component, cost)
+signal world_generation_completed
+
 # Game state
-var game_running = false
-var is_game_paused = false
-var current_level = ""
+var game_running: bool = false
+var is_game_paused: bool = false
+var current_level: String = ""
 var player_ship = null
 var game_settings = null
+var world_simulation = null
+
+# World state
+var world_data: WorldData = null
+var current_seed: int = 0
+var world_generator = null
 
 # Start position
-var player_start_position = Vector2.ZERO
-var player_start_cell = Vector2i(-1, -1)
-var use_custom_start_position = false
+var player_start_position: Vector2 = Vector2.ZERO
+var player_start_cell: Vector2i = Vector2i(-1, -1)
+var use_custom_start_position: bool = false
 
 # Upgrade system
 var available_upgrades = []
 var player_upgrades = []
 
 # Dependency checks
-var _dependencies_initialized = false
-var _entities_ready = false
-var _resources_ready = false
-var _events_ready = false
-var _seed_ready = false
+var _dependencies_initialized: bool = false
+var _entities_ready: bool = false
+var _resources_ready: bool = false
+var _events_ready: bool = false
+var _world_ready: bool = false
+var _seed_ready: bool = false
 
-func _ready():
+func _ready() -> void:
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	call_deferred("_initialize_systems")
 
-func _initialize_systems():
+func _initialize_systems() -> void:
 	# Find GameSettings in the main scene
 	var main_scene = get_tree().current_scene
 	game_settings = main_scene.get_node_or_null("GameSettings")
+	
+	# Create required objects
+	_create_world_simulation()
+	_create_world_generator()
 	
 	# Check which systems are available
 	_check_dependencies()
@@ -58,18 +76,49 @@ func _initialize_systems():
 	
 	_dependencies_initialized = true
 
-func _check_dependencies():
+func _create_world_simulation() -> void:
+	# Check if world simulation already exists
+	if has_node("WorldSimulation"):
+		world_simulation = get_node("WorldSimulation")
+		return
+		
+	world_simulation = WorldSimulation.new()
+	world_simulation.name = "WorldSimulation"
+	add_child(world_simulation)
+	
+	# Connect to world simulation signals
+	world_simulation.world_loaded.connect(_on_world_loaded)
+	world_simulation.entity_spawned.connect(_on_entity_spawned)
+	world_simulation.entity_despawned.connect(_on_entity_despawned)
+	
+	_world_ready = true
+
+func _create_world_generator() -> void:
+	# Check if world generator already exists
+	if has_node("WorldGenerator"):
+		world_generator = get_node("WorldGenerator")
+		return
+		
+	world_generator = WorldGenerator.new()
+	world_generator.name = "WorldGenerator"
+	add_child(world_generator)
+	
+	# Connect to world generator signals
+	if world_generator.has_signal("world_generation_completed"):
+		world_generator.connect("world_generation_completed", _on_world_generation_completed)
+
+func _check_dependencies() -> void:
 	_entities_ready = has_node("/root/EntityManager")
 	_resources_ready = has_node("/root/ResourceManager")
 	_events_ready = has_node("/root/EventManager")
 	_seed_ready = has_node("/root/SeedManager")
 
-func _initialize_entity_scenes():
+func _initialize_entity_scenes() -> void:
 	if has_node("/root/EntityManager"):
 		if not EntityManager._scenes_initialized:
 			EntityManager._initialize_scenes()
 
-func _connect_event_signals():
+func _connect_event_signals() -> void:
 	if has_node("/root/EventManager"):
 		# Connect crucial signals
 		if EventManager.has_signal("credits_changed"):
@@ -80,14 +129,14 @@ func _connect_event_signals():
 			if not EventManager.is_connected("player_died", _on_player_died):
 				EventManager.connect("player_died", _on_player_died)
 
-func _connect_resource_signals():
+func _connect_resource_signals() -> void:
 	if has_node("/root/ResourceManager"):
 		if ResourceManager.has_signal("resource_changed"):
 			if not ResourceManager.is_connected("resource_changed", _on_resource_changed):
 				ResourceManager.resource_changed.connect(_on_resource_changed)
 
 # Configure with GameSettings
-func configure_with_settings(settings):
+func configure_with_settings(settings) -> void:
 	game_settings = settings
 	
 	# Wait for SeedManager if needed
@@ -97,24 +146,32 @@ func configure_with_settings(settings):
 				await SeedManager.seed_initialized
 		
 		# Update seed
-		SeedManager.set_seed(game_settings.get_seed())
+		current_seed = game_settings.get_seed()
+		SeedManager.set_seed(current_seed)
 		
 		# Connect to settings seed changes
 		if not game_settings.is_connected("seed_changed", _on_settings_seed_changed):
 			game_settings.connect("seed_changed", _on_settings_seed_changed)
 
-func _on_settings_seed_changed(new_seed):
+func _on_settings_seed_changed(new_seed: int) -> void:
+	current_seed = new_seed
+	
 	if _seed_ready and has_node("/root/SeedManager"):
 		SeedManager.set_seed(new_seed)
 
 # Set the player's start position
-func set_player_start_position(position, cell = Vector2i(-1, -1)):
+func set_player_start_position(position: Vector2, cell: Vector2i = Vector2i(-1, -1)) -> void:
 	player_start_position = position
 	player_start_cell = cell
 	use_custom_start_position = true
+	
+	# Update world data if it exists
+	if world_data:
+		world_data.player_start_position = position
+		world_data.player_start_cell = cell
 
 # Game lifecycle methods
-func start_game():
+func start_game() -> void:
 	if game_running:
 		return
 	
@@ -129,12 +186,64 @@ func start_game():
 	
 	# Set seed
 	if _seed_ready and game_settings:
-		SeedManager.set_seed(game_settings.get_seed())
+		current_seed = game_settings.get_seed()
+		SeedManager.set_seed(current_seed)
 	
+	# Generate or load world
+	if not world_data:
+		_generate_world()
+	else:
+		_load_world(world_data)
+	
+	# Initialize resources
+	if _resources_ready:
+		_initialize_resources()
+	
+	# Emit signals
+	game_started.emit()
+	if _events_ready:
+		EventManager.safe_emit("game_started")
+
+func _generate_world() -> void:
+	if world_generator:
+		# Get seed from GameSettings or use default
+		var seed_value = current_seed
+		if game_settings:
+			seed_value = game_settings.get_seed()
+		
+		# Generate world data
+		world_data = world_generator.generate_world_data(seed_value)
+		
+		# Set start position if specified
+		if use_custom_start_position:
+			world_data.player_start_position = player_start_position
+			world_data.player_start_cell = player_start_cell
+		
+		# Load the generated world
+		_load_world(world_data)
+
+func _load_world(data: WorldData) -> void:
+	if world_simulation:
+		# Load world in simulation
+		world_simulation.load_world(data)
+	else:
+		# If no simulation available, spawn player directly
+		_spawn_player_at_start_position()
+
+func _on_world_loaded() -> void:
+	# Spawn player
+	_spawn_player_at_start_position()
+	
+	# Emit world generation completed signal
+	world_generation_completed.emit()
+
+func _spawn_player_at_start_position() -> void:
 	# Determine spawn position
 	var spawn_position = Vector2.ZERO
 	
-	if use_custom_start_position and player_start_position != Vector2.ZERO:
+	if world_data and world_data.player_start_position != Vector2.ZERO:
+		spawn_position = world_data.player_start_position
+	elif use_custom_start_position and player_start_position != Vector2.ZERO:
 		spawn_position = player_start_position
 	elif game_settings:
 		spawn_position = game_settings.get_player_starting_position()
@@ -146,28 +255,21 @@ func start_game():
 		player_ship = EntityManager.spawn_player(spawn_position)
 	else:
 		push_error("GameManager: Cannot spawn player - EntityManager not found")
-		return
-	
-	# Initialize resources
-	if _resources_ready:
-		# Clear inventory
-		for resource_id in ResourceManager.resource_data:
-			ResourceManager.inventory[resource_id] = 0
-		
-		# Set starting resources
-		if game_settings:
-			ResourceManager.add_resource(ResourceManager.ResourceType.CREDITS, game_settings.player_starting_credits)
-			ResourceManager.add_resource(ResourceManager.ResourceType.FUEL, game_settings.player_starting_fuel)
-		else:
-			ResourceManager.add_resource(ResourceManager.ResourceType.CREDITS, 1000)
-			ResourceManager.add_resource(ResourceManager.ResourceType.FUEL, 100)
-	
-	# Emit signals
-	game_started.emit()
-	if _events_ready:
-		EventManager.safe_emit("game_started")
 
-func pause_game():
+func _initialize_resources() -> void:
+	# Clear inventory
+	for resource_id in ResourceManager.resource_data:
+		ResourceManager.inventory[resource_id] = 0
+	
+	# Set starting resources
+	if game_settings:
+		ResourceManager.add_resource(ResourceManager.ResourceType.CREDITS, game_settings.player_starting_credits)
+		ResourceManager.add_resource(ResourceManager.ResourceType.FUEL, game_settings.player_starting_fuel)
+	else:
+		ResourceManager.add_resource(ResourceManager.ResourceType.CREDITS, 1000)
+		ResourceManager.add_resource(ResourceManager.ResourceType.FUEL, 100)
+
+func pause_game() -> void:
 	if not game_running or is_game_paused:
 		return
 	
@@ -178,7 +280,7 @@ func pause_game():
 	if _events_ready:
 		EventManager.safe_emit("game_paused")
 
-func resume_game():
+func resume_game() -> void:
 	if not game_running or not is_game_paused:
 		return
 	
@@ -189,7 +291,7 @@ func resume_game():
 	if _events_ready:
 		EventManager.safe_emit("game_resumed")
 
-func end_game():
+func end_game() -> void:
 	if not game_running:
 		return
 	
@@ -201,13 +303,25 @@ func end_game():
 	if _events_ready:
 		EventManager.safe_emit("game_over")
 
-func restart_game():
+func restart_game() -> void:
 	if game_running:
 		end_game()
 	
+	# Clear world simulation
+	if world_simulation:
+		# Clear loaded cells
+		var loaded_cells = world_simulation.loaded_cells.keys()
+		for cell in loaded_cells:
+			world_simulation.unload_cell(cell)
+	
+	# Clear entity manager
 	if _entities_ready:
 		EntityManager.despawn_all()
 	
+	# Generate new world
+	world_data = null
+	
+	# Start game again
 	start_game()
 	
 	game_restarted.emit()
@@ -215,21 +329,42 @@ func restart_game():
 		EventManager.safe_emit("game_restarted")
 
 # Event handlers
-func _on_player_spawned(player):
+func _on_world_generation_completed() -> void:
+	if game_settings and game_settings.debug_mode:
+		print("GameManager: World generation completed")
+
+func _on_entity_spawned(entity: Node, data: EntityData) -> void:
+	# Register with EntityManager if available
+	if _entities_ready and data:
+		EntityManager.register_entity(entity, data.entity_type)
+		
+		# Handle specific entity types
+		if data is PlanetData:
+			if entity.has_method("set_planet_data"):
+				entity.set_planet_data(data)
+
+func _on_entity_despawned(entity: Node, data: EntityData) -> void:
+	# Deregister from EntityManager
+	if _entities_ready:
+		EntityManager.deregister_entity(entity)
+
+func _on_player_spawned(player) -> void:
 	player_ship = player
 	
 	if player_ship and is_instance_valid(player_ship):
 		if player_ship.has_signal("player_died") and not player_ship.player_died.is_connected(_on_player_died):
 			player_ship.player_died.connect(_on_player_died)
 
-func _on_player_died():
+func _on_player_died() -> void:
 	await get_tree().create_timer(3.0).timeout
 	
 	if player_ship and is_instance_valid(player_ship):
 		# Respawn the player
 		var respawn_position
 		
-		if use_custom_start_position and player_start_position != Vector2.ZERO:
+		if world_data and world_data.player_start_position != Vector2.ZERO:
+			respawn_position = world_data.player_start_position
+		elif use_custom_start_position and player_start_position != Vector2.ZERO:
 			respawn_position = player_start_position
 		elif game_settings:
 			respawn_position = game_settings.get_player_starting_position()
@@ -240,17 +375,22 @@ func _on_player_died():
 	else:
 		end_game()
 
-func _on_player_credits_changed(new_amount):
+func _on_player_credits_changed(new_amount) -> void:
 	player_credits_changed.emit(new_amount)
 
-func _on_resource_changed(resource_id, new_amount, _old_amount):
+func _on_resource_changed(resource_id, new_amount, old_amount) -> void:
+	player_resource_changed.emit(resource_id, new_amount, old_amount)
+	
 	if _resources_ready and resource_id == ResourceManager.ResourceType.CREDITS:
 		player_credits_changed.emit(new_amount)
 		if _events_ready:
 			EventManager.safe_emit("credits_changed", [new_amount])
+	
+	if _resources_ready and resource_id == ResourceManager.ResourceType.FUEL:
+		player_fuel_changed.emit(new_amount)
 
 # Upgrade system
-func _initialize_available_upgrades():
+func _initialize_available_upgrades() -> void:
 	# Load script resources
 	var weapon_strategies_script = load("res://scripts/strategies/weapon_strategies.gd")
 	var shield_strategies_script = load("res://scripts/strategies/shield_strategies.gd")
@@ -287,7 +427,7 @@ func _initialize_available_upgrades():
 		])
 
 # Upgrade management
-func purchase_upgrade(upgrade_index, component_name):
+func purchase_upgrade(upgrade_index, component_name) -> bool:
 	if upgrade_index < 0 or upgrade_index >= available_upgrades.size():
 		return false
 	
@@ -311,7 +451,7 @@ func purchase_upgrade(upgrade_index, component_name):
 			})
 			
 			# Emit events
-			upgrade_purchased.emit(upgrade, component_name)
+			upgrade_purchased.emit(upgrade, component_name, upgrade.price)
 			if _events_ready:
 				EventManager.safe_emit("upgrade_purchased", [upgrade, component_name, upgrade.price])
 				EventManager.safe_emit("credits_changed", [ResourceManager.get_resource_amount(ResourceManager.ResourceType.CREDITS)])
@@ -320,7 +460,7 @@ func purchase_upgrade(upgrade_index, component_name):
 	
 	return false
 
-func remove_upgrade(upgrade_index):
+func remove_upgrade(upgrade_index) -> bool:
 	if upgrade_index < 0 or upgrade_index >= player_upgrades.size():
 		return false
 	
@@ -335,7 +475,7 @@ func remove_upgrade(upgrade_index):
 	
 	return false
 
-func get_available_upgrades_for_component(component_name):
+func get_available_upgrades_for_component(component_name) -> Array:
 	var filtered_upgrades = []
 	
 	for upgrade in available_upgrades:
@@ -360,13 +500,19 @@ func get_available_upgrades_for_component(component_name):
 	return filtered_upgrades
 
 # Save/Load functionality
-func save_game(save_id = ""):
+func save_game(save_id: String = "") -> bool:
 	if not game_running:
 		return false
 	
 	# Generate ID if needed
 	if save_id.is_empty():
 		save_id = "save_" + Time.get_datetime_string_from_system().replace(":", "-")
+	
+	# Update world data from current state
+	if world_simulation:
+		# Make sure world simulation has latest data
+		if world_simulation.has_method("_update_world_data_from_entities"):
+			world_simulation._update_world_data_from_entities()
 	
 	# Collect game state
 	var save_data = {
@@ -378,6 +524,7 @@ func save_game(save_id = ""):
 		},
 		"resources": ResourceManager.inventory if _resources_ready else {},
 		"seed": game_settings.get_seed() if game_settings else (SeedManager.get_seed() if _seed_ready else 0),
+		"world_data": world_data.to_dict() if world_data else {}
 	}
 	
 	# Save to file
@@ -399,7 +546,7 @@ func save_game(save_id = ""):
 	save_game_created.emit(save_id)
 	return true
 
-func load_game(save_id):
+func load_game(save_id: String) -> bool:
 	var save_path = "user://saves/" + save_id + ".save"
 	
 	if not FileAccess.file_exists(save_path):
@@ -425,10 +572,15 @@ func load_game(save_id):
 	
 	# Restore seed
 	if save_data.has("seed"):
+		current_seed = save_data.seed
 		if game_settings:
-			game_settings.set_seed(save_data.seed)
+			game_settings.set_seed(current_seed)
 		elif _seed_ready:
-			SeedManager.set_seed(save_data.seed)
+			SeedManager.set_seed(current_seed)
+	
+	# Restore world data if present
+	if save_data.has("world_data") and not save_data.world_data.is_empty():
+		world_data = WorldData.from_dict(save_data.world_data)
 	
 	# Start a new game
 	start_game()
@@ -449,12 +601,23 @@ func load_game(save_id):
 	if _resources_ready and save_data.has("resources"):
 		for resource_id in save_data.resources:
 			ResourceManager.inventory[int(resource_id)] = save_data.resources[resource_id]
+			
+			# Notify of changes
+			if int(resource_id) == ResourceManager.ResourceType.CREDITS:
+				player_credits_changed.emit(save_data.resources[resource_id])
+			
+			if _events_ready:
+				EventManager.safe_emit("resource_changed", [int(resource_id), save_data.resources[resource_id], 0])
 	
 	save_game_loaded.emit(save_id)
 	return true
 
+# Helper methods
+func get_player_ship():
+	return player_ship
+
 # Input handling
-func _input(event):
+func _input(event: InputEvent) -> void:
 	# Handle game pause/resume
 	if event.is_action_pressed("pause"):
 		if game_running:
