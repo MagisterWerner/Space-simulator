@@ -17,8 +17,9 @@ class_name MissileLauncherComponent
 @export_category("Visual Effects")
 @export var muzzle_flash_scene: PackedScene = null
 
-# Cached projectile scene
+# Internal state
 var _projectile_scene: PackedScene = null
+var _active_missiles: Array = []
 
 func setup() -> void:
 	super.setup()
@@ -49,16 +50,37 @@ func setup() -> void:
 		fire_sound_name = fire_sound
 		empty_sound_name = ""  # No empty click sound
 
+func _process(_delta: float) -> void:
+	# Clean up references to missiles that no longer exist
+	_cleanup_inactive_missiles()
+
+func _cleanup_inactive_missiles() -> void:
+	var i = 0
+	while i < _active_missiles.size():
+		var missile = _active_missiles[i]
+		if not is_instance_valid(missile):
+			_active_missiles.remove_at(i)
+		else:
+			i += 1
+
 func _create_projectile() -> Node:
 	var projectile = super._create_projectile()
 	
 	if projectile:
+		# Add to active missiles list
+		_active_missiles.append(projectile)
+		
 		# Set missile-specific properties
 		if projectile.has_method("set_explosion_properties"):
 			projectile.set_explosion_properties(explosion_radius, explosion_damage)
 		
 		if projectile.has_method("set_acceleration"):
 			projectile.set_acceleration(missile_acceleration)
+		
+		# Set direction for proper missile orientation and movement
+		if projectile.has_method("set_direction"):
+			var firing_dir = Vector2.RIGHT.rotated(owner_entity.global_rotation)
+			projectile.set_direction(firing_dir)
 		
 		# Create muzzle flash effect if available
 		_spawn_muzzle_flash()
@@ -86,3 +108,13 @@ func _spawn_muzzle_flash() -> void:
 		if is_instance_valid(flash):
 			flash.queue_free()
 	)
+
+func _on_disable() -> void:
+	super._on_disable()
+	
+	# Clean up active missiles if disabling the component
+	for missile in _active_missiles:
+		if is_instance_valid(missile) and missile.has_method("_trigger_explosion"):
+			missile._trigger_explosion()
+	
+	_active_missiles.clear()

@@ -270,7 +270,7 @@ func respawn(spawn_position: Vector2 = Vector2.ZERO) -> void:
 	
 	# Restore health
 	if health_component:
-		health_component.heal(health_component.max_health, null)
+		health_component.heal(health_component.max_health)
 	
 	# Reset shield
 	if shield_component:

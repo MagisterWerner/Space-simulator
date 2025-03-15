@@ -1,363 +1,233 @@
-extends RigidBody2D
+# scripts/entities/missile_projectile.gd
+extends Node2D
 class_name MissileProjectile
 
-signal missile_exploded(position)
-signal target_hit(target, damage)
+signal hit_target(target)
 
-# Missile properties
-@export_category("Missile Properties")
-@export var damage: float = 30.0
-@export var speed: float = 400.0
+@export var speed: float = 300.0
+@export var damage: float = 50.0
+@export var lifespan: float = 5.0
+@export var acceleration: float = 20.0
 @export var max_speed: float = 600.0
-@export var acceleration: float = 100.0
-@export var turn_rate: float = 3.0
-@export var lifetime: float = 5.0
-@export var proximity_radius: float = 15.0
-@export var explosion_radius: float = 80.0
-@export var explosion_damage: float = 20.0
-@export var explosion_falloff: bool = true
-@export var explosive_force: float = 500.0
+@export var explosion_radius: float = 100.0
+@export var explosion_damage: float = 30.0
 
-@export_category("Appearance")
-@export var exhaust_color: Color = Color(1.0, 0.5, 0.0, 0.8)
-@export var exhaust_width: float = 2.0
-@export var trail_length: int = 15
-@export var trail_width: float = 4.0
-@export var trail_fade: float = 0.95
+var velocity: Vector2 = Vector2.ZERO
+var lifetime: float = 0.0
+var shooter: Node = null
+var current_speed: float = 0.0
+var direction: Vector2 = Vector2.RIGHT
+var is_exploding: bool = false
+var sound_player_id: int = -1
 
-@export_category("Homing")
-@export var homing: bool = true
-@export var target_group: String = "enemies"
-@export var acquire_distance: float = 600.0
-@export var re_acquire_cooldown: float = 0.5
-@export var prediction_factor: float = 0.5
-
-@export_category("Effects")
-@export var explosion_scene: PackedScene
-@export var explosion_sound: String = "explosion_fire"
-@export var launch_sound: String = "missile_launch"
-
-# Runtime properties
-var launcher = null
-var original_target = null
-var current_target = null
-var elapsed_time: float = 0.0
-var is_exploded: bool = false
-var hitbox_layer: int = 1
-var hitbox_mask: int = 1
-var acquired_targets: Array = []
-var re_acquire_timer: float = 0.0
-var hit_something: bool = false
-var is_active: bool = false
-
-# Audio manager reference (optional)
-var _audio_manager = null
-
-# Trail rendering
-var _trail_points: Array = []
-var _current_exhaust_points: Array = []
-var _target_direction: Vector2 = Vector2.ZERO
+# Child components
+var collision_detector: Area2D
+var trail_effect: CPUParticles2D
+var light_effect: PointLight2D
 
 func _ready() -> void:
-	# Initialize physics
-	collision_layer = 4  # Projectile layer
-	collision_mask = 3   # Hit world and enemies, but not player
-	contact_monitor = true
-	max_contacts_reported = 4
-	gravity_scale = 0.0
+	# Set initial velocity
+	current_speed = speed
+	velocity = direction * current_speed
 	
-	# Store original collision settings
-	hitbox_layer = collision_layer
-	hitbox_mask = collision_mask
+	# Create child components
+	_setup_collision_detector()
+	_setup_trail_effect()
+	_setup_light_effect()
 	
-	# Connect collision signal
-	body_entered.connect(_on_body_entered)
-	
-	# Get audio manager reference
-	_audio_manager = get_node_or_null("/root/AudioManager")
-	
-	# Set up lifetime timer
-	var timer = Timer.new()
-	timer.wait_time = lifetime
-	timer.one_shot = true
-	timer.autostart = true
-	timer.timeout.connect(_on_lifetime_expired)
-	add_child(timer)
-	
-	# Initialize trail
-	for i in range(trail_length):
-		_trail_points.append(Vector2.ZERO)
-	
-	# Initialize exhaust
-	_current_exhaust_points = [Vector2.ZERO, Vector2.ZERO]
-	
-	# Deactivate initially
-	is_active = false
-	set_physics_process(false)
-	
-	# Play launch sound
-	call_deferred("_play_launch_sound")
-
-func activate() -> void:
-	is_active = true
-	set_physics_process(true)
-	
-	# Apply initial velocity
-	linear_velocity = transform.x * speed
-
-func _play_launch_sound() -> void:
-	if _audio_manager and not launch_sound.is_empty():
-		_audio_manager.play_sfx(launch_sound, global_position, 1.0)
+	# Start missile sound
+	if Engine.has_singleton("AudioManager"):
+		# Try to clear any existing missile sounds first
+		AudioManager.stop_sfx("missile")
+		# Play new missile sound
+		var player = AudioManager.play_sfx("missile", global_position)
+		if player and is_instance_valid(player):
+			sound_player_id = player.get_instance_id()
 
 func _process(delta: float) -> void:
-	# Only render when active
-	if is_active:
-		queue_redraw()
-
-func _physics_process(delta: float) -> void:
-	if is_exploded or not is_active:
+	# Skip processing if exploding
+	if is_exploding:
 		return
-	
-	elapsed_time += delta
-	
-	# Update target acquisition
-	_update_target(delta)
-	
-	# Update missile guidance
-	_update_guidance(delta)
-	
-	# Check for proximity detonation
-	_check_proximity_detonation()
-	
-	# Update trail
-	_update_trail()
-
-func _update_target(delta: float) -> void:
-	# Manage re-acquisition timer
-	if re_acquire_timer > 0:
-		re_acquire_timer -= delta
-	
-	# Update target if needed
-	if homing and (current_target == null or not is_instance_valid(current_target)) and re_acquire_timer <= 0:
-		# Try to acquire original target first
-		if original_target and is_instance_valid(original_target):
-			current_target = original_target
-		else:
-			# Try to find a new target
-			current_target = _find_nearest_target()
 		
-		# Reset timer regardless of success
-		re_acquire_timer = re_acquire_cooldown
-
-func _update_guidance(delta: float) -> void:
-	# Calculate desired direction
-	var desired_direction = transform.x
-	var target_position = Vector2.ZERO
-	
-	if homing and current_target and is_instance_valid(current_target):
-		# Get current target position
-		target_position = current_target.global_position
-		
-		# Predict target movement if it has velocity
-		if "linear_velocity" in current_target:
-			var target_velocity = current_target.linear_velocity
-			var distance = global_position.distance_to(target_position)
-			var time_to_target = distance / speed
-			target_position += target_velocity * time_to_target * prediction_factor
-		
-		# Calculate direction to target
-		desired_direction = (target_position - global_position).normalized()
-	
-	# Store for rendering
-	_target_direction = desired_direction
-	
-	# Rotate missile towards desired direction
-	var current_direction = transform.x.normalized()
-	var angle_diff = current_direction.angle_to(desired_direction)
-	
-	# Apply limited rotation
-	var rotation_amount = sign(angle_diff) * min(abs(angle_diff), turn_rate * delta)
-	rotate(rotation_amount)
-	
-	# Apply forward acceleration
-	var forward_velocity = transform.x * acceleration * delta
-	linear_velocity += forward_velocity
-	
-	# Clamp to max speed
-	if linear_velocity.length() > max_speed:
-		linear_velocity = linear_velocity.normalized() * max_speed
-
-func _check_proximity_detonation() -> void:
-	if proximity_radius <= 0 or is_exploded:
+	# Update lifetime and check for expiration
+	lifetime += delta
+	if lifetime >= lifespan:
+		call_deferred("explode")
 		return
 	
-	# Check all potential targets
-	var targets = get_tree().get_nodes_in_group(target_group)
-	for target in targets:
-		if target and is_instance_valid(target) and target != launcher:
-			var distance = global_position.distance_to(target.global_position)
-			if distance <= proximity_radius:
-				explode()
-				return
-
-func _update_trail() -> void:
-	# Shift points down the array
-	for i in range(trail_length - 1, 0, -1):
-		_trail_points[i] = _trail_points[i-1]
+	# Apply acceleration
+	current_speed = min(current_speed + acceleration * delta, max_speed)
 	
-	# Add current position as newest point
-	_trail_points[0] = Vector2.ZERO
+	# Apply final velocity
+	velocity = direction * current_speed
+	position += velocity * delta
 	
-	# Update exhaust points
-	_current_exhaust_points[0] = Vector2(-10, -exhaust_width / 2).rotated(PI)
-	_current_exhaust_points[1] = Vector2(-10, exhaust_width / 2).rotated(PI)
+	# Update sound position
+	if Engine.has_singleton("AudioManager") and sound_player_id != -1:
+		# If AudioManager has a method to update sound position
+		if AudioManager.has_method("update_sfx_position"):
+			AudioManager.update_sfx_position(sound_player_id, global_position)
 
-func _draw() -> void:
-	if not is_active:
+func set_direction(new_direction: Vector2) -> void:
+	direction = new_direction.normalized()
+	rotation = direction.angle()
+
+func set_damage(value: float) -> void:
+	damage = value
+
+func set_speed(value: float) -> void:
+	speed = value
+	current_speed = speed
+
+func set_lifespan(value: float) -> void:
+	lifespan = value
+
+func set_shooter(node: Node) -> void:
+	shooter = node
+
+func set_explosion_properties(radius: float, explosion_dmg: float) -> void:
+	explosion_radius = radius
+	explosion_damage = explosion_dmg
+
+func set_acceleration(value: float) -> void:
+	acceleration = value
+
+func _setup_collision_detector() -> void:
+	# Create a collision detector as a child
+	collision_detector = Area2D.new()
+	collision_detector.name = "CollisionDetector"
+	add_child(collision_detector)
+	
+	# Add collision shape
+	var shape = CollisionShape2D.new()
+	var circle = CircleShape2D.new()
+	circle.radius = 10.0
+	shape.shape = circle
+	collision_detector.add_child(shape)
+	
+	# Connect signal
+	collision_detector.body_entered.connect(_on_collision_detector_body_entered)
+	
+	# Disable and then re-enable after a short delay to prevent hitting shooter
+	collision_detector.set_deferred("monitoring", false)
+	collision_detector.set_deferred("monitorable", false)
+	
+	get_tree().create_timer(0.1).timeout.connect(func():
+		collision_detector.set_deferred("monitoring", true)
+		collision_detector.set_deferred("monitorable", true)
+	)
+
+func _on_collision_detector_body_entered(body: Node) -> void:
+	# Skip if already exploding or body is shooter
+	if is_exploding or body == shooter:
 		return
 	
-	# Draw missile trail
-	var points = []
-	var colors = []
+	# Handle direct hit damage
+	var health = body.get_node_or_null("HealthComponent")
+	if health and health.has_method("apply_damage"):
+		health.apply_damage(damage, "missile", shooter)
+		hit_target.emit(body)
 	
-	# Create gradient trail
-	for i in range(trail_length):
-		if _trail_points[i] != Vector2.ZERO:
-			var alpha = pow(trail_fade, i)
-			var width = trail_width * (1.0 - float(i) / trail_length)
-			colors.append(Color(exhaust_color.r, exhaust_color.g, exhaust_color.b, alpha))
-			points.append(_trail_points[i])
-	
-	# Draw trail line
-	if points.size() >= 2:
-		draw_polyline_colors(points, colors, trail_width, true)
-	
-	# Draw exhaust flame
-	if _current_exhaust_points.size() >= 2:
-		draw_colored_polygon(_current_exhaust_points, exhaust_color)
-
-func _on_body_entered(body: Node) -> void:
-	if is_exploded or hit_something:
-		return
-	
-	hit_something = true
-	
-	# Apply damage to target if it has health
-	var health_component = null
-	if body.has_node("HealthComponent"):
-		health_component = body.get_node("HealthComponent")
-	elif body.has_method("take_damage"):
-		body.take_damage(damage, "explosive", self)
-		target_hit.emit(body, damage)
-	elif health_component and health_component.has_method("apply_damage"):
-		health_component.apply_damage(damage, "explosive", self)
-		target_hit.emit(body, damage)
-	
-	# Always explode on impact
-	explode()
+	# Trigger explosion
+	call_deferred("explode")
 
 func explode() -> void:
-	if is_exploded:
+	# Prevent multiple explosions
+	if is_exploding:
 		return
+		
+	is_exploding = true
 	
-	is_exploded = true
-	set_physics_process(false)
-	collision_layer = 0
-	collision_mask = 0
-	visible = false
+	# Stop missile sound
+	_stop_missile_sound()
 	
-	# Apply area damage
-	if explosion_radius > 0:
-		_apply_explosion_damage()
+	# Create separate explosion entity
+	if get_tree() and get_tree().current_scene:
+		var explosion_scene = load("res://scripts/entities/missile_explosion.gd")
+		if explosion_scene:
+			var explosion = explosion_scene.new()
+			explosion.global_position = global_position
+			explosion.explosion_radius = explosion_radius
+			explosion.explosion_damage = explosion_damage
+			explosion.shooter = shooter
+			get_tree().current_scene.add_child(explosion)
 	
-	# Spawn explosion effect
-	_spawn_explosion_effect()
-	
-	# Play explosion sound
-	if _audio_manager and not explosion_sound.is_empty():
-		_audio_manager.play_sfx(explosion_sound, global_position, 1.0)
-	
-	# Emit signal
-	missile_exploded.emit(global_position)
-	
-	# Queue for deletion with small delay for sound to play
-	await get_tree().create_timer(0.1).timeout
+	# Queue for deletion
 	queue_free()
 
-func _apply_explosion_damage() -> void:
-	# Get all bodies in explosion radius
-	var space_state = get_world_2d().direct_space_state
-	var query = PhysicsShapeQueryParameters2D.new()
-	var shape = CircleShape2D.new()
-	shape.radius = explosion_radius
-	
-	query.shape = shape
-	query.transform = global_transform
-	query.collision_mask = hitbox_mask
-	
-	var results = space_state.intersect_shape(query)
-	var hit_objects = []
-	
-	for result in results:
-		var collider = result.collider
-		if collider and is_instance_valid(collider) and collider != self and not hit_objects.has(collider):
-			hit_objects.append(collider)
-			
-			# Calculate damage based on distance
-			var distance = global_position.distance_to(collider.global_position)
-			var damage_amount = explosion_damage
-			
-			if explosion_falloff and distance > 0:
-				damage_amount *= 1.0 - min(1.0, distance / explosion_radius)
-			
-			# Apply damage
-			var health_component = null
-			if collider.has_node("HealthComponent"):
-				health_component = collider.get_node("HealthComponent")
-				health_component.apply_damage(damage_amount, "explosive", self)
-			elif collider.has_method("take_damage"):
-				collider.take_damage(damage_amount, "explosive", self)
-			
-			# Apply physics impulse for knockback
-			if collider is RigidBody2D and explosive_force > 0:
-				var dir = (collider.global_position - global_position).normalized()
-				var impulse_power = explosive_force * (1.0 - min(1.0, distance / explosion_radius))
-				collider.apply_central_impulse(dir * impulse_power)
-
-func _spawn_explosion_effect() -> void:
-	if explosion_scene:
-		var explosion = explosion_scene.instantiate()
-		get_tree().current_scene.add_child(explosion)
-		explosion.global_position = global_position
+func _stop_missile_sound() -> void:
+	if Engine.has_singleton("AudioManager"):
+		# Try multiple approaches to ensure sound stops
 		
-		# Scale effect based on explosion size
-		var scale_factor = explosion_radius / 40.0  # Assuming 40px is the base size
-		explosion.scale = Vector2(scale_factor, scale_factor)
+		# 1. Stop by ID if we have one
+		if sound_player_id != -1 and AudioManager.has_method("stop_sfx_by_id"):
+			AudioManager.stop_sfx_by_id(sound_player_id)
+			
+		# 2. Stop by sound name
+		AudioManager.stop_sfx("missile")
 
-func _find_nearest_target() -> Node2D:
-	var nearest_target = null
-	var nearest_distance = acquire_distance
+func _setup_trail_effect() -> void:
+	trail_effect = CPUParticles2D.new()
+	add_child(trail_effect)
 	
-	# Find all potential targets
-	var targets = get_tree().get_nodes_in_group(target_group)
-	for target in targets:
-		if target and is_instance_valid(target) and target != launcher:
-			var distance = global_position.distance_to(target.global_position)
-			if distance < nearest_distance:
-				nearest_distance = distance
-				nearest_target = target
+	# Basic particle settings
+	trail_effect.emitting = true
+	trail_effect.amount = 30
+	trail_effect.lifetime = 0.8
+	trail_effect.local_coords = false
+	trail_effect.explosiveness = 0.0
+	trail_effect.randomness = 0.1
 	
-	return nearest_target
+	# Motion parameters
+	trail_effect.direction = Vector2(-1, 0)  # Emit backward
+	trail_effect.spread = 10
+	trail_effect.gravity = Vector2(0, 0)
+	trail_effect.initial_velocity_min = 20
+	trail_effect.initial_velocity_max = 40
+	
+	# Appearance
+	trail_effect.scale_amount_min = 2.0
+	trail_effect.scale_amount_max = 3.0
+	
+	# Create gradient
+	var gradient = Gradient.new()
+	gradient.add_point(0.0, Color(1.0, 0.7, 0.2, 1.0))  # Bright orange at start
+	gradient.add_point(0.5, Color(1.0, 0.3, 0.1, 0.8))  # Red-orange in middle
+	gradient.add_point(1.0, Color(0.3, 0.2, 0.1, 0))    # Fade out at end
+	trail_effect.color_ramp = gradient
 
-# Set initial target and launcher
-func set_target(target: Node2D, source = null) -> void:
-	original_target = target
-	current_target = target
-	launcher = source
+func _setup_light_effect() -> void:
+	# Create a light effect that follows the missile
+	light_effect = PointLight2D.new()
+	add_child(light_effect)
 	
-	# Add target to acquired targets list
-	if target and not acquired_targets.has(target):
-		acquired_targets.append(target)
-
-func _on_lifetime_expired() -> void:
-	explode()
+	# Set light properties
+	light_effect.energy = 0.8
+	light_effect.range_layer_min = -100
+	light_effect.range_layer_max = 100
+	light_effect.texture_scale = 0.5
+	
+	# Create light texture
+	var light_img = Image.create(128, 128, false, Image.FORMAT_RGBA8)
+	light_img.fill(Color(0, 0, 0, 0))
+	
+	# Draw radial gradient for light
+	for x in range(128):
+		for y in range(128):
+			var dx = x - 64
+			var dy = y - 64
+			var dist = sqrt(dx * dx + dy * dy)
+			
+			if dist <= 64:
+				var intensity = 1.0 - (dist / 64.0)
+				intensity = pow(intensity, 2)  # Make falloff more pronounced
+				light_img.set_pixel(x, y, Color(1.0, 0.7, 0.3, intensity))
+	
+	var light_texture = ImageTexture.create_from_image(light_img)
+	light_effect.texture = light_texture
+	
+	# Add flickering effect
+	var tween = create_tween()
+	tween.set_loops()
+	tween.tween_property(light_effect, "energy", 1.0, 0.2)
+	tween.tween_property(light_effect, "energy", 0.7, 0.2)
