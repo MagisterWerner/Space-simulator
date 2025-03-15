@@ -113,7 +113,18 @@ func _find_game_settings() -> void:
 func _create_world_generator() -> void:
 	# Create world generator if it doesn't exist
 	if not world_generator:
-		world_generator = WorldGenerator.new()
+		# Check if the class is already available
+		if ClassDB.class_exists("WorldGenerator"):
+			# Create using the engine class
+			world_generator = WorldGenerator.new()
+		elif ResourceLoader.exists("res://scripts/generators/world_generator.gd"):
+			# Load the script and create an instance
+			var WorldGeneratorScript = load("res://scripts/generators/world_generator.gd")
+			world_generator = WorldGeneratorScript.new(current_seed)
+		else:
+			# Create an instance of our just-created class
+			world_generator = WorldGenerator.new(current_seed)
+		
 		world_generator.name = "WorldGenerator"
 		add_child(world_generator)
 		

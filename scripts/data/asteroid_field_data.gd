@@ -42,9 +42,9 @@ func count_asteroids_by_size() -> Dictionary:
 	
 	return counts
 
-# Override duplicate for proper copying
-func duplicate(subresources: bool = false) -> Resource:
-	var copy = super.duplicate(subresources) as AsteroidFieldData
+# Create a deep copy - custom method that doesn't override native methods
+func clone() -> AsteroidFieldData:
+	var copy = super.clone() as AsteroidFieldData
 	
 	# Field properties
 	copy.field_radius = field_radius
@@ -63,10 +63,10 @@ func duplicate(subresources: bool = false) -> Resource:
 	copy.min_linear_speed = min_linear_speed
 	copy.max_linear_speed = max_linear_speed
 	
-	# Duplicate asteroids
+	# Clone asteroids
 	copy.asteroids = []
 	for asteroid in asteroids:
-		copy.asteroids.append(asteroid.duplicate(subresources))
+		copy.asteroids.append(asteroid.clone())
 	
 	return copy
 

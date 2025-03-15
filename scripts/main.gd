@@ -47,31 +47,55 @@ func _ready() -> void:
 func _create_pre_generation_systems() -> void:
 	# Create content registry
 	if not content_registry:
-		content_registry = ContentRegistry.new()
-		content_registry.name = "ContentRegistry"
-		add_child(content_registry)
-		content_registry.connect("content_loaded", _on_content_loaded)
+		if ClassDB.class_exists("ContentRegistry"):
+			content_registry = ContentRegistry.new()
+		elif ResourceLoader.exists("res://scripts/managers/content_registry.gd"):
+			var ContentRegistryClass = load("res://scripts/managers/content_registry.gd")
+			content_registry = ContentRegistryClass.new()
+		
+		if content_registry:
+			content_registry.name = "ContentRegistry"
+			add_child(content_registry)
+			content_registry.connect("content_loaded", _on_content_loaded)
 	
 	# Create fragment pool manager
 	if not fragment_pool_manager:
-		fragment_pool_manager = FragmentPoolManager.new()
-		fragment_pool_manager.name = "FragmentPoolManager"
-		add_child(fragment_pool_manager)
-		fragment_pool_manager.connect("pools_initialized", _on_fragment_pools_initialized)
+		if ClassDB.class_exists("FragmentPoolManager"):
+			fragment_pool_manager = FragmentPoolManager.new()
+		elif ResourceLoader.exists("res://scripts/managers/fragment_pool_manager.gd"):
+			var FragmentPoolManagerClass = load("res://scripts/managers/fragment_pool_manager.gd")
+			fragment_pool_manager = FragmentPoolManagerClass.new()
+		
+		if fragment_pool_manager:
+			fragment_pool_manager.name = "FragmentPoolManager"
+			add_child(fragment_pool_manager)
+			fragment_pool_manager.connect("pools_initialized", _on_fragment_pools_initialized)
 	
 	# Create projectile pool manager
 	if not projectile_pool_manager:
-		projectile_pool_manager = ProjectilePoolManager.new()
-		projectile_pool_manager.name = "ProjectilePoolManager"
-		add_child(projectile_pool_manager)
-		projectile_pool_manager.connect("pools_initialized", _on_projectile_pools_initialized)
+		if ClassDB.class_exists("ProjectilePoolManager"):
+			projectile_pool_manager = ProjectilePoolManager.new()
+		elif ResourceLoader.exists("res://scripts/managers/projectile_pool_manager.gd"):
+			var ProjectilePoolManagerClass = load("res://scripts/managers/projectile_pool_manager.gd")
+			projectile_pool_manager = ProjectilePoolManagerClass.new()
+		
+		if projectile_pool_manager:
+			projectile_pool_manager.name = "ProjectilePoolManager"
+			add_child(projectile_pool_manager)
+			projectile_pool_manager.connect("pools_initialized", _on_projectile_pools_initialized)
 	
 	# Create effect pool manager
 	if not effect_pool_manager:
-		effect_pool_manager = EffectPoolManager.new()
-		effect_pool_manager.name = "EffectPoolManager"
-		add_child(effect_pool_manager)
-		effect_pool_manager.connect("pools_initialized", _on_effect_pools_initialized)
+		if ClassDB.class_exists("EffectPoolManager"):
+			effect_pool_manager = EffectPoolManager.new()
+		elif ResourceLoader.exists("res://scripts/managers/effect_pool_manager.gd"):
+			var EffectPoolManagerClass = load("res://scripts/managers/effect_pool_manager.gd")
+			effect_pool_manager = EffectPoolManagerClass.new()
+		
+		if effect_pool_manager:
+			effect_pool_manager.name = "EffectPoolManager"
+			add_child(effect_pool_manager)
+			effect_pool_manager.connect("pools_initialized", _on_effect_pools_initialized)
 
 func _on_content_loaded() -> void:
 	_systems_loaded.content_registry = true
@@ -166,18 +190,25 @@ func _on_seed_manager_initialized() -> void:
 func _preload_audio() -> void:
 	# Preload sound effects
 	if has_node("/root/AudioManager"):
-		AudioManager.preload_sfx("laser", "res://assets/audio/laser.sfxr", 20)  # Pool size of 20
-		AudioManager.preload_sfx("explosion_debris", "res://assets/audio/explosion_debris.wav", 10)
-		AudioManager.preload_sfx("explosion_fire", "res://assets/audio/explosion_fire.wav", 10)
-		AudioManager.preload_sfx("missile", "res://assets/audio/missile.sfxr", 5)
-		AudioManager.preload_sfx("thruster", "res://assets/audio/thruster.wav", 5)
+		# Check if methods exist before calling
+		if AudioManager.has_method("preload_sfx"):
+			AudioManager.preload_sfx("laser", "res://assets/audio/laser.sfxr", 20)  # Pool size of 20
+			AudioManager.preload_sfx("explosion_debris", "res://assets/audio/explosion_debris.wav", 10)
+			AudioManager.preload_sfx("explosion_fire", "res://assets/audio/explosion_fire.wav", 10)
+			AudioManager.preload_sfx("missile", "res://assets/audio/missile.sfxr", 5)
+			AudioManager.preload_sfx("thruster", "res://assets/audio/thruster.wav", 5)
 		
 		# Wait for audio to be initialized
-		if not AudioManager.is_initialized():
-			AudioManager.audio_buses_initialized.connect(_on_audio_initialized)
+		if AudioManager.has_method("is_initialized"):
+			if not AudioManager.is_initialized():
+				if AudioManager.has_signal("audio_buses_initialized"):
+					AudioManager.audio_buses_initialized.connect(_on_audio_initialized)
+				else:
+					_systems_loaded.audio = true
+			else:
+				_systems_loaded.audio = true
 		else:
 			_systems_loaded.audio = true
-			_check_all_systems_loaded()
 	else:
 		_systems_loaded.audio = true  # Mark as loaded anyway to continue
 
@@ -193,7 +224,8 @@ func _configure_world_manager() -> void:
 		
 		# Connect to WorldManager signals
 		if WorldManager.has_signal("world_generation_completed"):
-			WorldManager.connect("world_generation_completed", _on_world_generation_completed)
+			if not WorldManager.is_connected("world_generation_completed", _on_world_generation_completed):
+				WorldManager.connect("world_generation_completed", _on_world_generation_completed)
 		
 		_systems_loaded.world = true
 	else:
@@ -207,7 +239,8 @@ func _initialize_background_and_camera() -> void:
 		# Determine initial player position
 		if game_settings:
 			player_start_position = game_settings.get_player_starting_position()
-			player_start_cell = WorldManager.world_to_cell(player_start_position)
+			if has_node("/root/WorldManager"):
+				player_start_cell = WorldManager.world_to_cell(player_start_position)
 		else:
 			player_start_position = screen_size / 2
 			
