@@ -1,159 +1,206 @@
-# scripts/components/weapons/laser_weapon_component.gd
 extends WeaponComponent
 class_name LaserWeaponComponent
 
-# Laser-specific properties
-@export_group("Laser Properties")
-@export var laser_color: Color = Color(1.0, 0.2, 0.2, 1.0)
-@export var laser_width: float = 2.0
-@export var energy_consumption: float = 5.0
-@export var max_energy: float = 100.0
-@export var energy_regen_rate: float = 10.0
+# Additional laser-specific properties
+@export var projectile_color: Color = Color(1.0, 0.2, 0.2, 1.0)
+@export var muzzle_offset: Vector2 = Vector2(20, 0)
 
-# State tracking
-var current_energy: float = 100.0
-var _energy_percent: float = 1.0
-var _is_energy_depleted: bool = false
+# Projectile scene
+var projectile_scene = preload("res://scenes/projectiles/laser_projectile.tscn")
 
-# Cooldown tracking for laser sound
-var _last_sound_time: float = 0.0
-var _sound_cooldown: float = 0.1
+# Muzzle flash and sound effect
+var muzzle_flash: Node2D = null
+var audio_player: AudioStreamPlayer2D = null
 
-# Optional beam effect
-var _beam_effect: Line2D = null
-
-func setup() -> void:
-	super.setup()
+func _ready() -> void:
+	# Call parent ready function first
+	super._ready()
 	
-	# Set default properties for a laser weapon
+	# Connect signals
+	if has_node("/root/EventManager"):
+		EventManager.safe_connect("game_paused", _on_game_paused)
+	
+	# Set up muzzle flash
+	_setup_muzzle_flash()
+	
+	# Set up audio player
+	_setup_audio_player()
+	
+	# Set default laser weapon properties
 	weapon_name = "Laser"
-	fire_rate = 8.0  # Rapid fire
-	damage = 5.0     # Lower per-shot damage
-	projectile_lifespan = 1.0  # Short-lived projectile
-	
-	# If projectile scene is not set, load the laser projectile
-	if not projectile_scene and ResourceLoader.exists("res://scenes/projectiles/laser_projectile.tscn"):
-		projectile_scene = load("res://scenes/projectiles/laser_projectile.tscn")
-	
-	# Set initial energy
-	current_energy = max_energy
-	_energy_percent = 1.0
-	
-	# Setup visual beam effect if needed
-	_setup_beam_effect()
+	damage = 10.0
+	fire_rate = 5.0
+	projectile_speed = 800.0
 
-func _on_enable() -> void:
-	super._on_enable()
-	
-	if _beam_effect:
-		_beam_effect.visible = false
-
-func _on_disable() -> void:
-	super._on_disable()
-	
-	if _beam_effect:
-		_beam_effect.visible = false
-
+# Override fire method for laser-specific behavior
 func fire() -> bool:
-	# Check energy before firing
-	if current_energy < energy_consumption:
-		if not _is_energy_depleted:
-			_is_energy_depleted = true
-			
-			# Play empty click sound if enabled
-			if enable_audio and _audio_manager and empty_sound_name:
-				_play_sound(empty_sound_name)
-		
+	# Call parent method to handle basic firing logic
+	if not super.fire():
 		return false
 	
-	# Call parent fire method
-	var did_fire = super.fire()
+	# Create projectile
+	var projectile = _create_projectile()
+	if not projectile:
+		return false
 	
-	# If fired successfully, consume energy
-	if did_fire:
-		current_energy -= energy_consumption
-		_energy_percent = current_energy / max_energy
-		
-		# Update beam effect if it exists
-		if _beam_effect:
-			_update_beam_effect()
+	# Play effects
+	_show_muzzle_flash()
+	_play_fire_sound()
 	
-	return did_fire
+	# Emit signal
+	weapon_fired.emit(projectile)
+	
+	return true
 
-func process_component(delta: float) -> void:
-	super.process_component(delta)
+# Create a projectile
+func _create_projectile() -> Node2D:
+	if not projectile_scene:
+		push_error("LaserWeaponComponent: Projectile scene not set")
+		return null
 	
-	# Handle energy regeneration
-	if current_energy < max_energy:
-		current_energy = min(max_energy, current_energy + (energy_regen_rate * delta))
-		_energy_percent = current_energy / max_energy
+	# Check for ProjectilePoolManager first
+	if has_node("/root/ProjectilePoolManager"):
+		var projectile_manager = get_node("/root/ProjectilePoolManager")
+		var direction = Vector2.RIGHT.rotated(global_rotation)
+		var spawn_position = global_position + muzzle_offset.rotated(global_rotation)
 		
-		# Check if we've recovered from energy depletion
-		if _is_energy_depleted and current_energy >= energy_consumption:
-			_is_energy_depleted = false
-	
-	# Update beam effect visibility
-	if _beam_effect:
-		_beam_effect.visible = false
-
-# Setup visual beam effect
-func _setup_beam_effect() -> void:
-	# Create a Line2D for the beam effect if needed
-	if not _beam_effect and owner_entity is Node2D:
-		_beam_effect = Line2D.new()
-		_beam_effect.name = "LaserBeamEffect"
-		_beam_effect.width = laser_width
-		_beam_effect.default_color = laser_color
-		_beam_effect.z_index = 5
-		_beam_effect.visible = false
+		var projectile = projectile_manager.get_projectile("laser", spawn_position, direction, owner_entity)
 		
-		# Add points for the line
-		_beam_effect.add_point(Vector2.ZERO)
-		_beam_effect.add_point(Vector2(500, 0))  # Default length
-		
-		var muzzle = _muzzle_node if _muzzle_node else owner_entity
-		muzzle.add_child(_beam_effect)
-
-# Update beam effect when firing
-func _update_beam_effect() -> void:
-	if not _beam_effect:
-		return
-	
-	_beam_effect.visible = true
-	_beam_effect.default_color = laser_color
-	
-	# Schedule hiding the beam effect after a short delay
-	get_tree().create_timer(0.05).timeout.connect(func(): _beam_effect.visible = false)
-
-# Get energy percentage for UI
-func get_energy_percent() -> float:
-	return _energy_percent
-
-# Modify projectile at creation time
-func _create_projectile() -> Node:
-	var projectile = super._create_projectile()
-	
-	if projectile:
-		# Set laser-specific properties
-		if projectile.has_method("set_laser_color"):
-			projectile.set_laser_color(laser_color)
-		
-		if projectile.has_method("set_laser_width"):
-			projectile.set_laser_width(laser_width)
+		if projectile:
+			# Configure projectile
+			if projectile.has_method("set_damage"):
+				projectile.set_damage(damage)
 			
-		# IMPORTANT: Set direction for proper laser orientation and movement
-		if projectile.has_method("set_direction"):
-			var firing_dir = Vector2.RIGHT.rotated(owner_entity.global_rotation)
-			projectile.set_direction(firing_dir)
+			if projectile.has_method("set_speed"):
+				projectile.set_speed(projectile_speed)
+			
+			if projectile.has_method("set_color") and projectile is Node2D:
+				projectile.set_color(projectile_color)
+			
+			# Apply strategy modifications
+			for strategy in applied_strategies:
+				if strategy.has_method("modify_projectile"):
+					strategy.modify_projectile(projectile)
+			
+			return projectile
+	
+	# Fallback to direct instantiation if no pool manager
+	var projectile = projectile_scene.instantiate()
+	
+	# Add to the scene
+	get_tree().current_scene.add_child(projectile)
+	
+	# Set properties
+	projectile.global_position = global_position + muzzle_offset.rotated(global_rotation)
+	
+	# Set direction
+	var direction = Vector2.RIGHT.rotated(global_rotation)
+	if projectile.has_method("fire"):
+		projectile.fire(direction, owner_entity)
+	else:
+		# Basic properties if no fire method
+		projectile.rotation = global_rotation
+		
+		if "speed" in projectile:
+			projectile.speed = projectile_speed
+		
+		if "damage" in projectile:
+			projectile.damage = damage
+		
+		if "shooter" in projectile:
+			projectile.shooter = owner_entity
+	
+	# Set color if applicable
+	if "modulate" in projectile:
+		projectile.modulate = projectile_color
+	
+	# Apply strategy modifications
+	for strategy in applied_strategies:
+		if strategy.has_method("modify_projectile"):
+			strategy.modify_projectile(projectile)
 	
 	return projectile
 
-# Override sound method to add cooldown for rapid fire
-func _play_sound(sound_name: String, pitch: float = 1.0) -> void:
-	# Use cooldown to avoid sound spam for rapid fire
-	var current_time = Time.get_ticks_msec() / 1000.0
-	if current_time - _last_sound_time < _sound_cooldown:
-		return
+# Setup muzzle flash
+func _setup_muzzle_flash() -> void:
+	# Check if we already have a muzzle flash node
+	muzzle_flash = get_node_or_null("MuzzleFlash")
+	
+	if not muzzle_flash:
+		# Create a simple muzzle flash
+		muzzle_flash = Node2D.new()
+		muzzle_flash.name = "MuzzleFlash"
+		add_child(muzzle_flash)
 		
-	_last_sound_time = current_time
-	super._play_sound(sound_name, pitch)
+		# Create a sprite for the flash
+		var flash_sprite = Sprite2D.new()
+		flash_sprite.name = "FlashSprite"
+		
+		# Try to load a texture
+		var flash_texture = load("res://assets/effects/muzzle_flash.png")
+		if flash_texture:
+			flash_sprite.texture = flash_texture
+		else:
+			# Create a simple circle texture
+			var image = Image.create(16, 16, false, Image.FORMAT_RGBA8)
+			image.fill(Color(1, 1, 1, 1))
+			
+			# Draw a circle
+			for x in range(16):
+				for y in range(16):
+					var dist = Vector2(x - 8, y - 8).length()
+					if dist > 7:
+						image.set_pixel(x, y, Color(0, 0, 0, 0))
+			
+			flash_sprite.texture = ImageTexture.create_from_image(image)
+		
+		# Set position and initial visibility
+		flash_sprite.position = muzzle_offset
+		muzzle_flash.add_child(flash_sprite)
+		muzzle_flash.visible = false
+
+# Setup audio player
+func _setup_audio_player() -> void:
+	# Check if we already have an audio player
+	audio_player = get_node_or_null("AudioPlayer")
+	
+	if not audio_player:
+		# Create audio player
+		audio_player = AudioStreamPlayer2D.new()
+		audio_player.name = "AudioPlayer"
+		audio_player.bus = "SFX"
+		
+		# Try to load a sound
+		var fire_sound = load("res://assets/audio/laser.wav")
+		if fire_sound:
+			audio_player.stream = fire_sound
+		
+		add_child(audio_player)
+
+# Show muzzle flash
+func _show_muzzle_flash() -> void:
+	if not muzzle_flash:
+		return
+	
+	muzzle_flash.visible = true
+	
+	# Hide after a short delay
+	get_tree().create_timer(0.05).timeout.connect(func(): muzzle_flash.visible = false)
+
+# Play fire sound
+func _play_fire_sound() -> void:
+	# Use AudioManager if available
+	if has_node("/root/AudioManager"):
+		AudioManager.play_sfx("laser", global_position)
+	elif audio_player:
+		audio_player.play()
+
+# Play reload sound
+func _play_reload_sound() -> void:
+	if has_node("/root/AudioManager"):
+		AudioManager.play_sfx("reload", global_position)
+
+# Event handlers
+func _on_game_paused() -> void:
+	# Pause processing when game is paused
+	set_process(false)

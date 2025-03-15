@@ -1,166 +1,140 @@
-# scripts/components/weapon_component.gd
-extends Component
+extends Node2D
 class_name WeaponComponent
 
-signal weapon_fired(position, direction)
+# Signals
+signal weapon_fired(projectile)
+signal cooldown_complete
+signal ammo_changed(current, maximum)
 
-# Weapon configuration
-@export var weapon_name: String = "Generic Weapon"
-@export var fire_rate: float = 0.5  # Seconds between shots
+# Base weapon properties
+@export var weapon_name: String = "Base Weapon"
 @export var damage: float = 10.0
-@export var energy_cost: float = 5.0
+@export var fire_rate: float = 1.0  # Shots per second
 @export var projectile_speed: float = 500.0
+@export var energy_cost: float = 1.0
+@export var max_ammo: int = 100
+@export var reload_time: float = 2.0
+@export var auto_reload: bool = true
+@export var enabled: bool = true
 
-# Projectile configuration
-@export var projectile_type: String = "laser"
-@export_file("*.tscn") var projectile_scene_path: String = ""
+# Current state
+var current_ammo: int = max_ammo
+var cooldown_timer: float = 0.0
+var can_fire: bool = true
+var reloading: bool = false
+var reload_progress: float = 0.0
 
-# Audio configuration
-@export var fire_sound: String = "laser"
-@export var audio_volume_db: float = 0.0
-@export var audio_pitch: float = 1.0
+# Upgrade strategies
+var applied_strategies = []
 
-# Component references
-@export var muzzle_path: NodePath
-@onready var muzzle = get_node_or_null(muzzle_path)
-
-# Internal state
-var _fire_timer: float = 0.0
-var _can_fire: bool = true
-var _base_fire_rate: float
-var _base_damage: float
-var _base_projectile_speed: float
-
-# Manager references - cached
-var _audio_manager = null
-var _projectile_pool_manager = null
+# Owner reference
+var owner_entity: Node = null
 
 func _ready() -> void:
-	super._ready()
+	# Get reference to the owner (parent)
+	owner_entity = get_parent()
 	
-	# Store base values for strategy modifications
-	_base_fire_rate = fire_rate
-	_base_damage = damage
-	_base_projectile_speed = projectile_speed
-	
-	# Get manager references
-	_audio_manager = get_node_or_null("/root/AudioManager")
-	_projectile_pool_manager = get_node_or_null("/root/ProjectilePoolManager")
+	# Set initial ammo
+	current_ammo = max_ammo
 
 func _process(delta: float) -> void:
-	# Update fire timer
-	if not _can_fire:
-		_fire_timer -= delta
-		if _fire_timer <= 0:
-			_can_fire = true
+	if not enabled:
+		return
+	
+	# Handle cooldown
+	if not can_fire:
+		cooldown_timer -= delta
+		if cooldown_timer <= 0:
+			can_fire = true
+			cooldown_complete.emit()
+	
+	# Handle reloading
+	if reloading:
+		reload_progress += delta
+		if reload_progress >= reload_time:
+			_complete_reload()
 
-# Fire the weapon
+# Virtual method to be overridden by subclasses
 func fire() -> bool:
-	if not enabled or not _can_fire:
+	# Basic implementation
+	if not can_fire or not enabled:
 		return false
 	
-	# Reset fire timer
-	_can_fire = false
-	_fire_timer = fire_rate
+	if current_ammo <= 0:
+		# Try to reload if out of ammo
+		if auto_reload:
+			start_reload()
+		return false
 	
-	# Use projectile pool manager if available
-	if _projectile_pool_manager:
-		_spawn_projectile_from_pool()
-	else:
-		# Fallback to direct instantiation
-		_spawn_projectile_direct()
+	# Set cooldown
+	cooldown_timer = 1.0 / fire_rate
+	can_fire = false
 	
-	# Play fire sound
-	_play_fire_sound()
-	
-	# Emit signal
-	var direction = Vector2.UP.rotated(get_parent().rotation)
-	weapon_fired.emit(get_fire_position(), direction)
+	# Reduce ammo
+	current_ammo -= 1
+	ammo_changed.emit(current_ammo, max_ammo)
 	
 	return true
 
-# Spawn projectile using pool manager
-func _spawn_projectile_from_pool() -> void:
-	var spawn_position = get_fire_position()
-	var direction = Vector2.UP.rotated(get_parent().rotation)
-	
-	# Get projectile from pool
-	_projectile_pool_manager.get_projectile(
-		projectile_type,
-		spawn_position,
-		direction,
-		get_parent()
-	)
-
-# Fallback direct projectile spawning
-func _spawn_projectile_direct() -> void:
-	if projectile_scene_path.is_empty():
-		return
-		
-	# Load scene if it exists
-	if not ResourceLoader.exists(projectile_scene_path):
-		push_error("WeaponComponent: Projectile scene not found: " + projectile_scene_path)
+# Start reloading
+func start_reload() -> void:
+	if reloading or current_ammo >= max_ammo:
 		return
 	
-	# Spawn projectile
-	var projectile_scene = load(projectile_scene_path)
-	var projectile = projectile_scene.instantiate()
+	reloading = true
+	reload_progress = 0.0
+
+# Complete reload
+func _complete_reload() -> void:
+	reloading = false
+	current_ammo = max_ammo
+	ammo_changed.emit(current_ammo, max_ammo)
+
+# Enable the weapon
+func enable() -> void:
+	enabled = true
+
+# Disable the weapon
+func disable() -> void:
+	enabled = false
+
+# Get ammo percentage (0.0 to 1.0)
+func get_ammo_percent() -> float:
+	if max_ammo <= 0:
+		return 0.0
+	return float(current_ammo) / float(max_ammo)
+
+# Add a new strategy
+func apply_strategy(strategy) -> void:
+	# Check if the strategy is already applied
+	for existing in applied_strategies:
+		if existing.get_script() == strategy.get_script():
+			return
 	
-	# Add to scene tree
-	get_tree().current_scene.add_child(projectile)
+	# Set the owner component
+	strategy.owner_component = self
 	
-	# Position and configure
-	projectile.global_position = get_fire_position()
+	# Apply the strategy
+	strategy.apply()
 	
-	# Set direction and speed
-	var direction = Vector2.UP.rotated(get_parent().rotation)
-	
-	# Configure projectile if it has appropriate methods
-	if projectile.has_method("set_damage"):
-		projectile.set_damage(damage)
-	
-	if projectile.has_method("set_speed"):
-		projectile.set_speed(projectile_speed)
-	
-	if projectile.has_method("fire"):
-		projectile.fire(direction, get_parent())
-	else:
-		# Basic fallback for RigidBody2D projectiles
-		if projectile is RigidBody2D:
-			projectile.linear_velocity = direction * projectile_speed
+	# Add to the list
+	applied_strategies.append(strategy)
+
+# Remove a strategy
+func remove_strategy(strategy) -> void:
+	var index = applied_strategies.find(strategy)
+	if index >= 0:
+		# Remove the strategy's effects
+		strategy.remove()
 		
-		# Add source information via metadata
-		projectile.set_meta("source", get_parent())
-		projectile.set_meta("damage", damage)
+		# Remove from the list
+		applied_strategies.remove_at(index)
 
-# Get fire position
-func get_fire_position() -> Vector2:
-	if muzzle:
-		return muzzle.global_position
-	return get_parent().global_position
-
-# Play fire sound
-func _play_fire_sound() -> void:
-	if _audio_manager and not fire_sound.is_empty():
-		_audio_manager.play_sfx(
-			fire_sound,
-			get_fire_position(),
-			audio_pitch,
-			audio_volume_db
-		)
-
-# Apply modification from strategy
-func apply_strategy_mod(property: String, value: float) -> void:
-	match property:
-		"fire_rate":
-			fire_rate = _base_fire_rate * value
-		"damage":
-			damage = _base_damage * value
-		"projectile_speed":
-			projectile_speed = _base_projectile_speed * value
-
-# Reset to base values
-func reset_to_base_values() -> void:
-	fire_rate = _base_fire_rate
-	damage = _base_damage
-	projectile_speed = _base_projectile_speed
+# Reset to default values
+func reset() -> void:
+	current_ammo = max_ammo
+	cooldown_timer = 0.0
+	can_fire = true
+	reloading = false
+	reload_progress = 0.0
+	ammo_changed.emit(current_ammo, max_ammo)
