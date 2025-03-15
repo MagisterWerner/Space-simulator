@@ -1,3 +1,4 @@
+# scripts/spawners/planet_spawner.gd
 extends EntitySpawnerBase
 class_name PlanetSpawner
 
@@ -15,9 +16,6 @@ var _moon_scenes = {}
 # Cache for planets and their moons
 var _planet_cache = {}
 
-# Texture generator (only used if planet textures aren't provided)
-var _texture_generator = null
-
 func _load_common_scenes() -> void:
 	# Load planet scenes
 	_load_scene("planet_terran", TERRAN_PLANET_SCENE)
@@ -33,10 +31,6 @@ func _load_common_scenes() -> void:
 	_moon_scenes[MoonData.MoonType.ROCKY] = "moon_rocky"
 	_moon_scenes[MoonData.MoonType.ICY] = "moon_icy"
 	_moon_scenes[MoonData.MoonType.VOLCANIC] = "moon_volcanic"
-	
-	# Initialize texture generator if needed for fallback
-	_texture_generator = load("res://scripts/generators/planet_generator_base.gd").new()
-	add_child(_texture_generator)
 
 func spawn_entity(data: EntityData) -> Node:
 	if not _initialized:
@@ -79,24 +73,9 @@ func spawn_planet(planet_data: PlanetData) -> Node:
 		if planet_data.grid_cell != Vector2i(-1, -1):
 			params["grid_x"] = planet_data.grid_cell.x
 			params["grid_y"] = planet_data.grid_cell.y
-			
-		# Add atmosphere data if available
-		if not planet_data.atmosphere_data.is_empty():
-			params["atmosphere_data"] = planet_data.atmosphere_data
-			
-		# Add name if available
-		if not planet_data.planet_name.is_empty():
-			params["planet_name"] = planet_data.planet_name
-			
+		
 		# Initialize the planet
 		planet.initialize(params)
-	else:
-		# Set basic properties for simpler planets
-		if has_property(planet, "planet_name") and not planet_data.planet_name.is_empty():
-			planet.planet_name = planet_data.planet_name
-			
-		if has_property(planet, "planet_theme"):
-			planet.planet_theme = planet_data.planet_theme
 	
 	# Keep track of this planet in our cache
 	_planet_cache[planet_data.entity_id] = planet
@@ -154,27 +133,36 @@ func spawn_moon(moon_data: MoonData, parent_planet = null) -> Node:
 			"orbital_inclination": moon_data.orbital_inclination,
 			"orbit_vertical_offset": moon_data.orbit_vertical_offset
 		}
-		
-		# Set orbit colors if available
-		if moon_data.orbit_color != Color.WHITE:
-			params["orbit_color"] = moon_data.orbit_color
-			
-		if moon_data.indicator_color != Color.WHITE:
-			params["indicator_color"] = moon_data.indicator_color
-			
 		moon.initialize(params)
-	else:
-		# Set basic properties for simpler moons
-		if has_property(moon, "moon_name") and not moon_data.moon_name.is_empty():
-			moon.moon_name = moon_data.moon_name
-			
-		if has_property(moon, "orbit_speed"):
-			moon.orbit_speed = moon_data.orbit_speed
-			
-		if has_property(moon, "distance"):
-			moon.distance = moon_data.distance
 	
 	# Register with entity manager
 	register_entity(moon, "moon", moon_data)
 	
 	return moon
+
+# Utility function to create a planet at a specific grid cell
+func spawn_planet_at_cell(cell: Vector2i, is_gaseous: bool = false, theme_id: int = -1) -> Node:
+	# Create a new PlanetData object
+	var entity_id = 1
+	if _entity_manager and _entity_manager.has_method("get_next_entity_id"):
+		entity_id = _entity_manager.get_next_entity_id()
+	
+	# Calculate world position from cell
+	var position = _get_cell_world_position(cell)
+	
+	# Create appropriate seed
+	var seed_value = 0
+	if _game_settings:
+		var base_seed = _game_settings.get_seed()
+		seed_value = base_seed + (cell.x * 1000) + (cell.y * 100)
+	
+	# Create planet data
+	var planet_data = PlanetData.new(entity_id, position, seed_value, theme_id)
+	planet_data.is_gaseous = is_gaseous
+	planet_data.grid_cell = cell
+	
+	# Generate a name for the planet
+	planet_data.planet_name = planet_data.generate_name()
+	
+	# Spawn the planet
+	return spawn_planet(planet_data)

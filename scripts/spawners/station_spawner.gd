@@ -1,3 +1,4 @@
+# scripts/spawners/station_spawner.gd
 extends EntitySpawnerBase
 class_name StationSpawner
 
@@ -102,6 +103,48 @@ func spawn_station(station_data: StationData) -> Node:
 	_stations[station_data.entity_id] = station
 	
 	return station
+
+# Utility function to create a station at a specific grid cell
+func spawn_station_at_cell(cell: Vector2i, station_type: int = StationData.StationType.TRADING) -> Node:
+	# Create a new station data
+	var entity_id = 1
+	if _entity_manager and _entity_manager.has_method("get_next_entity_id"):
+		entity_id = _entity_manager.get_next_entity_id()
+	
+	# Calculate world position from cell
+	var position = _get_cell_world_position(cell)
+	
+	# Add slight random offset
+	var rng = RandomNumberGenerator.new()
+	rng.randomize()
+	var cell_size = 1024
+	if _game_settings:
+		cell_size = _game_settings.grid_cell_size
+	
+	var offset = Vector2(
+		rng.randf_range(-cell_size/4.0, cell_size/4.0),
+		rng.randf_range(-cell_size/4.0, cell_size/4.0)
+	)
+	position += offset
+	
+	# Create seed
+	var seed_value = 0
+	if _game_settings:
+		var base_seed = _game_settings.get_seed()
+		seed_value = base_seed + (cell.x * 1000) + (cell.y * 100) + 8000  # Offset for stations
+	
+	# Create station data
+	var station_data = StationData.new(entity_id, position, seed_value, station_type)
+	
+	# Generate name and market data
+	station_data.station_name = station_data.generate_name()
+	station_data.generate_market_data()
+	
+	# Set grid cell
+	station_data.grid_cell = cell
+	
+	# Spawn the station
+	return spawn_station(station_data)
 
 # Get station name from a StationData.StationType
 func get_station_type_name(station_type: int) -> String:
