@@ -1,6 +1,6 @@
 # scripts/main.gd
 # Main scene controller that integrates all game systems
-# Updated to include pre-generation systems
+# Updated to ensure deterministic initialization
 extends Node2D
 
 @onready var camera = $Camera2D
@@ -13,26 +13,11 @@ var player_start_position: Vector2 = Vector2.ZERO
 var player_start_cell: Vector2i = Vector2i(-1, -1)
 var initialization_complete = false
 
-# Pre-generation managers
-var fragment_pool_manager = null
-var projectile_pool_manager = null
-var effect_pool_manager = null
-var content_registry = null
-
-# Initialization tracking
-var _systems_loaded = {
-	"seed": false,
-	"fragment_pool": false,
-	"projectile_pool": false,
-	"effect_pool": false,
-	"content_registry": false,
-	"audio": false,
-	"world": false
-}
-
 func _ready() -> void:
-	# Create pre-generation systems first
-	_create_pre_generation_systems()
+	# Load missile sounds
+	AudioManager.preload_sfx("missile_launch", "res://assets/audio/missile.sfxr")
+	AudioManager.preload_sfx("explosion_fire", "res://assets/audio/explosion_fire.wav")
+	AudioManager.preload_sfx("explosion_debris", "res://assets/audio/explosion_debris.wav")
 	
 	screen_size = get_viewport_rect().size
 	
@@ -45,51 +30,6 @@ func _ready() -> void:
 	# If settings already initialized or not available, initialize directly
 	_initialize_game()
 
-func _create_pre_generation_systems() -> void:
-	# Create content registry
-	if not content_registry:
-		content_registry = ContentRegistry.new()
-		content_registry.name = "ContentRegistry"
-		add_child(content_registry)
-		content_registry.connect("content_loaded", _on_content_loaded)
-	
-	# Create fragment pool manager
-	if not fragment_pool_manager:
-		fragment_pool_manager = FragmentPoolManager.new()
-		fragment_pool_manager.name = "FragmentPoolManager"
-		add_child(fragment_pool_manager)
-		fragment_pool_manager.connect("pools_initialized", _on_fragment_pools_initialized)
-	
-	# Create projectile pool manager
-	if not projectile_pool_manager:
-		projectile_pool_manager = ProjectilePoolManager.new()
-		projectile_pool_manager.name = "ProjectilePoolManager"
-		add_child(projectile_pool_manager)
-		projectile_pool_manager.connect("pools_initialized", _on_projectile_pools_initialized)
-	
-	# Create effect pool manager
-	if not effect_pool_manager:
-		effect_pool_manager = EffectPoolManager.new()
-		effect_pool_manager.name = "EffectPoolManager"
-		add_child(effect_pool_manager)
-		effect_pool_manager.connect("pools_initialized", _on_effect_pools_initialized)
-
-func _on_content_loaded() -> void:
-	_systems_loaded.content_registry = true
-	_check_all_systems_loaded()
-
-func _on_fragment_pools_initialized() -> void:
-	_systems_loaded.fragment_pool = true
-	_check_all_systems_loaded()
-
-func _on_projectile_pools_initialized() -> void:
-	_systems_loaded.projectile_pool = true
-	_check_all_systems_loaded()
-
-func _on_effect_pools_initialized() -> void:
-	_systems_loaded.effect_pool = true
-	_check_all_systems_loaded()
-
 func _on_game_settings_initialized() -> void:
 	_initialize_game()
 
@@ -97,6 +37,8 @@ func _initialize_game() -> void:
 	# Ensure we only initialize once
 	if initialization_complete:
 		return
+	
+	initialization_complete = true
 	
 	# Ensure seed is properly set first
 	_initialize_seed()
@@ -110,29 +52,14 @@ func _initialize_game() -> void:
 	# Initialize background and camera
 	_initialize_background_and_camera()
 	
-	# Wait for other systems to be ready before starting the game
-	_check_all_systems_loaded()
-
-func _check_all_systems_loaded() -> void:
-	# Check if all required systems are loaded
-	var all_loaded = true
-	for system in _systems_loaded:
-		if not _systems_loaded[system]:
-			all_loaded = false
-			break
-	
-	# Start the game if all systems are loaded
-	if all_loaded:
-		initialization_complete = true
-		_start_game_manager()
-		
-		if game_settings and game_settings.debug_mode:
-			print("Main: All pre-generation systems initialized")
+	# Start the game using GameManager
+	_start_game_manager()
 
 func _initialize_seed() -> void:
 	# Make sure SeedManager gets the correct seed from GameSettings
 	if has_node("/root/SeedManager") and game_settings:
 		# Wait for SeedManager to be initialized if necessary
+		# Fix: Check if is_initialized is a property (not a method)
 		if "is_initialized" in SeedManager and not SeedManager.is_initialized:
 			if SeedManager.has_signal("seed_initialized"):
 				SeedManager.connect("seed_initialized", _on_seed_manager_initialized)
@@ -143,11 +70,8 @@ func _initialize_seed() -> void:
 		
 		if game_settings.debug_mode:
 			print("Main: Initialized SeedManager with seed: ", game_settings.get_seed())
-		
-		_systems_loaded.seed = true
 	else:
 		print("Warning: SeedManager not found or GameSettings not available")
-		_systems_loaded.seed = true  # Mark as loaded anyway to continue
 
 func _on_seed_manager_initialized() -> void:
 	# Check if we've already completed initialization
@@ -157,12 +81,18 @@ func _on_seed_manager_initialized() -> void:
 			SeedManager.set_seed(game_settings.get_seed())
 		return
 	
+	# Set initialization flag to prevent further initialization attempts
+	initialization_complete = true
+	
 	# SeedManager is now initialized, set the seed
 	if game_settings:
 		SeedManager.set_seed(game_settings.get_seed())
 	
-	_systems_loaded.seed = true
-	_check_all_systems_loaded()
+	# Continue with the standard initialization sequence
+	_preload_audio()
+	_initialize_world_generator()
+	_initialize_background_and_camera()
+	_start_game_manager()
 
 func _preload_audio() -> void:
 	# Preload sound effects
@@ -172,19 +102,6 @@ func _preload_audio() -> void:
 		AudioManager.preload_sfx("explosion_fire", "res://assets/audio/explosion_fire.wav", 10)
 		AudioManager.preload_sfx("missile", "res://assets/audio/missile.sfxr", 5)
 		AudioManager.preload_sfx("thruster", "res://assets/audio/thruster.wav", 5)
-		
-		# Wait for audio to be initialized
-		if not AudioManager.is_initialized():
-			AudioManager.audio_buses_initialized.connect(_on_audio_initialized)
-		else:
-			_systems_loaded.audio = true
-			_check_all_systems_loaded()
-	else:
-		_systems_loaded.audio = true  # Mark as loaded anyway to continue
-
-func _on_audio_initialized() -> void:
-	_systems_loaded.audio = true
-	_check_all_systems_loaded()
 
 func _initialize_world_generator() -> void:
 	# Initialize world generator
@@ -214,9 +131,6 @@ func _initialize_world_generator() -> void:
 		# Fallback if generate_starter_world doesn't exist
 		print("WorldGenerator doesn't have generate_starter_world method")
 		player_start_position = screen_size / 2
-	
-	_systems_loaded.world = true
-	_check_all_systems_loaded()
 
 func _initialize_background_and_camera() -> void:
 	# Initially position camera at the player start position
