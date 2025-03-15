@@ -28,15 +28,15 @@ func get_property(key: String, default_value = null):
 func set_property(key: String, value) -> void:
 	properties[key] = value
 
-# Create a deep copy of this data
-func duplicate() -> EntityData:
+# Create a deep copy of this data - custom method that doesn't override native methods
+func clone() -> EntityData:
 	var copy = get_script().new()
 	copy.entity_id = entity_id
 	copy.entity_type = entity_type
 	copy.position = position
 	copy.seed_value = seed_value
 	copy.grid_cell = grid_cell
-	copy.properties = properties.duplicate(true)
+	copy.properties = properties.duplicate()
 	return copy
 
 # Serialization helper method

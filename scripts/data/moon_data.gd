@@ -59,9 +59,9 @@ func generate_name() -> String:
 		moon_name = "%s Moon-%d" % [get_type_prefix(), seed_value % 1000]
 	return moon_name
 
-# Override duplicate to ensure proper copying
-func duplicate() -> MoonData:
-	var copy = super.duplicate() as MoonData
+# Create a deep copy - custom method that doesn't override native methods
+func clone() -> MoonData:
+	var copy = super.clone() as MoonData
 	copy.moon_type = moon_type
 	copy.moon_name = moon_name
 	copy.pixel_size = pixel_size

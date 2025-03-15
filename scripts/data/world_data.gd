@@ -134,12 +134,13 @@ func _generate_seed_hash(seed_val: int) -> String:
 	for i in range(6):
 		var index = temp_seed % characters.length()
 		hash_string += characters[index]
+		# Use float division to avoid integer division
 		temp_seed = int(temp_seed / float(characters.length()))
 	
 	return hash_string
 
-# Create a deep copy of this world data
-func duplicate() -> WorldData:
+# Create a deep copy of this world data - custom method that doesn't override native methods
+func clone() -> WorldData:
 	var copy = WorldData.new(seed_value, grid_size, grid_cell_size)
 	copy.seed_hash = seed_hash
 	copy.player_start_cell = player_start_cell
@@ -148,17 +149,17 @@ func duplicate() -> WorldData:
 	
 	# Duplicate all entities
 	for planet in planets:
-		var planet_copy = planet.duplicate()
+		var planet_copy = planet.clone()
 		copy.add_planet(planet_copy)
 	
 	for field in asteroid_fields:
-		var field_copy = field.duplicate()
+		var field_copy = field.clone()
 		copy.add_asteroid_field(field_copy)
 	
 	# Duplicate asteroid fragment patterns
 	copy.asteroid_fragment_patterns = []
 	for pattern in asteroid_fragment_patterns:
-		copy.asteroid_fragment_patterns.append(pattern.duplicate(true))
+		copy.asteroid_fragment_patterns.append(pattern.clone())
 	
 	return copy
 

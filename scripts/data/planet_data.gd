@@ -59,21 +59,21 @@ func generate_name() -> String:
 		planet_name = "%s-%d" % [get_theme_name(), seed_value % 1000]
 	return planet_name
 
-# Override duplicate to handle moon array
-func duplicate() -> PlanetData:
-	var copy = super.duplicate() as PlanetData
+# Create a deep copy - custom method that doesn't override native methods
+func clone() -> PlanetData:
+	var copy = super.clone() as PlanetData
 	copy.planet_theme = planet_theme
 	copy.planet_category = planet_category
 	copy.is_gaseous = is_gaseous
 	copy.pixel_size = pixel_size
 	copy.planet_name = planet_name
 	copy.texture_seed = texture_seed
-	copy.atmosphere_data = atmosphere_data.duplicate(true)
+	copy.atmosphere_data = atmosphere_data.duplicate()
 	
 	# Duplicate moons
 	copy.moons = []
 	for moon in moons:
-		copy.moons.append(moon.duplicate())
+		copy.moons.append(moon.clone())
 	
 	return copy
 
