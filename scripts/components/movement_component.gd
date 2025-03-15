@@ -1,365 +1,442 @@
+# scripts/components/movement_component.gd - Highly optimized implementation
 extends Component
 class_name MovementComponent
 
-# Movement signals
-signal thrust_changed(level)
-signal rotation_changed(direction)
-signal boost_activated(is_active)
-signal velocity_changed(speed)
+signal thrusting_changed(is_thrusting)
+signal boost_activated
+signal boost_depleted
+signal boost_recharged
 
-# Basic movement properties
-@export_group("Basic Movement")
-@export var max_speed: float = 400.0
-@export var acceleration: float = 12.0
-@export var deceleration: float = 4.0
-@export var rotation_speed: float = 3.0
+# Movement properties
+@export_category("Movement Properties")
+@export var thrust_force: float = 200.0
+@export var reverse_force: float = 100.0
+@export var rotation_force: float = 300.0
+@export var max_speed: float = 700.0
+@export var dampening_factor: float = 0.98
 
-# Advanced movement properties
-@export_group("Advanced Movement")
-@export var drift_factor: float = 0.92
-@export var can_boost: bool = true
-@export var boost_multiplier: float = 1.5
+# Boost properties
+@export_category("Boost")
+@export var boost_enabled: bool = true
+@export var boost_multiplier: float = 2.0
 @export var boost_duration: float = 3.0
-@export var boost_cooldown: float = 5.0
-@export var boost_fuel_cost: float = 5.0
+@export var boost_cooldown: float = 4.0
+@export var boost_fuel: float = 100.0
+@export var boost_fuel_consumption: float = 30.0
+@export var boost_fuel_regen: float = 20.0
 
-# Fuel system properties
-@export_group("Fuel System")
-@export var use_fuel: bool = true
-@export var fuel_consumption_rate: float = 1.0  # Fuel units per second
-@export var fuel_consumption_modifier: float = 1.0
-@export var min_speed_factor: float = 0.3  # Minimum speed percentage when out of fuel
+# Thruster node paths
+@export_category("Thruster Nodes")
+@export var main_thruster_path: NodePath = "MainThruster"
+@export var left_thruster_rear_path: NodePath = "ThrusterPositions/Left/RearThruster"
+@export var left_thruster_front_path: NodePath = "ThrusterPositions/Left/FrontThruster"
+@export var right_thruster_rear_path: NodePath = "ThrusterPositions/Right/RearThruster"
+@export var right_thruster_front_path: NodePath = "ThrusterPositions/Right/FrontThruster"
 
-# Debug properties
-@export_group("Debug")
-@export var show_force_gizmos: bool = false
+# Audio properties - compressed into single category
+@export_category("Audio")
+@export var enable_audio: bool = true
+@export var main_thruster_sound_name: String = "thruster"
+@export var main_thruster_volume_db: float = 0.0
+@export var rotation_thruster_volume_db: float = -6.0
+@export var backward_thruster_volume_db: float = -3.0
+@export var boost_sound_name: String = "boost"
+@export var rotation_thruster_pitch: float = 1.0
+@export var backward_thruster_pitch: float = 1.0
 
-# Current state
-var current_speed: float = 0.0
-var current_rotation: float = 0.0
-var is_thrusting_forward: bool = false
-var is_thrusting_backward: bool = false
-var is_rotating_left: bool = false
-var is_rotating_right: bool = false
-var is_boosting: bool = false
-var thrust_level: float = 0.0
-var rotation_direction: float = 0.0
+# Input state - using bitflags for better performance
+const INPUT_FORWARD = 1
+const INPUT_BACKWARD = 2
+const INPUT_LEFT = 4
+const INPUT_RIGHT = 8
+const INPUT_BOOST = 16
+
+# Cached references
+var _rigid_body: RigidBody2D
+var _input_state: int = 0
+var _movement_strategies: Array = []
+var _audio_manager = null
+
+# Thruster nodes - cached on setup
+var _main_thruster: Node
+var _left_thruster_rear: Node
+var _left_thruster_front: Node
+var _right_thruster_rear: Node
+var _right_thruster_front: Node
 
 # Boost state
-var boost_remaining: float = 0.0
-var boost_cooldown_remaining: float = 0.0
-var can_activate_boost: bool = true
+var _is_boosting: bool = false
+var _boost_cooldown_remaining: float = 0.0
+var _current_boost_fuel: float = 100.0
 
-# Entity references
-var owner_entity = null
-var _resource_manager = null
-var _audio_manager = null
-var _effect_manager = null
+# Audio player references
+var _main_thruster_player = null
+var _rotation_thruster_player = null
+var _backward_thruster_player = null
+var _boost_thruster_player = null
 
-# Particle effects
-var _thrust_particles = null
-var _boost_particles = null
+# Audio state tracking
+var _main_thruster_active: bool = false
+var _rotation_thruster_active: bool = false
+var _backward_thruster_active: bool = false
+var _boost_sound_active: bool = false
 
-# Sound effects
-var _thrust_sound_instance = null
-var _is_thrust_sound_playing: bool = false
+# Performance optimizations
+var _cached_direction_right: Vector2 = Vector2.RIGHT
+var _cached_direction_left: Vector2 = Vector2.LEFT
+var _last_rotation: float = 0.0
 
-func _ready() -> void:
-	super._ready()
-	
-	# Find our owner entity (the ship)
-	owner_entity = _find_owner_entity()
-	
-	# Get manager references
-	_resource_manager = get_node_or_null("/root/ResourceManager")
-	_audio_manager = get_node_or_null("/root/AudioManager")
-	_effect_manager = get_node_or_null("/root/EffectPoolManager")
-	
-	# Find particle effect nodes
-	_thrust_particles = get_node_or_null("ThrustParticles")
-	_boost_particles = get_node_or_null("BoostParticles")
-	
-	# Initialize boost
-	boost_remaining = boost_duration
-	
-	# Set component name
-	if component_name.is_empty():
-		component_name = "MovementComponent"
-
-func _process(delta: float) -> void:
-	if not enabled:
-		_stop_thrust_effects()
+func setup() -> void:
+	if not owner is RigidBody2D:
+		disable()
 		return
 	
-	# Apply rotation
-	_apply_rotation(delta)
+	_rigid_body = owner
+	_current_boost_fuel = boost_fuel
 	
-	# Apply thrust
-	_apply_thrust(delta)
+	# Cache thruster nodes
+	_main_thruster = get_node_or_null(main_thruster_path)
+	_left_thruster_rear = get_node_or_null(left_thruster_rear_path)
+	_left_thruster_front = get_node_or_null(left_thruster_front_path)
+	_right_thruster_rear = get_node_or_null(right_thruster_rear_path)
+	_right_thruster_front = get_node_or_null(right_thruster_front_path)
 	
-	# Update boost state
-	_update_boost_state(delta)
+	# Cache audio manager reference
+	if enable_audio:
+		_audio_manager = get_node_or_null("/root/AudioManager")
+		if _audio_manager == null:
+			enable_audio = false
 	
-	# Update thrust effects
-	_update_thrust_effects()
+	# Precalculate direction vectors
+	_update_direction_vectors()
 
-func _physics_process(delta: float) -> void:
-	if not enabled or not owner_entity:
+func _on_enable() -> void:
+	if enable_audio:
+		if _input_state & INPUT_FORWARD:
+			_start_main_thruster_sound()
+		if _input_state & (INPUT_LEFT | INPUT_RIGHT):
+			_start_rotation_thruster_sound()
+		if _input_state & INPUT_BACKWARD:
+			_start_backward_thruster_sound()
+		if _is_boosting:
+			_start_boost_sound()
+
+func _on_disable() -> void:
+	if enable_audio:
+		_stop_all_thruster_sounds()
+
+func physics_process_component(delta: float) -> void:
+	if not _rigid_body or not enabled:
 		return
 	
-	# Get final velocity from owner
-	if owner_entity is RigidBody2D:
-		var speed = owner_entity.linear_velocity.length()
-		# Only emit signal when speed changes significantly
-		if abs(speed - current_speed) > 1.0:
-			current_speed = speed
-			velocity_changed.emit(current_speed)
-
-# Apply rotation based on current rotation direction
-func _apply_rotation(delta: float) -> void:
-	if not owner_entity:
-		return
-		
-	if rotation_direction != 0:
-		var rotation_amount = rotation_direction * rotation_speed * delta
-		
-		if owner_entity is RigidBody2D:
-			owner_entity.angular_velocity = rotation_direction * rotation_speed
-		else:
-			owner_entity.rotation += rotation_amount
-		
-		current_rotation = rotation_amount / delta
-
-# Apply thrust based on current thrust level
-func _apply_thrust(delta: float) -> void:
-	if not owner_entity:
-		return
+	# Only recalculate direction vectors when rotation changes
+	if _rigid_body.rotation != _last_rotation:
+		_update_direction_vectors()
+		_last_rotation = _rigid_body.rotation
 	
-	var final_thrust = thrust_level
-	var has_fuel = true
+	# Fast path: Get modified movement values
+	var current_thrust = thrust_force
+	var current_reverse = reverse_force
+	var current_rotation = rotation_force
+	var current_max_speed = max_speed
 	
-	# Check fuel if using fuel system
-	if use_fuel and _resource_manager:
-		var fuel_cost = final_thrust * fuel_consumption_rate * fuel_consumption_modifier * delta
-		
-		if is_boosting:
-			fuel_cost *= boost_multiplier
-		
-		# Skip if no fuel consumption
-		if fuel_cost > 0:
-			var current_fuel = _resource_manager.get_resource_amount(_resource_manager.ResourceType.FUEL)
-			
-			if current_fuel <= 0:
-				has_fuel = false
-				final_thrust *= min_speed_factor
-			else:
-				_resource_manager.remove_resource(_resource_manager.ResourceType.FUEL, fuel_cost)
+	# Apply strategies - only if we have strategies
+	if not _movement_strategies.is_empty():
+		for strategy in _movement_strategies:
+			if strategy.has_method("modify_thrust"):
+				current_thrust = strategy.modify_thrust(current_thrust)
+			if strategy.has_method("modify_reverse_thrust"):
+				current_reverse = strategy.modify_reverse_thrust(current_reverse)
+			if strategy.has_method("modify_rotation"):
+				current_rotation = strategy.modify_rotation(current_rotation)
+			if strategy.has_method("modify_max_speed"):
+				current_max_speed = strategy.modify_max_speed(current_max_speed)
 	
-	# Apply thrust force
-	if final_thrust != 0 and owner_entity is RigidBody2D:
-		var thrust_direction = Vector2(cos(owner_entity.rotation), sin(owner_entity.rotation))
-		var thrust_force = thrust_direction * final_thrust * acceleration
+	# Apply boost multiplier
+	if _is_boosting:
+		current_thrust *= boost_multiplier
+		current_reverse *= boost_multiplier
 		
-		if is_boosting and has_fuel:
-			thrust_force *= boost_multiplier
-		
-		owner_entity.apply_central_force(thrust_force)
-	elif final_thrust != 0 and "velocity" in owner_entity:
-		# For KinematicBody2D or other entities with direct velocity control
-		var thrust_direction = Vector2(cos(owner_entity.rotation), sin(owner_entity.rotation))
-		var accel = acceleration * delta
-		
-		if is_boosting and has_fuel:
-			accel *= boost_multiplier
-		
-		owner_entity.velocity += thrust_direction * final_thrust * accel
-
-# Update boost state
-func _update_boost_state(delta: float) -> void:
-	# Skip if boost not enabled
-	if not can_boost:
-		return
-	
-	# Handle boost cooldown
-	if not can_activate_boost and boost_cooldown_remaining > 0:
-		boost_cooldown_remaining -= delta
-		if boost_cooldown_remaining <= 0:
-			can_activate_boost = true
-			boost_remaining = boost_duration
-	
-	# Handle active boost
-	if is_boosting:
-		boost_remaining -= delta
-		if boost_remaining <= 0:
+		# Handle boost consumption
+		_current_boost_fuel -= boost_fuel_consumption * delta
+		if _current_boost_fuel <= 0:
+			_current_boost_fuel = 0
 			stop_boost()
-			# Start cooldown
-			can_activate_boost = false
-			boost_cooldown_remaining = boost_cooldown
-
-# Update thrust particle effects and sounds
-func _update_thrust_effects() -> void:
-	# Update particle effects
-	if _thrust_particles:
-		_thrust_particles.emitting = thrust_level != 0
+			boost_depleted.emit()
+	elif boost_enabled and _current_boost_fuel < boost_fuel:
+		# Regenerate boost fuel
+		_current_boost_fuel = min(_current_boost_fuel + (boost_fuel_regen * delta), boost_fuel)
 		
-		if _thrust_particles.emitting:
-			# Adjust particle intensity based on thrust
-			_thrust_particles.amount = 16 + int(abs(thrust_level) * 16)
-			_thrust_particles.initial_velocity_min = 20 + abs(thrust_level) * 20
-			_thrust_particles.initial_velocity_max = 40 + abs(thrust_level) * 60
+		# Signal full recharge
+		if _current_boost_fuel >= boost_fuel and _boost_cooldown_remaining <= 0:
+			boost_recharged.emit()
 	
-	if _boost_particles:
-		_boost_particles.emitting = is_boosting and thrust_level != 0
+	# Update boost cooldown
+	if _boost_cooldown_remaining > 0:
+		_boost_cooldown_remaining -= delta
 	
-	# Update sound effects
-	if _audio_manager:
-		if thrust_level != 0:
-			if not _is_thrust_sound_playing:
-				_start_thrust_sound()
+	# Handle movement based on input state - bitflag checks are faster
+	if _input_state & INPUT_FORWARD:
+		_rigid_body.apply_central_force(_cached_direction_right * current_thrust)
+		_set_thruster_emission(_main_thruster, true)
+	else:
+		_set_thruster_emission(_main_thruster, false)
+	
+	# Handle backward movement
+	if _input_state & INPUT_BACKWARD:
+		_rigid_body.apply_central_force(_cached_direction_left * current_reverse)
+		
+		if enable_audio and not _backward_thruster_active:
+			_start_backward_thruster_sound()
+		
+		# Turning while moving backward - combined bitwise checks
+		if _input_state & INPUT_RIGHT:
+			_set_thruster_emission(_right_thruster_front, true)
+			_set_thruster_emission(_left_thruster_front, false)
+			_rigid_body.apply_torque(current_rotation * 0.3)
+		elif _input_state & INPUT_LEFT:
+			_set_thruster_emission(_left_thruster_front, true)
+			_set_thruster_emission(_right_thruster_front, false)
+			_rigid_body.apply_torque(-current_rotation * 0.3)
 		else:
-			_stop_thrust_sound()
-
-# Start thrust sound
-func _start_thrust_sound() -> void:
-	if not _audio_manager or _is_thrust_sound_playing:
-		return
+			_set_thruster_emission(_left_thruster_front, true)
+			_set_thruster_emission(_right_thruster_front, true)
+	else:
+		_set_thruster_emission(_left_thruster_front, false)
+		_set_thruster_emission(_right_thruster_front, false)
+		
+		if _backward_thruster_active:
+			_stop_backward_thruster_sound()
 	
-	_thrust_sound_instance = _audio_manager.play_sfx("thruster", _get_global_position())
-	_is_thrust_sound_playing = true
-
-# Stop thrust sound
-func _stop_thrust_sound() -> void:
-	if not _audio_manager or not _is_thrust_sound_playing:
-		return
+	# Handle rotation while not moving backward
+	if not (_input_state & INPUT_BACKWARD):
+		if _input_state & INPUT_RIGHT:
+			_set_thruster_emission(_left_thruster_rear, true)
+			_rigid_body.apply_torque(current_rotation)
+		else:
+			_set_thruster_emission(_left_thruster_rear, false)
+		
+		if _input_state & INPUT_LEFT:
+			_set_thruster_emission(_right_thruster_rear, true)
+			_rigid_body.apply_torque(-current_rotation)
+		else:
+			_set_thruster_emission(_right_thruster_rear, false)
 	
-	_is_thrust_sound_playing = false
+	# Cap maximum speed - only calculate length once
+	var speed = _rigid_body.linear_velocity.length()
+	if speed > current_max_speed:
+		_rigid_body.linear_velocity = _rigid_body.linear_velocity.normalized() * current_max_speed
 	
-	# If audio manager has a stop method, use it
-	if _audio_manager.has_method("stop_sfx"):
-		_audio_manager.stop_sfx("thruster")
-
-# Stop all thrust effects
-func _stop_thrust_effects() -> void:
-	if _thrust_particles:
-		_thrust_particles.emitting = false
+	# Apply dampening
+	_rigid_body.linear_velocity *= dampening_factor
 	
-	if _boost_particles:
-		_boost_particles.emitting = false
+	# Update audio positions if needed
+	if enable_audio:
+		_update_audio_positions()
+
+# Optimized direction vector updates - only called when needed
+func _update_direction_vectors() -> void:
+	var sin_rot = sin(_rigid_body.rotation)
+	var cos_rot = cos(_rigid_body.rotation)
+	_cached_direction_right = Vector2(cos_rot, sin_rot)
+	_cached_direction_left = Vector2(-cos_rot, -sin_rot)
+
+# Consolidated input handling with bitflags
+func thrust_forward(activate: bool = true) -> void:
+	var was_thrusting = _input_state & INPUT_FORWARD
 	
-	_stop_thrust_sound()
+	if activate:
+		_input_state |= INPUT_FORWARD
+	else:
+		_input_state &= ~INPUT_FORWARD
+		
+	if was_thrusting != (_input_state & INPUT_FORWARD):
+		if enable_audio:
+			if _input_state & INPUT_FORWARD:
+				_start_main_thruster_sound()
+			else:
+				_stop_main_thruster_sound()
+		thrusting_changed.emit((_input_state & INPUT_FORWARD) != 0)
 
-# Find the owner entity (ship)
-func _find_owner_entity() -> Node:
-	var parent = get_parent()
-	# Search up the tree for a RigidBody2D or a node in the player or ships group
-	while parent and not parent is RigidBody2D and not parent.is_in_group("player") and not parent.is_in_group("ships"):
-		parent = parent.get_parent()
-	
-	return parent
+func thrust_backward(activate: bool = true) -> void:
+	if activate:
+		_input_state |= INPUT_BACKWARD
+	else:
+		_input_state &= ~INPUT_BACKWARD
 
-# PUBLIC API METHODS
-
-# Activate forward thrust
-func thrust_forward(active: bool = true) -> void:
-	is_thrusting_forward = active
-	_update_thrust_level()
-
-# Activate backward thrust
-func thrust_backward(active: bool = true) -> void:
-	is_thrusting_backward = active
-	_update_thrust_level()
-
-# Update the thrust level based on input state
-func _update_thrust_level() -> void:
-	var new_thrust_level = 0.0
-	
-	if is_thrusting_forward:
-		new_thrust_level += 1.0
-	
-	if is_thrusting_backward:
-		new_thrust_level -= 0.5  # Backward thrust is weaker
-	
-	# Only emit signal if thrust level changed
-	if new_thrust_level != thrust_level:
-		thrust_level = new_thrust_level
-		thrust_changed.emit(thrust_level)
-
-# Rotate left
 func rotate_left() -> void:
-	is_rotating_left = true
-	is_rotating_right = false
-	rotation_direction = 1.0
-	rotation_changed.emit(rotation_direction)
+	_input_state |= INPUT_LEFT
+	_input_state &= ~INPUT_RIGHT
+	
+	if enable_audio and not _rotation_thruster_active:
+		_start_rotation_thruster_sound()
 
-# Rotate right
 func rotate_right() -> void:
-	is_rotating_left = false
-	is_rotating_right = true 
-	rotation_direction = -1.0
-	rotation_changed.emit(rotation_direction)
+	_input_state |= INPUT_RIGHT
+	_input_state &= ~INPUT_LEFT
+	
+	if enable_audio and not _rotation_thruster_active:
+		_start_rotation_thruster_sound()
 
-# Stop rotation
 func stop_rotation() -> void:
-	is_rotating_left = false
-	is_rotating_right = false
-	rotation_direction = 0.0
+	var was_rotating = _input_state & (INPUT_LEFT | INPUT_RIGHT)
+	_input_state &= ~(INPUT_LEFT | INPUT_RIGHT)
 	
-	# Stop angular velocity on the physics body
-	if owner_entity is RigidBody2D:
-		owner_entity.angular_velocity = 0
-	
-	rotation_changed.emit(rotation_direction)
+	if was_rotating and enable_audio:
+		_stop_rotation_thruster_sound()
 
-# Start boost
 func start_boost() -> void:
-	if not can_boost or not can_activate_boost or is_boosting:
+	if not boost_enabled or _is_boosting or _boost_cooldown_remaining > 0 or _current_boost_fuel <= 0:
 		return
 	
-	is_boosting = true
-	boost_activated.emit(true)
+	_is_boosting = true
 	
-	# Play boost sound if available
-	if _audio_manager:
-		_audio_manager.play_sfx("boost", _get_global_position())
-	
-	# Create boost effect if available
-	if _effect_manager and _effect_manager.has_method("play_effect"):
-		_effect_manager.play_effect("boost", _get_global_position(), owner_entity.rotation)
+	if enable_audio:
+		_start_boost_sound()
+		
+	boost_activated.emit()
 
-# Stop boost
 func stop_boost() -> void:
-	if not is_boosting:
+	if not _is_boosting:
 		return
 	
-	is_boosting = false
-	boost_activated.emit(false)
+	_is_boosting = false
+	_boost_cooldown_remaining = boost_cooldown
+	
+	if enable_audio:
+		_stop_boost_sound()
 
-# Get the global position from the owner entity
-func _get_global_position() -> Vector2:
-	if owner_entity and "global_position" in owner_entity:
-		return owner_entity.global_position
-	return Vector2.ZERO
+# Optimized audio handling with fewer checks
+func _start_main_thruster_sound() -> void:
+	if _main_thruster_active or _audio_manager == null:
+		return
+	
+	_main_thruster_active = true
+	_main_thruster_player = _audio_manager.play_sfx(
+		main_thruster_sound_name, 
+		owner_entity.global_position, 
+		1.0, 
+		main_thruster_volume_db
+	)
 
-# Get current velocity
-func get_velocity() -> Vector2:
-	if owner_entity is RigidBody2D:
-		return owner_entity.linear_velocity
-	elif "velocity" in owner_entity:
-		return owner_entity.velocity
-	return Vector2.ZERO
+func _stop_main_thruster_sound() -> void:
+	if not _main_thruster_active:
+		return
+	
+	_main_thruster_active = false
+	
+	if _main_thruster_player:
+		_main_thruster_player.stop()
+		_main_thruster_player = null
 
-# Get current speed
-func get_speed() -> float:
-	return current_speed
+func _start_rotation_thruster_sound() -> void:
+	if _rotation_thruster_active or _audio_manager == null:
+		return
+	
+	_rotation_thruster_active = true
+	_rotation_thruster_player = _audio_manager.play_sfx(
+		main_thruster_sound_name, 
+		owner_entity.global_position, 
+		rotation_thruster_pitch,
+		rotation_thruster_volume_db
+	)
 
-# Get boost remaining percentage
-func get_boost_percent() -> float:
-	if can_boost:
-		return boost_remaining / boost_duration
-	return 0.0
+func _stop_rotation_thruster_sound() -> void:
+	if not _rotation_thruster_active:
+		return
+	
+	_rotation_thruster_active = false
+	
+	if _rotation_thruster_player:
+		_rotation_thruster_player.stop()
+		_rotation_thruster_player = null
 
-# Get boost cooldown percentage
-func get_boost_cooldown_percent() -> float:
-	if can_boost and not can_activate_boost:
-		return 1.0 - (boost_cooldown_remaining / boost_cooldown)
-	return 1.0
+func _start_backward_thruster_sound() -> void:
+	if _backward_thruster_active or _audio_manager == null:
+		return
+	
+	_backward_thruster_active = true
+	_backward_thruster_player = _audio_manager.play_sfx(
+		main_thruster_sound_name, 
+		owner_entity.global_position, 
+		backward_thruster_pitch,
+		backward_thruster_volume_db
+	)
+
+func _stop_backward_thruster_sound() -> void:
+	if not _backward_thruster_active:
+		return
+	
+	_backward_thruster_active = false
+	
+	if _backward_thruster_player:
+		_backward_thruster_player.stop()
+		_backward_thruster_player = null
+
+func _start_boost_sound() -> void:
+	if _boost_sound_active or _audio_manager == null:
+		return
+	
+	_boost_sound_active = true
+	_boost_thruster_player = _audio_manager.play_sfx(
+		boost_sound_name, 
+		owner_entity.global_position, 
+		0.9,
+		0.0
+	)
+
+func _stop_boost_sound() -> void:
+	if not _boost_sound_active:
+		return
+	
+	_boost_sound_active = false
+	
+	if _boost_thruster_player:
+		_boost_thruster_player.stop()
+		_boost_thruster_player = null
+
+func _stop_all_thruster_sounds() -> void:
+	_stop_main_thruster_sound()
+	_stop_rotation_thruster_sound()
+	_stop_backward_thruster_sound()
+	_stop_boost_sound()
+
+# Optimized thruster effects
+func _set_thruster_emission(thruster: Node, emitting: bool) -> void:
+	if thruster == null:
+		return
+		
+	if thruster is CPUParticles2D or thruster is GPUParticles2D:
+		thruster.emitting = emitting
+	elif thruster is Node2D:
+		thruster.visible = emitting
+
+# Optimized position updates only for active sounds
+func _update_audio_positions() -> void:
+	var pos = owner_entity.global_position
+	
+	if _main_thruster_active and _main_thruster_player:
+		_main_thruster_player.global_position = pos
+	if _rotation_thruster_active and _rotation_thruster_player:
+		_rotation_thruster_player.global_position = pos
+	if _backward_thruster_active and _backward_thruster_player:
+		_backward_thruster_player.global_position = pos
+	if _boost_sound_active and _boost_thruster_player:
+		_boost_thruster_player.global_position = pos
+
+# Public API methods
+func get_boost_fuel_percent() -> float:
+	return _current_boost_fuel / boost_fuel
+
+func get_current_velocity() -> Vector2:
+	return _rigid_body.linear_velocity if _rigid_body else Vector2.ZERO
+
+func get_current_speed() -> float:
+	return _rigid_body.linear_velocity.length() if _rigid_body else 0.0
+
+func add_movement_strategy(strategy) -> void:
+	if not _movement_strategies.has(strategy):
+		_movement_strategies.append(strategy)
+		
+func remove_movement_strategy(strategy) -> void:
+	_movement_strategies.erase(strategy)

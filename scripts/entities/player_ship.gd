@@ -18,9 +18,6 @@ signal weapon_switched(weapon_name)
 @export var debug_mode: bool = false
 @export var input_enabled: bool = true
 
-# Reference to self - this is needed for components that reference owner_entity
-var owner_entity: PlayerShip = self
-
 # Reference to GameSettings
 var game_settings: GameSettings = null
 
@@ -79,22 +76,18 @@ func _initialize_weapons() -> void:
 	# Add available weapons to the array
 	if laser_weapon and laser_weapon is WeaponComponent:
 		weapons.append(laser_weapon)
-		if debug_mode:
-			print("Found laser weapon: ", laser_weapon.weapon_name)
+		print("Found laser weapon: ", laser_weapon.weapon_name)
 	
 	if missile_weapon and missile_weapon is WeaponComponent:
 		weapons.append(missile_weapon)
-		if debug_mode:
-			print("Found missile weapon: ", missile_weapon.weapon_name)
+		print("Found missile weapon: ", missile_weapon.weapon_name)
 	
 	# If we found any weapons, select the first one
 	if weapons.size() > 0:
 		_select_weapon(0)
-		if debug_mode:
-			print("Total weapons found: ", weapons.size())
+		print("Total weapons found: ", weapons.size())
 	else:
-		if debug_mode:
-			print("WARNING: No weapons found on player ship!")
+		print("WARNING: No weapons found on player ship!")
 
 func _select_weapon(index: int) -> void:
 	if weapons.is_empty():
@@ -116,8 +109,7 @@ func _select_weapon(index: int) -> void:
 	# Emit signal for UI updates
 	weapon_switched.emit(current_weapon.weapon_name)
 	
-	if debug_mode:
-		print("Selected weapon: ", current_weapon.weapon_name)
+	print("Selected weapon: ", current_weapon.weapon_name)
 
 func _process(_delta: float) -> void:
 	# Handle weapon firing
@@ -130,13 +122,11 @@ func _process(_delta: float) -> void:
 	# Handle weapon switching - directly in process to ensure responsiveness
 	if input_enabled:
 		if Input.is_action_just_pressed("weapon_next"):
-			if debug_mode:
-				print("Next weapon pressed")
+			print("Next weapon pressed")
 			_next_weapon()
 		
 		if Input.is_action_just_pressed("weapon_previous"):
-			if debug_mode:
-				print("Previous weapon pressed")
+			print("Previous weapon pressed")
 			_previous_weapon()
 
 func _physics_process(_delta: float) -> void:

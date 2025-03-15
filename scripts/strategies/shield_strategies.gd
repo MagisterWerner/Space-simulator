@@ -1,180 +1,100 @@
-extends RefCounted
+# shield_strategies.gd
+extends Resource
 class_name ShieldStrategies
 
-# Base shield strategy class
-class ShieldStrategy:
-	var owner_component = null
-	var name: String = "Shield Strategy"
-	var description: String = "Base shield strategy"
-	var icon_texture: Texture2D = null
-	var price: int = 100
-	
-	func apply() -> void:
-		pass
-	
-	func remove() -> void:
-		pass
-	
-	func get_name() -> String:
-		return name
-	
-	func get_description() -> String:
-		return description
-	
-	func get_price() -> int:
-		return price
-
-# Reinforced Shield - Doubles shield capacity
-class ReinforcedShieldStrategy extends ShieldStrategy:
-	var original_max_shield: float = 0.0
+# Reinforced Shield Strategy
+class ReinforcedShieldStrategy extends Strategy:
+	@export var max_shield_multiplier: float = 1.5
 	
 	func _init() -> void:
-		name = "Reinforced Shield"
-		description = "Doubles shield capacity"
-		price = 250
+		strategy_name = "Reinforced Shield"
+		description = "Increases shield capacity by 50%"
+		rarity = "Uncommon"
+		price = 200
 	
-	func apply() -> void:
-		if not owner_component:
-			return
-			
-		# Store original value
-		original_max_shield = owner_component.max_shield
+	func apply_to_component(component: Component) -> void:
+		super.apply_to_component(component)
 		
-		# Double shield capacity
-		owner_component.max_shield *= 2.0
-		
-		# Update current shield
-		var percent = owner_component.current_shield / original_max_shield
-		owner_component.current_shield = owner_component.max_shield * percent
-		
-		# Emit shield changed signal
-		owner_component.shield_changed.emit(owner_component.current_shield, owner_component.max_shield)
+		if component is ShieldComponent:
+			var shield = component as ShieldComponent
+			shield.set_max_shield(shield.max_shield * max_shield_multiplier)
 	
-	func remove() -> void:
-		if not owner_component or original_max_shield <= 0:
-			return
-			
-		# Calculate current percentage
-		var percent = owner_component.current_shield / owner_component.max_shield
-		
-		# Restore original max shield
-		owner_component.max_shield = original_max_shield
-		
-		# Update current shield based on percentage
-		owner_component.current_shield = owner_component.max_shield * percent
-		
-		# Emit shield changed signal
-		owner_component.shield_changed.emit(owner_component.current_shield, owner_component.max_shield)
+	func remove_from_component() -> void:
+		if owner_component is ShieldComponent:
+			var shield = owner_component as ShieldComponent
+			shield.set_max_shield(shield.max_shield / max_shield_multiplier)
+		super.remove_from_component()
 
-# Fast Recharge - Reduces recharge delay and increases recharge rate
-class FastRechargeStrategy extends ShieldStrategy:
-	var original_recharge_rate: float = 0.0
-	var original_recharge_delay: float = 0.0
+# Fast Recharge Strategy
+class FastRechargeStrategy extends Strategy:
+	@export var recharge_rate_multiplier: float = 2.0
+	@export var recharge_delay_reduction: float = 1.0
 	
 	func _init() -> void:
-		name = "Fast Recharge"
-		description = "Reduces shield recharge delay by 50% and increases recharge rate by 50%"
+		strategy_name = "Fast Recharge"
+		description = "Doubles shield recharge rate and reduces recharge delay"
+		rarity = "Rare"
 		price = 300
 	
-	func apply() -> void:
-		if not owner_component:
-			return
-			
-		# Store original values
-		original_recharge_rate = owner_component.recharge_rate
-		original_recharge_delay = owner_component.recharge_delay
+	func apply_to_component(component: Component) -> void:
+		super.apply_to_component(component)
 		
-		# Apply bonuses
-		owner_component.recharge_rate *= 1.5
-		owner_component.recharge_delay *= 0.5
+		if component is ShieldComponent:
+			var shield = component as ShieldComponent
+			shield.recharge_rate *= recharge_rate_multiplier
+			shield.recharge_delay = max(0.5, shield.recharge_delay - recharge_delay_reduction)
 	
-	func remove() -> void:
-		if not owner_component:
-			return
-			
-		# Restore original values
-		owner_component.recharge_rate = original_recharge_rate
-		owner_component.recharge_delay = original_recharge_delay
+	func remove_from_component() -> void:
+		if owner_component is ShieldComponent:
+			var shield = owner_component as ShieldComponent
+			shield.recharge_rate /= recharge_rate_multiplier
+			shield.recharge_delay += recharge_delay_reduction
+		super.remove_from_component()
 
-# Reflective Shield - Reflects some damage back to attackers
-class ReflectiveShieldStrategy extends ShieldStrategy:
-	var reflection_chance: float = 0.25
-	var reflection_damage_percent: float = 0.3
+# Reflective Shield Strategy
+class ReflectiveShieldStrategy extends Strategy:
+	@export var reflection_chance: float = 0.25
 	
 	func _init() -> void:
-		name = "Reflective Shield"
-		description = "Has a 25% chance to reflect 30% of damage back to attackers"
-		price = 350
+		strategy_name = "Reflective Shield"
+		description = "25% chance to reflect projectiles back at enemies"
+		rarity = "Epic"
+		price = 500
 	
-	func apply() -> void:
-		if not owner_component:
-			return
-			
-		# Connect to shield damaged signal if not already connected
-		if not owner_component.is_connected("shield_damaged", _on_shield_damaged):
-			owner_component.connect("shield_damaged", _on_shield_damaged)
-	
-	func remove() -> void:
-		if not owner_component:
-			return
-			
-		# Disconnect from shield damaged signal
-		if owner_component.is_connected("shield_damaged", _on_shield_damaged):
-			owner_component.disconnect("shield_damaged", _on_shield_damaged)
-	
-	func _on_shield_damaged(amount: float, source) -> void:
-		# Check for reflection
-		if not is_instance_valid(source) or amount <= 0:
-			return
+	func modify_shield_damage(damage_amount: float, projectile_id: int = 0) -> float:
+		# Get SeedManager singleton
+		var seed_manager = Engine.get_singleton("SeedManager")
 		
-		# Random chance to reflect
-		var rng = RandomNumberGenerator.new()
-		rng.randomize()
+		# Use a deterministic random value based on projectile_id
+		# If no projectile_id is provided, use component's instance_id
+		var object_id = projectile_id if projectile_id > 0 else (owner_component.get_instance_id() if owner_component else 0)
 		
-		if rng.randf() < reflection_chance:
-			# Calculate reflection damage
-			var reflect_amount = amount * reflection_damage_percent
-			
-			# Apply reflection damage to source if it has a health component
-			var health_component = source.get_node_or_null("HealthComponent")
-			if health_component and health_component.has_method("apply_damage"):
-				health_component.apply_damage(reflect_amount, "reflection", owner_component.owner_entity)
-				
-				# Visual effect (if we have access to effect manager)
-				if has_node("/root/EffectPoolManager"):
-					EffectPoolManager.shield_hit(source.global_position, 0, 1.0)
-				
-				# Play reflection sound if we have AudioManager
-				if has_node("/root/AudioManager"):
-					AudioManager.play_sfx("shield_reflect", owner_component.owner_entity.global_position)
+		if seed_manager and seed_manager.get_random_value(object_id, 0.0, 1.0) <= reflection_chance:
+			# Reflect projectile
+			# This would require implementation in the game's projectile system
+			# to actually reflect the projectile that hit the shield
+			return 0  # No damage taken when reflected
+		return damage_amount
 
-# Absorbent Shield - Reduces incoming damage
-class AbsorbentShieldStrategy extends ShieldStrategy:
-	var original_damage_reduction: float = 0.0
+# Absorbent Shield Strategy
+class AbsorbentShieldStrategy extends Strategy:
+	@export var absorption_percentage: float = 0.25
 	
 	func _init() -> void:
-		name = "Absorbent Shield"
-		description = "Increases damage absorption by shield by 20%"
-		price = 280
+		strategy_name = "Absorbent Shield"
+		description = "Convert 25% of damage taken to shield energy"
+		rarity = "Legendary"
+		price = 700
 	
-	func apply() -> void:
-		if not owner_component:
-			return
+	func modify_shield_damage(damage_amount: float) -> float:
+		if owner_component is ShieldComponent:
+			var shield = owner_component as ShieldComponent
 			
-		# Store original value
-		original_damage_reduction = owner_component.damage_reduction
-		
-		# Increase damage reduction
-		owner_component.damage_reduction += 0.2
-	
-	func remove() -> void:
-		if not owner_component:
-			return
+			# Calculate energy gained from damage
+			var energy_gained = damage_amount * absorption_percentage
 			
-		# Restore original value
-		owner_component.damage_reduction = original_damage_reduction
-	
-	# Method that can be called by shield component during damage calculations
-	func modify_incoming_damage(amount: float, _damage_type: String) -> float:
-		# Already handled by the component's damage_reduction property
-		return amount
+			# Add to max shield (one-time bonus, not permanent)
+			shield.current_shield = min(shield.max_shield, shield.current_shield + energy_gained)
+			shield.shield_changed.emit(shield.current_shield, shield.max_shield)
+			
+		return damage_amount
