@@ -176,7 +176,7 @@ func _generate_planet_at_cell(cell: Vector2i, is_gaseous: bool, theme_id: int) -
 	var entity_id = _get_deterministic_entity_id(cell)
 	
 	# Calculate world position from cell
-	var position = _get_cell_world_position(cell)
+	var position = WorldManager.cell_to_world(cell)
 	
 	# Get deterministic seed
 	var seed_value = _get_deterministic_seed(cell)
@@ -200,7 +200,7 @@ func _generate_asteroid_field_at_cell(cell: Vector2i) -> AsteroidFieldData:
 	var entity_id = _get_deterministic_entity_id(cell)
 	
 	# Calculate world position from cell
-	var position = _get_cell_world_position(cell)
+	var position = WorldManager.cell_to_world(cell)
 	
 	# Get deterministic seed
 	var seed_value = _get_deterministic_seed(cell, 5000)  # Offset for asteroid fields
@@ -233,32 +233,6 @@ func _get_deterministic_seed(cell: Vector2i, offset: int = 0) -> int:
 	
 	# Generate deterministic seed from cell coordinates
 	return base_seed + (cell.x * 1000) + (cell.y * 100) + offset
-
-# Get cell position in world coordinates
-func _get_cell_world_position(cell: Vector2i) -> Vector2:
-	# Try different methods to get cell position
-	
-	# Try grid manager first
-	if has_node("/root/GridManager") and GridManager.has_method("cell_to_world"):
-		return GridManager.cell_to_world(cell)
-	
-	# Try game settings next
-	if _game_settings and _game_settings.has_method("get_cell_world_position"):
-		return _game_settings.get_cell_world_position(cell)
-	
-	# Fallback implementation
-	var cell_size = 1024
-	var grid_size = 10
-	
-	if _game_settings:
-		cell_size = _game_settings.grid_cell_size
-		grid_size = _game_settings.grid_size
-		
-	var grid_offset = Vector2(-cell_size * grid_size / 2.0, -cell_size * grid_size / 2.0)
-	return grid_offset + Vector2(
-		cell.x * cell_size + cell_size / 2.0,
-		cell.y * cell_size + cell_size / 2.0
-	)
 
 # Helper to ensure all spawners are ready
 func _ensure_spawners_ready() -> void:
