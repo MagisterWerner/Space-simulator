@@ -61,8 +61,7 @@ folder_colors={
 "res://scenes/": "red",
 "res://scripts/": "green",
 "res://scripts/data/": "red",
-"res://scripts/generators/": "red",
-"res://scripts/spawners/": "red"
+"res://scripts/generators/": "red"
 }
 
 [filesystem]
