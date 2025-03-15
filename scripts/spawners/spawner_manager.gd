@@ -1,4 +1,3 @@
-# scripts/spawners/spawner_manager.gd
 extends Node
 class_name SpawnerManager
 
@@ -12,6 +11,11 @@ var asteroid_spawner: AsteroidSpawner
 var station_spawner: StationSpawner
 var fragment_spawner: FragmentSpawner
 
+# Generator references for data generation
+var planet_generator = null
+var asteroid_generator = null
+var station_generator = null
+
 # Spawner tracking
 var _spawners = {}
 var _initialized_spawners = 0
@@ -22,13 +26,30 @@ var _debug_mode = false
 var _game_settings = null
 
 func _ready() -> void:
+	# Add to spawner_managers group
+	add_to_group("spawner_managers")
+	
 	# Find game settings
 	_game_settings = get_tree().current_scene.get_node_or_null("GameSettings")
 	if _game_settings:
 		_debug_mode = _game_settings.debug_mode
 	
+	# Create generators first
+	_create_generators()
+	
 	# Create and initialize all spawners
 	_initialize_spawners()
+
+func _create_generators() -> void:
+	# Create data generators for use by this manager
+	planet_generator = PlanetDataGenerator.new()
+	add_child(planet_generator)
+	
+	asteroid_generator = AsteroidDataGenerator.new()
+	add_child(asteroid_generator)
+	
+	station_generator = StationDataGenerator.new()
+	add_child(station_generator)
 
 func _initialize_spawners() -> void:
 	# Create spawners
@@ -66,6 +87,13 @@ func _initialize_spawners() -> void:
 	station_spawner.entity_spawned.connect(_on_entity_spawned)
 	fragment_spawner.entity_spawned.connect(_on_entity_spawned)
 
+	# Connect to asteroid_destroyed events
+	if has_node("/root/EventManager"):
+		var event_manager = get_node("/root/EventManager")
+		if not event_manager.is_connected("asteroid_destroyed", _on_asteroid_destroyed):
+			# Use safe_connect which adds the signal if it doesn't exist
+			event_manager.safe_connect("asteroid_destroyed", _on_asteroid_destroyed)
+
 func _on_spawner_ready(spawner_type: String) -> void:
 	_initialized_spawners += 1
 	spawner_ready.emit(spawner_type)
@@ -96,6 +124,10 @@ func _on_entity_spawned(entity: Node, data) -> void:
 	# Emit our own signal
 	entity_spawned.emit(entity, entity_type, data)
 
+func _on_asteroid_destroyed(position: Vector2, size: String) -> void:
+	# Handle asteroid destruction by spawning fragments
+	spawn_fragments_at(position, size)
+
 # Main methods for spawning entities
 
 # Spawn any entity from data
@@ -116,20 +148,35 @@ func spawn_entity(data: EntityData) -> Node:
 		push_error("SpawnerManager: Unknown data type: " + str(data.get_class()))
 		return null
 
-# Spawn a planet at a specific grid cell
+# Generate and spawn a planet at a specific grid cell
 func spawn_planet_at_cell(cell: Vector2i, is_gaseous: bool = false, theme_id: int = -1) -> Node:
 	await _ensure_spawners_ready()
-	return planet_spawner.spawn_planet_at_cell(cell, is_gaseous, theme_id)
+	
+	# Generate planet data
+	var planet_data = _generate_planet_at_cell(cell, is_gaseous, theme_id)
+	
+	# Spawn using the generated data
+	return planet_spawner.spawn_entity(planet_data)
 
-# Spawn an asteroid field at a specific grid cell
+# Generate and spawn an asteroid field at a specific grid cell
 func spawn_asteroid_field_at_cell(cell: Vector2i) -> Node:
 	await _ensure_spawners_ready()
-	return asteroid_spawner.spawn_asteroid_field_at_cell(cell)
+	
+	# Generate asteroid field data
+	var field_data = _generate_asteroid_field_at_cell(cell)
+	
+	# Spawn using the generated data
+	return asteroid_spawner.spawn_entity(field_data)
 
-# Spawn a station at a specific grid cell
+# Generate and spawn a station at a specific grid cell
 func spawn_station_at_cell(cell: Vector2i, station_type: int = StationData.StationType.TRADING) -> Node:
 	await _ensure_spawners_ready()
-	return station_spawner.spawn_station_at_cell(cell, station_type)
+	
+	# Generate station data
+	var station_data = _generate_station_at_cell(cell, station_type)
+	
+	# Spawn using the generated data
+	return station_spawner.spawn_entity(station_data)
 
 # Spawn asteroid fragments
 func spawn_fragments(asteroid_node: Node, asteroid_data: AsteroidData) -> Array:
@@ -148,7 +195,128 @@ func clear_all_entities() -> void:
 	planet_spawner.clear_spawned_entities()
 	asteroid_spawner.clear_spawned_entities()
 	station_spawner.clear_spawned_entities()
-	fragment_spawner.clear_spawned_entities()
+	fragment_spawner.clear_active_fragments()
+
+# Generate planet data for a cell
+func _generate_planet_at_cell(cell: Vector2i, is_gaseous: bool, theme_id: int) -> PlanetData:
+	# Get a deterministic entity ID
+	var entity_id = _get_deterministic_entity_id(cell)
+	
+	# Calculate world position from cell
+	var position = _get_cell_world_position(cell)
+	
+	# Get deterministic seed
+	var seed_value = _get_deterministic_seed(cell)
+	
+	# Create planet data using the generator
+	var planet_data = planet_generator.generate_planet(entity_id, position, seed_value, theme_id, false)
+	
+	# Override gaseous flag if specified
+	if is_gaseous != planet_data.is_gaseous:
+		planet_data.is_gaseous = is_gaseous
+		planet_data.planet_category = PlanetData.PlanetCategory.GASEOUS if is_gaseous else PlanetData.PlanetCategory.TERRAN
+	
+	# Set grid cell
+	planet_data.grid_cell = cell
+	
+	return planet_data
+
+# Generate asteroid field data for a cell
+func _generate_asteroid_field_at_cell(cell: Vector2i) -> AsteroidFieldData:
+	# Get a deterministic entity ID
+	var entity_id = _get_deterministic_entity_id(cell)
+	
+	# Calculate world position from cell
+	var position = _get_cell_world_position(cell)
+	
+	# Get deterministic seed
+	var seed_value = _get_deterministic_seed(cell, 5000)  # Offset for asteroid fields
+	
+	# Create and configure field data
+	var field_data = asteroid_generator.generate_asteroid_field(entity_id, position, seed_value)
+	
+	# Set grid cell
+	field_data.grid_cell = cell
+	
+	# Generate asteroids for the field
+	asteroid_generator.populate_asteroid_field(field_data, null)
+	
+	return field_data
+
+# Generate station data for a cell
+func _generate_station_at_cell(cell: Vector2i, station_type: int) -> StationData:
+	# Get a deterministic entity ID
+	var entity_id = _get_deterministic_entity_id(cell)
+	
+	# Calculate world position from cell
+	var position = _get_cell_world_position(cell)
+	
+	# Add slight deterministic offset
+	var seed_value = _get_deterministic_seed(cell, 8000)  # Offset for stations
+	var rng = RandomNumberGenerator.new()
+	rng.seed = seed_value
+	
+	var cell_size = 1024
+	if _game_settings:
+		cell_size = _game_settings.grid_cell_size
+	
+	var offset = Vector2(
+		rng.randf_range(-cell_size/4.0, cell_size/4.0),
+		rng.randf_range(-cell_size/4.0, cell_size/4.0)
+	)
+	position += offset
+	
+	# Create station data
+	var station_data = station_generator.generate_station(entity_id, position, seed_value, station_type)
+	
+	# Set grid cell
+	station_data.grid_cell = cell
+	
+	return station_data
+
+# Get a deterministic entity ID for a cell
+func _get_deterministic_entity_id(cell: Vector2i) -> int:
+	# Use a formula that ensures unique IDs for each cell
+	return 1000 + (cell.x * 100) + cell.y
+
+# Get a deterministic seed for a cell (with optional offset for different entity types)
+func _get_deterministic_seed(cell: Vector2i, offset: int = 0) -> int:
+	var base_seed = 12345
+	
+	# Use seed from game settings if available
+	if _game_settings:
+		base_seed = _game_settings.get_seed()
+	elif has_node("/root/SeedManager"):
+		base_seed = SeedManager.get_seed()
+	
+	# Generate deterministic seed from cell coordinates
+	return base_seed + (cell.x * 1000) + (cell.y * 100) + offset
+
+# Get cell position in world coordinates
+func _get_cell_world_position(cell: Vector2i) -> Vector2:
+	# Try different methods to get cell position
+	
+	# Try grid manager first
+	if has_node("/root/GridManager") and GridManager.has_method("cell_to_world"):
+		return GridManager.cell_to_world(cell)
+	
+	# Try game settings next
+	if _game_settings and _game_settings.has_method("get_cell_world_position"):
+		return _game_settings.get_cell_world_position(cell)
+	
+	# Fallback implementation
+	var cell_size = 1024
+	var grid_size = 10
+	
+	if _game_settings:
+		cell_size = _game_settings.grid_cell_size
+		grid_size = _game_settings.grid_size
+		
+	var grid_offset = Vector2(-cell_size * grid_size / 2.0, -cell_size * grid_size / 2.0)
+	return grid_offset + Vector2(
+		cell.x * cell_size + cell_size / 2.0,
+		cell.y * cell_size + cell_size / 2.0
+	)
 
 # Helper to ensure all spawners are ready
 func _ensure_spawners_ready() -> void:
