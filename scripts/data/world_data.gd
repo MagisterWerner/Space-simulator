@@ -16,7 +16,6 @@ var player_start_position: Vector2 = Vector2.ZERO
 # Entity collections
 var planets: Array = []
 var asteroid_fields: Array = []
-var stations: Array = []
 
 # Entity IDs - for tracking
 var next_entity_id: int = 1
@@ -76,13 +75,6 @@ func add_asteroid_field(field_data: AsteroidFieldData) -> void:
 		register_entity(asteroid)
 		asteroid.field_id = field_data.entity_id
 
-# Add station to the world
-func add_station(station_data: StationData) -> void:
-	if station_data.entity_id == 0:
-		station_data.entity_id = get_next_entity_id()
-	stations.append(station_data)
-	register_entity(station_data)
-
 # Get all planets in a specific cell
 func get_planets_in_cell(cell: Vector2i) -> Array:
 	var result = []
@@ -99,20 +91,11 @@ func get_asteroid_fields_in_cell(cell: Vector2i) -> Array:
 			result.append(field)
 	return result
 
-# Get all stations in a specific cell
-func get_stations_in_cell(cell: Vector2i) -> Array:
-	var result = []
-	for station in stations:
-		if station.grid_cell == cell:
-			result.append(station)
-	return result
-
 # Get all entities in a specific cell
 func get_entities_in_cell(cell: Vector2i) -> Array:
 	var result = []
 	result.append_array(get_planets_in_cell(cell))
 	result.append_array(get_asteroid_fields_in_cell(cell))
-	result.append_array(get_stations_in_cell(cell))
 	return result
 
 # Check if a cell is occupied
@@ -132,9 +115,6 @@ func find_nearest_entity(position: Vector2, entity_type: String = "") -> EntityD
 	
 	if entity_type == "asteroid_field" or entity_type.is_empty():
 		entities_to_check.append_array(asteroid_fields)
-	
-	if entity_type == "station" or entity_type.is_empty():
-		entities_to_check.append_array(stations)
 	
 	# Find the nearest entity
 	for entity in entities_to_check:
@@ -175,10 +155,6 @@ func duplicate() -> WorldData:
 		var field_copy = field.duplicate()
 		copy.add_asteroid_field(field_copy)
 	
-	for station in stations:
-		var station_copy = station.duplicate()
-		copy.add_station(station_copy)
-	
 	# Duplicate asteroid fragment patterns
 	copy.asteroid_fragment_patterns = []
 	for pattern in asteroid_fragment_patterns:
@@ -197,8 +173,7 @@ func to_dict() -> Dictionary:
 		"player_start_position": {"x": player_start_position.x, "y": player_start_position.y},
 		"next_entity_id": next_entity_id,
 		"planets": [],
-		"asteroid_fields": [],
-		"stations": []
+		"asteroid_fields": []
 	}
 	
 	# Serialize planets
@@ -208,10 +183,6 @@ func to_dict() -> Dictionary:
 	# Serialize asteroid fields
 	for field in asteroid_fields:
 		result.asteroid_fields.append(field.to_dict())
-	
-	# Serialize stations
-	for station in stations:
-		result.stations.append(station.to_dict())
 	
 	# Fragment patterns are not serialized (regenerated on load)
 	
@@ -246,12 +217,6 @@ static func from_dict(data: Dictionary) -> WorldData:
 	for field_dict in fields_data:
 		var field = AsteroidFieldData.from_dict(field_dict)
 		world_data.add_asteroid_field(field)
-	
-	# Deserialize stations
-	var stations_data = data.get("stations", [])
-	for station_dict in stations_data:
-		var station = StationData.from_dict(station_dict)
-		world_data.add_station(station)
 	
 	# Regenerate fragment patterns (not serialized)
 	

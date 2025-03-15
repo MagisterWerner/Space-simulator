@@ -8,18 +8,16 @@ signal entity_spawned(entity, entity_type, data)
 # Spawner instances
 var planet_spawner: PlanetSpawner
 var asteroid_spawner: AsteroidSpawner
-var station_spawner: StationSpawner
 var fragment_spawner: FragmentSpawner
 
 # Generator references for data generation
 var planet_generator = null
 var asteroid_generator = null
-var station_generator = null
 
 # Spawner tracking
 var _spawners = {}
 var _initialized_spawners = 0
-var _total_spawners = 4
+var _total_spawners = 3  # Reduced from 4 to 3 (removed station spawner)
 
 # Debug mode
 var _debug_mode = false
@@ -47,9 +45,6 @@ func _create_generators() -> void:
 	
 	asteroid_generator = AsteroidDataGenerator.new()
 	add_child(asteroid_generator)
-	
-	station_generator = StationDataGenerator.new()
-	add_child(station_generator)
 
 func _initialize_spawners() -> void:
 	# Create spawners
@@ -61,10 +56,6 @@ func _initialize_spawners() -> void:
 	asteroid_spawner.name = "AsteroidSpawner"
 	add_child(asteroid_spawner)
 	
-	station_spawner = StationSpawner.new()
-	station_spawner.name = "StationSpawner" 
-	add_child(station_spawner)
-	
 	fragment_spawner = FragmentSpawner.new()
 	fragment_spawner.name = "FragmentSpawner"
 	add_child(fragment_spawner)
@@ -72,19 +63,16 @@ func _initialize_spawners() -> void:
 	# Track spawners
 	_spawners["planet"] = planet_spawner
 	_spawners["asteroid"] = asteroid_spawner
-	_spawners["station"] = station_spawner
 	_spawners["fragment"] = fragment_spawner
 	
 	# Connect signals
 	planet_spawner.spawner_ready.connect(_on_spawner_ready.bind("planet"))
 	asteroid_spawner.spawner_ready.connect(_on_spawner_ready.bind("asteroid"))
-	station_spawner.spawner_ready.connect(_on_spawner_ready.bind("station"))
 	fragment_spawner.spawner_ready.connect(_on_spawner_ready.bind("fragment"))
 	
 	# Connect entity spawned signals
 	planet_spawner.entity_spawned.connect(_on_entity_spawned)
 	asteroid_spawner.entity_spawned.connect(_on_entity_spawned)
-	station_spawner.entity_spawned.connect(_on_entity_spawned)
 	fragment_spawner.entity_spawned.connect(_on_entity_spawned)
 
 	# Connect to asteroid_destroyed events
@@ -118,8 +106,6 @@ func _on_entity_spawned(entity: Node, data) -> void:
 		entity_type = "asteroid"
 	elif data is AsteroidFieldData:
 		entity_type = "asteroid_field"
-	elif data is StationData:
-		entity_type = "station"
 	
 	# Emit our own signal
 	entity_spawned.emit(entity, entity_type, data)
@@ -142,8 +128,6 @@ func spawn_entity(data: EntityData) -> Node:
 		return asteroid_spawner.spawn_entity(data)
 	elif data is AsteroidFieldData:
 		return asteroid_spawner.spawn_entity(data)
-	elif data is StationData:
-		return station_spawner.spawn_entity(data)
 	else:
 		push_error("SpawnerManager: Unknown data type: " + str(data.get_class()))
 		return null
@@ -168,16 +152,6 @@ func spawn_asteroid_field_at_cell(cell: Vector2i) -> Node:
 	# Spawn using the generated data
 	return asteroid_spawner.spawn_entity(field_data)
 
-# Generate and spawn a station at a specific grid cell
-func spawn_station_at_cell(cell: Vector2i, station_type: int = StationData.StationType.TRADING) -> Node:
-	await _ensure_spawners_ready()
-	
-	# Generate station data
-	var station_data = _generate_station_at_cell(cell, station_type)
-	
-	# Spawn using the generated data
-	return station_spawner.spawn_entity(station_data)
-
 # Spawn asteroid fragments
 func spawn_fragments(asteroid_node: Node, asteroid_data: AsteroidData) -> Array:
 	await _ensure_spawners_ready()
@@ -194,7 +168,6 @@ func clear_all_entities() -> void:
 	
 	planet_spawner.clear_spawned_entities()
 	asteroid_spawner.clear_spawned_entities()
-	station_spawner.clear_spawned_entities()
 	fragment_spawner.clear_active_fragments()
 
 # Generate planet data for a cell
@@ -242,37 +215,6 @@ func _generate_asteroid_field_at_cell(cell: Vector2i) -> AsteroidFieldData:
 	asteroid_generator.populate_asteroid_field(field_data, null)
 	
 	return field_data
-
-# Generate station data for a cell
-func _generate_station_at_cell(cell: Vector2i, station_type: int) -> StationData:
-	# Get a deterministic entity ID
-	var entity_id = _get_deterministic_entity_id(cell)
-	
-	# Calculate world position from cell
-	var position = _get_cell_world_position(cell)
-	
-	# Add slight deterministic offset
-	var seed_value = _get_deterministic_seed(cell, 8000)  # Offset for stations
-	var rng = RandomNumberGenerator.new()
-	rng.seed = seed_value
-	
-	var cell_size = 1024
-	if _game_settings:
-		cell_size = _game_settings.grid_cell_size
-	
-	var offset = Vector2(
-		rng.randf_range(-cell_size/4.0, cell_size/4.0),
-		rng.randf_range(-cell_size/4.0, cell_size/4.0)
-	)
-	position += offset
-	
-	# Create station data
-	var station_data = station_generator.generate_station(entity_id, position, seed_value, station_type)
-	
-	# Set grid cell
-	station_data.grid_cell = cell
-	
-	return station_data
 
 # Get a deterministic entity ID for a cell
 func _get_deterministic_entity_id(cell: Vector2i) -> int:
@@ -330,9 +272,6 @@ func _ensure_spawners_ready() -> void:
 	
 	if not asteroid_spawner._initialized:
 		await asteroid_spawner.spawner_ready
-	
-	if not station_spawner._initialized:
-		await station_spawner.spawner_ready
 	
 	if not fragment_spawner._initialized:
 		await fragment_spawner.spawner_ready
