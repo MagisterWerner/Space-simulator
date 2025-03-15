@@ -33,13 +33,8 @@ const ASTEROID_SCENE = "res://scenes/entities/asteroid.tscn"
 var _fragmentation_history = []
 
 func _ready() -> void:
-	if ResourceLoader.exists("res://scripts/generators/fragment_pattern_generator.gd"):
-		var PatternGeneratorClass = load("res://scripts/generators/fragment_pattern_generator.gd")
-		_pattern_generator = PatternGeneratorClass.new()
-		add_child(_pattern_generator)
-	else:
-		push_error("FragmentSpawner: Failed to load FragmentPatternGenerator")
-	
+	_pattern_generator = FragmentPatternGenerator.new()
+	add_child(_pattern_generator)
 	super._ready()
 
 func _initialize() -> void:
@@ -64,11 +59,10 @@ func _generate_fragment_patterns() -> void:
 		seed_value = SeedManager.get_seed()
 	
 	# Generate patterns for different asteroid sizes
-	if _pattern_generator:
-		_fragment_patterns = _pattern_generator.generate_pattern_collection(seed_value, patterns_per_size)
+	_fragment_patterns = _pattern_generator.generate_pattern_collection(seed_value, patterns_per_size)
 	
-		if _debug_mode:
-			print("FragmentSpawner: Generated " + str(_fragment_patterns.size()) + " fragment patterns")
+	if _debug_mode:
+		print("FragmentSpawner: Generated " + str(_fragment_patterns.size()) + " fragment patterns")
 
 # Generate all fragment pools
 func _generate_fragment_pools() -> void:
@@ -338,19 +332,15 @@ func spawn_fragments_at(position: Vector2, size_category: String, parent_velocit
 # Get the appropriate fragment pattern for an asteroid
 func _get_pattern_for_asteroid(asteroid_data: AsteroidData) -> FragmentPatternData:
 	# Initialize patterns if needed
-	if _fragment_patterns.is_empty() and _pattern_generator:
+	if _fragment_patterns.is_empty():
 		_generate_fragment_patterns()
 	
-	# Skip if no patterns or no generator
-	if _fragment_patterns.is_empty() or not _pattern_generator:
-		return null
-	
-	# Use the appropriate method to get patterns
-	if _pattern_generator.has_method("get_pattern_for_asteroid"):
-		return _pattern_generator.get_pattern_for_asteroid(_fragment_patterns, asteroid_data.size_category, asteroid_data.variant)
-	
-	# Fallback: Manual pattern selection
-	var size_category = _get_size_category_string(asteroid_data.size_category)
+	# Get asteroid size as string
+	var size_category = "medium"
+	match asteroid_data.size_category:
+		AsteroidData.SizeCategory.SMALL: size_category = "small"
+		AsteroidData.SizeCategory.MEDIUM: size_category = "medium"
+		AsteroidData.SizeCategory.LARGE: size_category = "large"
 	
 	# Find matching pattern
 	for pattern in _fragment_patterns:

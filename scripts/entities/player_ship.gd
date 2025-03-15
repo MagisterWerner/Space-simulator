@@ -44,6 +44,11 @@ func _ready() -> void:
 	if game_settings:
 		debug_mode = game_settings.debug_mode
 	
+	# Debug component check
+	if debug_mode and Engine.has_singleton("Logger"):
+		Logger.debug("PlayerShip", "Initializing player ship")
+		_log_components()
+	
 	# Physics setup
 	mass = 3.0
 	gravity_scale = 0.0
@@ -66,9 +71,15 @@ func _ready() -> void:
 	if game_settings:
 		global_position = game_settings.get_player_starting_position()
 		
+		if debug_mode and Engine.has_singleton("Logger"):
+			Logger.debug("PlayerShip", "Starting at configured position: " + str(global_position))
+	
 	# Ensure we're in the player group
 	add_to_group("player")
 	
+	if Engine.has_singleton("Logger"):
+		Logger.info("PlayerShip", "Player ship initialized and ready")
+
 func _initialize_weapons() -> void:
 	# Clear existing weapons array
 	weapons.clear()
@@ -217,6 +228,9 @@ func _previous_weapon() -> void:
 func _on_health_damaged(amount: float, _source: Node) -> void:
 	player_damaged.emit(amount)
 	
+	if debug_mode and Engine.has_singleton("Logger"):
+		Logger.debug("PlayerShip", "Player took %s damage" % amount)
+	
 	# Only transition to damaged state if health is critical
 	if health_component and health_component.is_critical() and state_machine:
 		state_machine.transition_to("damaged")
@@ -232,9 +246,16 @@ func _on_health_died() -> void:
 		state_machine.transition_to("dead")
 	
 	input_enabled = false
+	
+	if Engine.has_singleton("Logger"):
+		Logger.info("PlayerShip", "Player died")
 
 func respawn(spawn_position: Vector2 = Vector2.ZERO) -> void:
 	var call_id = -1
+	if debug_mode and Engine.has_singleton("Logger"):
+		call_id = Logger.debug_method("PlayerShip", "respawn", {
+			"spawn_position": spawn_position
+		})
 	
 	# Reset position and physics
 	global_position = spawn_position
@@ -265,8 +286,20 @@ func respawn(spawn_position: Vector2 = Vector2.ZERO) -> void:
 	
 	input_enabled = true
 	player_respawned.emit()
+	
+	if debug_mode and Engine.has_singleton("Logger"):
+		if call_id >= 0:
+			Logger.debug_method_result("PlayerShip", call_id, {
+				"position": spawn_position,
+				"state": state_machine.get_current_state_name() if state_machine else "unknown"
+			})
+		else:
+			Logger.debug("PlayerShip", "Player respawned at " + str(spawn_position))
 
 func play_death_effect() -> void:
+	if debug_mode and Engine.has_singleton("Logger"):
+		Logger.debug("PlayerShip", "Playing death effect")
+	
 	var particles = CPUParticles2D.new()
 	
 	# Configure particles
@@ -298,27 +331,51 @@ func add_upgrade_strategy(strategy, component_name: String) -> bool:
 	var component = get_node_or_null(component_name)
 	
 	if not component or not component is Component:
+		if debug_mode and Engine.has_singleton("Logger"):
+			Logger.warning("PlayerShip", "Failed to add strategy: component not found: " + component_name)
 		return false
 	
 	strategy.apply_to_component(component)
 	
+	if debug_mode and Engine.has_singleton("Logger"):
+		Logger.debug("PlayerShip", "Added strategy: %s to %s" % [strategy.strategy_name, component_name])
 	return true
 
 func remove_upgrade_strategy(strategy) -> void:
 	if strategy.owner_component:
 		strategy.remove_from_component()
+		if debug_mode and Engine.has_singleton("Logger"):
+			Logger.debug("PlayerShip", "Removed strategy: %s" % strategy.strategy_name)
 
 func _on_body_entered(body: Node) -> void:
 	if not health_component:
 		return
+	
+	if debug_mode and Engine.has_singleton("Logger"):
+		Logger.debug("PlayerShip", "Collided with: %s" % body.name)
 		
 	if body.is_in_group("asteroid"):
 		var impact_velocity = linear_velocity.length()
 		var damage = impact_velocity * 0.05
 		health_component.apply_damage(damage, "collision", body)
+		
+		if debug_mode and Engine.has_singleton("Logger"):
+			Logger.debug("PlayerShip", "Asteroid collision damage: %.1f (velocity: %.1f)" % [damage, impact_velocity])
 	
 	elif body.is_in_group("enemy"):
 		health_component.apply_damage(20.0, "collision", body)
+		
+		if debug_mode and Engine.has_singleton("Logger"):
+			Logger.debug("PlayerShip", "Enemy collision damage: 20.0")
+
+func _log_components() -> void:
+	if not debug_mode or not Engine.has_singleton("Logger"):
+		return
+		
+	Logger.debug("PlayerShip", "Components in player ship:")
+	for child in get_children():
+		if child is Component:
+			Logger.debug("PlayerShip", "  - " + child.name + " (" + str(child.get_path()) + ")")
 
 # Get the current weapon for external systems
 func get_current_weapon() -> WeaponComponent:
