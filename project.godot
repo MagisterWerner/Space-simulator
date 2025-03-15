@@ -59,8 +59,7 @@ folder_colors={
 "res://autoload/": "green",
 "res://resources/": "blue",
 "res://scenes/": "red",
-"res://scripts/": "green",
-"res://scripts/data/": "red"
+"res://scripts/": "green"
 }
 
 [filesystem]
