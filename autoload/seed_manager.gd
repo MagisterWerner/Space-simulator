@@ -9,7 +9,7 @@ var _value_cache = {}
 var _max_cache_size = 1000
 
 # References and flags
-var game_settings = null
+var game_settings: GameSettings = null
 var debug_mode: bool = false
 var enable_cache: bool = true
 var is_initialized: bool = false
@@ -104,26 +104,45 @@ func get_run_id() -> int:
 # Debug tools
 func set_debug_mode(enable: bool) -> void:
 	debug_mode = enable
-	if debug_mode:
+	if debug_mode and Engine.has_singleton("Logger"):
 		print_cache_stats()
 
 func print_cache_stats() -> void:
 	if not debug_mode:
 		return
 		
-	print("SeedManager: Cache size: " + str(_value_cache.size()) + "/" + str(_max_cache_size))
-	print("SeedManager: Total requests: " + str(_stats.total_requests))
-	
-	var hit_percent = 0
-	if _stats.total_requests > 0:
-		hit_percent = int((_stats.cache_hits * 100.0) / _stats.total_requests)
-	
-	print("SeedManager: Cache hits: " + str(_stats.cache_hits) + " (" + str(hit_percent) + "%)")
-	print("SeedManager: Cache misses: " + str(_stats.cache_misses) + " (" + str(100 - hit_percent) + "%)")
-	
-	# Use float division to avoid integer division
-	var uptime = (Time.get_ticks_msec() - _stats.last_cache_clear) / 1000.0
-	print("SeedManager: Time since last cache clear: " + str(int(uptime)) + " seconds")
+	if Engine.has_singleton("Logger"):
+		var stats = {
+			"cache_size": _value_cache.size(),
+			"max_size": _max_cache_size,
+			"total_requests": _stats.total_requests,
+			"cache_hits": _stats.cache_hits,
+			"hit_percent": 0,
+			"cache_misses": _stats.cache_misses,
+			"uptime_seconds": 0
+		}
+		
+		if _stats.total_requests > 0:
+			stats.hit_percent = int((_stats.cache_hits * 100.0) / _stats.total_requests)
+		
+		# Use float division to avoid integer division
+		stats.uptime_seconds = (Time.get_ticks_msec() - _stats.last_cache_clear) / 1000.0
+		
+		Logger.debug("SeedManager", "Cache statistics", stats)
+	else:
+		print("SeedManager: Cache size: " + str(_value_cache.size()) + "/" + str(_max_cache_size))
+		print("SeedManager: Total requests: " + str(_stats.total_requests))
+		
+		var hit_percent = 0
+		if _stats.total_requests > 0:
+			hit_percent = int((_stats.cache_hits * 100.0) / _stats.total_requests)
+		
+		print("SeedManager: Cache hits: " + str(_stats.cache_hits) + " (" + str(hit_percent) + "%)")
+		print("SeedManager: Cache misses: " + str(_stats.cache_misses) + " (" + str(100 - hit_percent) + "%)")
+		
+		# Use float division to avoid integer division
+		var uptime = (Time.get_ticks_msec() - _stats.last_cache_clear) / 1000.0
+		print("SeedManager: Time since last cache clear: " + str(int(uptime)) + " seconds")
 
 # CORE RANDOM GENERATION METHODS
 
@@ -246,7 +265,7 @@ func get_2d_noise(x: float, y: float, scale: float = 1.0, octaves: int = 4, obje
 # UTILITY METHODS
 
 # Generate weighted random selection from array
-func get_weighted_element(object_id: int, elements: Array, weights: Array = []):
+func get_weighted_element(object_id: int, elements: Array, weights: Array = []) -> Variant:
 	if elements.is_empty():
 		return null
 		
@@ -327,7 +346,10 @@ func _clear_caches() -> void:
 	_stats.last_cache_clear = Time.get_ticks_msec()
 	
 	if debug_mode:
-		print("SeedManager: Cleared all caches")
+		if Engine.has_singleton("Logger"):
+			Logger.info("SeedManager", "Cleared all caches")
+		else:
+			print("SeedManager: Cleared all caches")
 	
 	# Use call_deferred to clear other caches
 	call_deferred("_clear_additional_caches")
