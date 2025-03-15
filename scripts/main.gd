@@ -8,6 +8,7 @@ extends Node2D
 @onready var game_settings = $GameSettings
 
 var screen_size: Vector2
+var world_generator = null
 var player_start_position: Vector2 = Vector2.ZERO
 var player_start_cell: Vector2i = Vector2i(-1, -1)
 var initialization_complete = false
@@ -103,11 +104,11 @@ func _initialize_game() -> void:
 	# Preload sound effects after seed is established
 	_preload_audio()
 	
+	# Initialize world generator
+	_initialize_world_generator()
+	
 	# Initialize background and camera
 	_initialize_background_and_camera()
-	
-	# Configure the WorldManager with settings
-	_configure_world_manager()
 	
 	# Wait for other systems to be ready before starting the game
 	_check_all_systems_loaded()
@@ -185,33 +186,41 @@ func _on_audio_initialized() -> void:
 	_systems_loaded.audio = true
 	_check_all_systems_loaded()
 
-func _configure_world_manager() -> void:
-	# Configure WorldManager with settings from GameSettings
-	if has_node("/root/WorldManager") and game_settings:
-		WorldManager.cell_size = game_settings.grid_cell_size
-		WorldManager.grid_size = game_settings.grid_size
+func _initialize_world_generator() -> void:
+	# Initialize world generator
+	world_generator = WorldGenerator.new()
+	add_child(world_generator)
+	
+	# Connect world generation signals
+	if world_generator.has_signal("world_generation_completed"):
+		world_generator.connect("world_generation_completed", _on_world_generation_completed)
+	
+	# Generate starter world
+	if world_generator.has_method("generate_starter_world"):
+		var planet_data = world_generator.generate_starter_world()
 		
-		# Connect to WorldManager signals
-		if WorldManager.has_signal("world_generation_completed"):
-			WorldManager.connect("world_generation_completed", _on_world_generation_completed)
-		
-		_systems_loaded.world = true
+		# Store the starting planet information for GameManager
+		if planet_data and planet_data.has("player_planet_cell") and planet_data.player_planet_cell != Vector2i(-1, -1):
+			# Calculate world position
+			player_start_cell = planet_data.player_planet_cell
+			player_start_position = game_settings.get_cell_world_position(player_start_cell)
+			
+			if game_settings and game_settings.debug_mode:
+				print("Main: Determined player start position at: ", player_start_position)
+		else:
+			# Fallback to grid center position if no planet was generated
+			player_start_position = game_settings.get_player_starting_position()
 	else:
-		_systems_loaded.world = true  # Mark as loaded anyway to continue
+		# Fallback if generate_starter_world doesn't exist
+		print("WorldGenerator doesn't have generate_starter_world method")
+		player_start_position = screen_size / 2
+	
+	_systems_loaded.world = true
+	_check_all_systems_loaded()
 
 func _initialize_background_and_camera() -> void:
 	# Initially position camera at the player start position
-	if player_start_position != Vector2.ZERO:
-		camera.position = player_start_position
-	else:
-		# Determine initial player position
-		if game_settings:
-			player_start_position = game_settings.get_player_starting_position()
-			player_start_cell = WorldManager.world_to_cell(player_start_position)
-		else:
-			player_start_position = screen_size / 2
-			
-		camera.position = player_start_position
+	camera.position = player_start_position
 	
 	# Register camera in group for background to find
 	camera.add_to_group("camera")

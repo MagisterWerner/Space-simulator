@@ -22,10 +22,12 @@ var is_game_paused: bool = false
 var current_level: String = ""
 var player_ship = null
 var game_settings = null
+var world_simulation = null
 
 # World state
 var world_data: WorldData = null
 var current_seed: int = 0
+var world_generator = null
 
 # Start position
 var player_start_position: Vector2 = Vector2.ZERO
@@ -53,6 +55,10 @@ func _initialize_systems() -> void:
 	var main_scene = get_tree().current_scene
 	game_settings = main_scene.get_node_or_null("GameSettings")
 	
+	# Create required objects
+	_create_world_simulation()
+	_create_world_generator()
+	
 	# Check which systems are available
 	_check_dependencies()
 	
@@ -70,12 +76,42 @@ func _initialize_systems() -> void:
 	
 	_dependencies_initialized = true
 
+func _create_world_simulation() -> void:
+	# Check if world simulation already exists
+	if has_node("WorldSimulation"):
+		world_simulation = get_node("WorldSimulation")
+		return
+		
+	world_simulation = WorldSimulation.new()
+	world_simulation.name = "WorldSimulation"
+	add_child(world_simulation)
+	
+	# Connect to world simulation signals
+	world_simulation.world_loaded.connect(_on_world_loaded)
+	world_simulation.entity_spawned.connect(_on_entity_spawned)
+	world_simulation.entity_despawned.connect(_on_entity_despawned)
+	
+	_world_ready = true
+
+func _create_world_generator() -> void:
+	# Check if world generator already exists
+	if has_node("WorldGenerator"):
+		world_generator = get_node("WorldGenerator")
+		return
+		
+	world_generator = WorldGenerator.new()
+	world_generator.name = "WorldGenerator"
+	add_child(world_generator)
+	
+	# Connect to world generator signals
+	if world_generator.has_signal("world_generation_completed"):
+		world_generator.connect("world_generation_completed", _on_world_generation_completed)
+
 func _check_dependencies() -> void:
 	_entities_ready = has_node("/root/EntityManager")
 	_resources_ready = has_node("/root/ResourceManager")
 	_events_ready = has_node("/root/EventManager")
 	_seed_ready = has_node("/root/SeedManager")
-	_world_ready = has_node("/root/WorldManager")
 
 func _initialize_entity_scenes() -> void:
 	if has_node("/root/EntityManager"):
@@ -169,28 +205,27 @@ func start_game() -> void:
 		EventManager.safe_emit("game_started")
 
 func _generate_world() -> void:
-	# Get seed from GameSettings or use default
-	var seed_value = current_seed
-	if game_settings:
-		seed_value = game_settings.get_seed()
-	
-	# Generate world data using WorldManager
-	world_data = WorldManager.generate_world(seed_value)
-	
-	# Set start position if specified
-	if use_custom_start_position:
-		world_data.player_start_position = player_start_position
-		world_data.player_start_cell = player_start_cell
-	
-	# Load the generated world
-	_load_world(world_data)
+	if world_generator:
+		# Get seed from GameSettings or use default
+		var seed_value = current_seed
+		if game_settings:
+			seed_value = game_settings.get_seed()
+		
+		# Generate world data
+		world_data = world_generator.generate_world_data(seed_value)
+		
+		# Set start position if specified
+		if use_custom_start_position:
+			world_data.player_start_position = player_start_position
+			world_data.player_start_cell = player_start_cell
+		
+		# Load the generated world
+		_load_world(world_data)
 
 func _load_world(data: WorldData) -> void:
-	# Load world in WorldManager
-	if WorldManager.load_world(data):
-		# Connect to world_ready signal
-		if not WorldManager.is_connected("world_ready", _on_world_loaded):
-			WorldManager.connect("world_ready", _on_world_loaded)
+	if world_simulation:
+		# Load world in simulation
+		world_simulation.load_world(data)
 	else:
 		# If no simulation available, spawn player directly
 		_spawn_player_at_start_position()
@@ -272,8 +307,12 @@ func restart_game() -> void:
 	if game_running:
 		end_game()
 	
-	# Clear world 
-	WorldManager.reset_world()
+	# Clear world simulation
+	if world_simulation:
+		# Clear loaded cells
+		var loaded_cells = world_simulation.loaded_cells.keys()
+		for cell in loaded_cells:
+			world_simulation.unload_cell(cell)
 	
 	# Clear entity manager
 	if _entities_ready:
@@ -470,7 +509,10 @@ func save_game(save_id: String = "") -> bool:
 		save_id = "save_" + Time.get_datetime_string_from_system().replace(":", "-")
 	
 	# Update world data from current state
-	WorldManager._update_world_data_from_entities()
+	if world_simulation:
+		# Make sure world simulation has latest data
+		if world_simulation.has_method("_update_world_data_from_entities"):
+			world_simulation._update_world_data_from_entities()
 	
 	# Collect game state
 	var save_data = {
