@@ -345,6 +345,9 @@ func _clear_caches() -> void:
 	_stats.total_requests = 0
 	_stats.last_cache_clear = Time.get_ticks_msec()
 	
+	# Clear all static texture caches
+	PlanetSpawnerBase.clear_texture_cache()
+	
 	if debug_mode:
 		if Engine.has_singleton("Logger"):
 			Logger.info("SeedManager", "Cleared all caches")

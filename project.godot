@@ -58,7 +58,7 @@ folder_colors={
 "res://assets/": "purple",
 "res://autoload/": "green",
 "res://resources/": "blue",
-"res://scenes/": "gray",
+"res://scenes/": "red",
 "res://scripts/": "green",
 "res://scripts/components/": "orange",
 "res://scripts/data/": "red",
