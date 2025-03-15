@@ -1,84 +1,84 @@
-# scripts/strategies/strategy.gd - Optimized base Strategy class
+# scripts/strategies/strategy.gd
 extends Resource
 class_name Strategy
 
-signal applied_to_component(component)
-signal removed_from_component(component)
+# Base signals for all strategies
+signal strategy_enabled(strategy_name, property_name, value)
+signal strategy_disabled(strategy_name, property_name)
 
-@export var strategy_name: String = "Base Strategy"
-@export var description: String = "Base strategy class"
-@export var icon_texture: Texture2D
-@export var rarity: String = "Common"  # Common, Uncommon, Rare, Epic, Legendary
-@export var price: int = 100
-@export var unique_id: String = ""
-@export var weight: float = 1.0
-@export var incompatible_strategies: Array[String] = []
+# Strategy identification
+var strategy_name: String = "Generic Strategy"
+var description: String = "A strategy that can be applied to components"
+var icon_path: String = ""
+var price: int = 100
 
-# Strategy metadata
-var applied_count: int = 0
-var last_applied_time: int = 0
-var owner_component: Component = null
+# Target component information
+var target_component_type: String = ""
+var affected_properties: Array = []
 
-# Virtual method that components call when applying strategy
-func apply_to_component(component: Component) -> void:
-	if not component:
-		push_error("Strategy applied to invalid component")
-		return
-		
-	if owner_component:
-		# Quietly remove from previous component without warnings
-		remove_from_component()
-	
-	owner_component = component
-	applied_count += 1
-	last_applied_time = Time.get_ticks_msec()
-	
-	# Add this strategy to the component using type-specific handling
-	if owner_component is WeaponComponent and owner_component.has_method("add_weapon_strategy"):
-		owner_component.add_weapon_strategy(self)
-	elif owner_component is ShieldComponent and owner_component.has_method("add_shield_strategy"):
-		owner_component.add_shield_strategy(self)
-	elif owner_component is MovementComponent and owner_component.has_method("add_movement_strategy"):
-		owner_component.add_movement_strategy(self)
-	elif owner_component is HealthComponent and owner_component.has_method("add_modifier_strategy"):
-		owner_component.add_modifier_strategy(self)
-	
-	applied_to_component.emit(component)
+# State
+var is_active: bool = false
+var target_component = null
 
-# Virtual method to remove strategy effects
-func remove_from_component() -> void:
-	if not owner_component:
-		return
-	
-	# Remove from component's strategy list using type-specific handling
-	if owner_component is WeaponComponent and owner_component.has_method("remove_weapon_strategy"):
-		owner_component.remove_weapon_strategy(self)
-	elif owner_component is ShieldComponent and owner_component.has_method("remove_shield_strategy"):
-		owner_component.remove_shield_strategy(self)
-	elif owner_component is MovementComponent and owner_component.has_method("remove_movement_strategy"):
-		owner_component.remove_movement_strategy(self)
-	elif owner_component is HealthComponent and owner_component.has_method("remove_modifier_strategy"):
-		owner_component.remove_modifier_strategy(self)
-	
-	var previous_component = owner_component
-	owner_component = null
-	
-	removed_from_component.emit(previous_component)
-
-# Check if this strategy is compatible with others
-func is_compatible_with(other_strategy: Strategy) -> bool:
-	if not other_strategy:
-		return true
-		
-	# Fast path incompatibility check
-	if other_strategy.unique_id and incompatible_strategies.has(other_strategy.unique_id):
+# Apply strategy to a component
+func apply(component) -> bool:
+	if not can_apply_to(component):
 		return false
+		
+	target_component = component
+	is_active = true
 	
-	if unique_id and other_strategy.incompatible_strategies.has(unique_id):
-		return false
+	_modify_component()
+	strategy_enabled.emit(strategy_name, get_affected_property(), get_property_value())
 	
 	return true
 
-# Get a description that includes effects
-func get_detailed_description() -> String:
-	return description  # Override in child classes to add specific effects
+# Remove strategy from component
+func remove() -> bool:
+	if not is_active or target_component == null:
+		return false
+		
+	_restore_component()
+	
+	strategy_disabled.emit(strategy_name, get_affected_property())
+	
+	is_active = false
+	target_component = null
+	
+	return true
+
+# Get the name of the property this strategy affects
+func get_affected_property() -> String:
+	if affected_properties.size() > 0:
+		return affected_properties[0]
+	return ""
+
+# Get the value this strategy applies to the property
+func get_property_value():
+	# Override in subclasses
+	return null
+
+# Check if strategy can be applied to a component
+func can_apply_to(component) -> bool:
+	# Base implementation just checks if component is valid
+	return component != null
+
+# Virtual method to modify the component
+# Override in subclasses
+func _modify_component() -> void:
+	pass
+
+# Virtual method to restore the component to its original state
+# Override in subclasses
+func _restore_component() -> void:
+	pass
+
+# Get strategy info for UI display
+func get_info() -> Dictionary:
+	return {
+		"name": strategy_name,
+		"description": description,
+		"icon": icon_path,
+		"price": price,
+		"target": target_component_type
+	}

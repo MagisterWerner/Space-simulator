@@ -69,7 +69,7 @@ func _register_default_spawners() -> void:
 	add_child(planet_spawner)
 	_register_spawner("planet", planet_spawner)
 	
-	var asteroid_spawner = AsteroidSpawner.new()
+	var asteroid_spawner = AsteroidSpawnerNew.new()
 	asteroid_spawner.name = "AsteroidSpawner"
 	add_child(asteroid_spawner)
 	_register_spawner("asteroid", asteroid_spawner)

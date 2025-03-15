@@ -426,9 +426,9 @@ func _on_destroyed() -> void:
 		# Try different methods to find an asteroid spawner
 		var asteroid_spawner = _find_asteroid_spawner()
 		
-		if asteroid_spawner and asteroid_spawner.has_method("_spawn_fragments"):
+		if asteroid_spawner and asteroid_spawner.has_method("handle_legacy_fragment_spawn"):
 			# Use the spawner's method if available
-			asteroid_spawner._spawn_fragments(
+			asteroid_spawner.handle_legacy_fragment_spawn(
 				global_position,
 				size_category,
 				fragment_count,
@@ -452,7 +452,7 @@ func _on_destroyed() -> void:
 func _find_asteroid_spawner() -> Node:
 	# Method 1: Check if parent is a spawner
 	var parent = get_parent()
-	if parent and parent.has_method("_spawn_fragments"):
+	if parent and parent.has_method("handle_legacy_fragment_spawn"):
 		return parent
 	
 	# Method 2: Search for spawners in the asteroid_fields group
@@ -469,7 +469,7 @@ func _find_asteroid_spawner() -> Node:
 	
 	for path in specific_paths:
 		var node = get_node_or_null(path)
-		if node and node.has_method("_spawn_fragments"):
+		if node and node.has_method("handle_legacy_fragment_spawn"):
 			return node
 	
 	# Not found
@@ -548,7 +548,7 @@ func _spawn_fragment_with_generator(scene: PackedScene, generator: Node, fragmen
 	# Generate texture with the generator
 	if generator and generator.has_method("create_asteroid_texture"):
 		# Set the seed for deterministic generation
-		if generator.has_property("seed_value"):
+		if "seed_value" in generator:
 			generator.seed_value = fragment_seed
 		
 		# Generate the texture

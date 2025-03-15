@@ -1,117 +1,90 @@
-# weapon_strategies.gd
+# scripts/strategies/weapon_strategies.gd
 extends Resource
-class_name WeaponStrategies
+
+# Base Weapon Strategy class
+class WeaponStrategy extends Strategy:
+	func _init() -> void:
+		target_component_type = "WeaponComponent"
+	
+	func can_apply_to(component) -> bool:
+		return component != null and component.get_class() == "WeaponComponent"
 
 # Double Damage Strategy
-class DoubleDamageStrategy extends Strategy:
+class DoubleDamageStrategy extends WeaponStrategy:
 	func _init() -> void:
+		super._init()
 		strategy_name = "Double Damage"
-		description = "Doubles the damage of your weapon"
-		rarity = "Rare"
-		price = 300
+		description = "Doubles weapon damage"
+		price = 500
+		affected_properties = ["damage_multiplier"]
 	
-	func modify_projectile_damage(base_damage: float) -> float:
-		return base_damage * 2.0
+	func _modify_component() -> void:
+		if target_component:
+			target_component.damage_multiplier *= 2.0
+	
+	func _restore_component() -> void:
+		if target_component:
+			target_component.damage_multiplier /= 2.0
+	
+	func get_property_value():
+		return 2.0
 
 # Rapid Fire Strategy
-class RapidFireStrategy extends Strategy:
-	@export var fire_rate_multiplier: float = 1.75
-	
+class RapidFireStrategy extends WeaponStrategy:
 	func _init() -> void:
+		super._init()
 		strategy_name = "Rapid Fire"
-		description = "Increases fire rate by 75%"
-		rarity = "Uncommon"
-		price = 200
+		description = "Reduces cooldown between shots by 30%"
+		price = 400
+		affected_properties = ["cooldown_multiplier"]
 	
-	func apply_to_component(component: Component) -> void:
-		super.apply_to_component(component)
-		if component is WeaponComponent:
-			component.fire_rate *= fire_rate_multiplier
+	func _modify_component() -> void:
+		if target_component:
+			target_component.cooldown_multiplier *= 0.7
 	
-	func remove_from_component() -> void:
-		if owner_component is WeaponComponent:
-			owner_component.fire_rate /= fire_rate_multiplier
-		super.remove_from_component()
+	func _restore_component() -> void:
+		if target_component:
+			target_component.cooldown_multiplier /= 0.7
+	
+	func get_property_value():
+		return 0.7
 
 # Piercing Shot Strategy
-class PiercingShotStrategy extends Strategy:
+class PiercingShotStrategy extends WeaponStrategy:
 	func _init() -> void:
+		super._init()
 		strategy_name = "Piercing Shot"
-		description = "Projectiles can pierce through enemies"
-		rarity = "Epic"
-		price = 500
+		description = "Projectiles pass through targets"
+		price = 600
+		affected_properties = ["piercing"]
 	
-	func modify_projectile(projectile: Node) -> void:
-		if projectile.has_method("set_piercing"):
-			projectile.set_piercing(true)
+	func _modify_component() -> void:
+		if target_component:
+			target_component.piercing = true
+	
+	func _restore_component() -> void:
+		if target_component:
+			target_component.piercing = false
+	
+	func get_property_value():
+		return true
 
-# Spread Shot Strategy - Optimized
-class SpreadShotStrategy extends Strategy:
-	@export var num_additional_projectiles: int = 2
-	@export var spread_angle: float = 15.0  # Degrees
-	
+# Spread Shot Strategy
+class SpreadShotStrategy extends WeaponStrategy:
 	func _init() -> void:
+		super._init()
 		strategy_name = "Spread Shot"
-		description = "Fires additional projectiles in a spread pattern"
-		rarity = "Legendary"
-		price = 750
+		description = "Fires multiple projectiles in a spread pattern"
+		price = 450
+		affected_properties = ["projectile_count"]
 	
-	func apply_to_component(component: Component) -> void:
-		super.apply_to_component(component)
-		
-		if component is WeaponComponent:
-			# Connect to the weapon fired signal to create additional projectiles
-			if not component.weapon_fired.is_connected(_on_weapon_fired):
-				component.weapon_fired.connect(_on_weapon_fired)
+	func _modify_component() -> void:
+		if target_component:
+			target_component.projectile_count += 2
 	
-	func remove_from_component() -> void:
-		if owner_component is WeaponComponent:
-			if owner_component.weapon_fired.is_connected(_on_weapon_fired):
-				owner_component.weapon_fired.disconnect(_on_weapon_fired)
-		super.remove_from_component()
+	func _restore_component() -> void:
+		if target_component:
+			target_component.projectile_count -= 2
 	
-	func _on_weapon_fired(projectile) -> void:
-		if not is_instance_valid(projectile) or not owner_component or not projectile.get_parent() is Node2D:
-			return
-		
-		var weapon = owner_component as WeaponComponent
-		if not weapon.projectile_scene:
-			return
-			
-		var parent = projectile.get_parent()
-		var projectile_props = {
-			"position": projectile.global_position,
-			"rotation": projectile.global_rotation,
-			"damage": weapon.damage if projectile.has_method("set_damage") else 0,
-			"speed": weapon.projectile_speed if projectile.has_method("set_speed") else 0,
-			"lifespan": weapon.projectile_lifespan if projectile.has_method("set_lifespan") else 0,
-			"shooter": weapon.owner_entity if projectile.has_method("set_shooter") else null
-		}
-			
-		for i in range(num_additional_projectiles):
-			# Calculate angle offset (alternating left and right)
-			var offset = spread_angle * (i + 1) / 2.0
-			if i % 2 == 0:
-				offset *= -1.0
-			
-			# Create side projectile efficiently
-			var side_projectile = weapon.projectile_scene.instantiate()
-			parent.add_child(side_projectile)
-			
-			# Set position and rotation
-			side_projectile.global_position = projectile_props.position
-			side_projectile.global_rotation = projectile_props.rotation + deg_to_rad(offset)
-			
-			# Configure the projectile properties - only set if available
-			if side_projectile.has_method("set_damage") and projectile_props.damage > 0:
-				side_projectile.set_damage(projectile_props.damage)
-			
-			if side_projectile.has_method("set_speed") and projectile_props.speed > 0:
-				side_projectile.set_speed(projectile_props.speed)
-			
-			if side_projectile.has_method("set_lifespan") and projectile_props.lifespan > 0:
-				side_projectile.set_lifespan(projectile_props.lifespan)
-			
-			# Mark the shooter to prevent self-damage
-			if side_projectile.has_method("set_shooter") and projectile_props.shooter:
-				side_projectile.set_shooter(projectile_props.shooter)
+	func get_property_value():
+		return 2

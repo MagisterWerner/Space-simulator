@@ -1,5 +1,5 @@
 extends EntitySpawner
-class_name AsteroidSpawner
+class_name AsteroidSpawnerNew
 
 # Asteroid-specific configuration
 @export_category("Asteroid Configuration")
@@ -376,7 +376,7 @@ func _on_asteroid_destroyed(position: Vector2, size: String, points: int) -> voi
 	
 	# Create fragments if needed
 	if size != "small" and asteroid_data is AsteroidData:
-		_spawn_fragments(position, size, asteroid_data)
+		_spawn_asteroid_fragments(position, size, asteroid_data)
 	
 	# Remove from tracking
 	_entity_map.erase(entity_id)
@@ -394,7 +394,7 @@ func _on_asteroid_destroyed(position: Vector2, size: String, points: int) -> voi
 			_individual_asteroids.remove_at(index)
 
 # Spawn asteroid fragments when an asteroid is destroyed
-func _spawn_fragments(position: Vector2, size_category: String, parent_data: AsteroidData) -> void:
+func _spawn_asteroid_fragments(position: Vector2, size_category: String, parent_data: AsteroidData) -> void:
 	if size_category == "small":
 		return
 	
@@ -498,8 +498,8 @@ func despawn_entity(entity_id: int) -> void:
 	# Return to pool or free
 	_return_entity_to_pool(entity)
 
-# Legacy method for compatibility with old code
-func _spawn_fragments(position: Vector2, size_category: String, count: int, parent_scale: float, parent_velocity: Vector2 = Vector2.ZERO) -> void:
+# Legacy method for compatibility with existing asteroid field implementation
+func handle_legacy_fragment_spawn(position: Vector2, size_category: String, count: int, parent_scale: float, parent_velocity: Vector2 = Vector2.ZERO) -> void:
 	# Create a fake parent asteroid data
 	var parent_data = AsteroidData.new()
 	parent_data.entity_id = int(Time.get_unix_time_from_system()) % 10000
@@ -510,7 +510,7 @@ func _spawn_fragments(position: Vector2, size_category: String, count: int, pare
 	parent_data.velocity = parent_velocity
 	
 	# Spawn fragments using new system
-	_spawn_fragments(position, size_category, parent_data)
+	_spawn_asteroid_fragments(position, size_category, parent_data)
 
 # Cleanup everything
 func cleanup() -> void:

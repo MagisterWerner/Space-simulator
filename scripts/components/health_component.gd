@@ -1,235 +1,330 @@
-# scripts/components/health_component.gd - Optimized implementation
-extends Component
+extends Node
 class_name HealthComponent
 
-signal health_changed(current_health, max_health)
-signal damaged(amount, source)
-signal healed(amount, source)
-signal died
+signal damaged(amount, type, source)
+signal healed(amount)
+signal shield_damaged(amount, type, source)
+signal shield_depleted()
+signal shield_recharged()
+signal killed()
+signal health_changed(current, max_health)
+signal health_depleted()
+signal died()
 
-# Health properties
+# Health configuration
+@export_category("Health")
 @export var max_health: float = 100.0
-@export var current_health: float = 100.0
-@export var shield_percentage: float = 0.0
+@export var starting_health_percent: float = 1.0
+@export var invincible: bool = false
+@export var destroy_parent_on_death: bool = true
+
+# Shield configuration
+@export_category("Shield")
+@export var has_shield: bool = false
+@export var max_shield: float = 50.0
+@export var shield_recharge_rate: float = 5.0
+@export var shield_recharge_delay: float = 3.0
+@export var shield_efficiency: float = 1.0  # Damage multiplier (lower means shield absorbs more)
+
+# Armor & damage reduction
+@export_category("Damage Reduction")
 @export var armor: float = 0.0
-@export var invulnerable: bool = false
+@export var damage_resistance: Dictionary = {}
 
-# Recovery settings
-@export_category("Recovery")
-@export var auto_recovery: bool = false
-@export var recovery_rate: float = 5.0
-@export var recovery_delay: float = 3.0
-@export var critical_health_percentage: float = 0.25
+# Hit effects
+@export_category("Hit Effects")
+@export var hit_effect_scene: PackedScene
+@export var hit_flash_duration: float = 0.1
+@export var hit_immunity_time: float = 0.0
+@export var death_effect_scene: PackedScene
 
-# Damage event settings for better gameplay
-@export_category("Damage Events")
-@export var damage_threshold: float = 0.0  # Minimum damage to register (useful for asteroids)
-@export var damage_multipliers: Dictionary = {
-	"projectile": 1.0,   # Standard multiplier for projectiles
-	"laser": 1.0,        # Laser weapons
-	"missile": 1.5,      # Missiles do 50% more damage
-	"explosion": 1.2,    # Explosions do 20% more damage
-	"impact": 0.8,       # Physical impacts do less damage
-	"collision": 0.6     # Collisions do even less damage
+# Debug options
+@export_category("Debug")
+@export var debug_health: bool = false
+@export var print_damage_taken: bool = false
+
+# Runtime state
+var current_health: float
+var current_shield: float
+var is_dead: bool = false
+var shield_depleted_timestamp: float = 0
+var hit_immunity_timestamp: float = 0
+
+# Damage types - can be extended
+enum DamageType {
+	IMPACT,
+	EXPLOSIVE,
+	ENERGY,
+	FIRE,
+	PROJECTILE,
+	COLLISION
 }
 
-# State tracking
-var last_damage_time: float = 0.0
-var _is_dead: bool = false
-var _health_percent: float = 1.0 # Cached health percentage
-var _cached_recovery_time: float = 0.0
-var _damage_this_frame: float = 0.0
-var _last_damage_frame: int = -1
+# Private state
+var _shield_recharging: bool = false
+var _parent = null
+var _registered_strategies: Array = []
+var _game_time: float = 0
 
-# Optimized arrays for strategy handling
-var _modifier_strategies = []
-
-# Cache for performance
-var _current_frame: int = 0
-
-func setup() -> void:
-	current_health = max_health
-	_health_percent = 1.0
-	_is_dead = false
+func _ready() -> void:
+	_parent = get_parent()
 	
-func _on_enable() -> void:
-	_is_dead = false
-	if current_health <= 0:
-		current_health = max_health
-		_health_percent = 1.0
-
-func apply_damage(amount: float, damage_type: String = "normal", source: Node = null) -> float:
-	# Skip processing for obvious cases
-	if invulnerable or _is_dead or amount <= 0:
-		return 0.0
+	# Initialize health based on percentage
+	current_health = max_health * starting_health_percent
 	
-	# Apply damage threshold filter - ignore tiny damage amounts
-	if amount < damage_threshold:
-		return 0.0
-	
-	# Batch damage in the same frame
-	_current_frame = Engine.get_physics_frames()
-	
-	if _current_frame == _last_damage_frame:
-		_damage_this_frame += amount
-		return 0.0
-	
-	# Reset damage tracking for new frame
-	_damage_this_frame = amount
-	_last_damage_frame = _current_frame
-	
-	# Apply damage type multipliers if available
-	if damage_multipliers.has(damage_type):
-		amount *= damage_multipliers[damage_type]
-	
-	# Apply modifiers
-	var actual_damage = _calculate_modified_damage(amount, damage_type)
-	
-	# Apply damage
-	if actual_damage > 0:
-		current_health -= actual_damage
-		last_damage_time = Time.get_ticks_msec() / 1000.0
-		
-		# Update cache and emit signal
-		_health_percent = current_health / max_health
-		damaged.emit(actual_damage, damage_type, source)
-		health_changed.emit(current_health, max_health)
-		
-		if debug_mode:
-			print("[HealthComponent] Took %s damage, health: %.1f/%.1f" % [actual_damage, current_health, max_health])
-		
-		# Check for death
-		if current_health <= 0:
-			_die()
-			
-	return actual_damage
-
-# Apply damage modifiers - separated for clarity
-func _calculate_modified_damage(amount: float, damage_type: String) -> float:
-	var modified_damage = amount
-	
-	# Apply shield reduction
-	if shield_percentage > 0:
-		modified_damage *= (1.0 - shield_percentage)
-	
-	# Apply armor reduction
-	if armor > 0:
-		modified_damage = max(0, modified_damage - armor)
-	
-	# Apply strategies
-	if modified_damage > 0 and not _modifier_strategies.is_empty():
-		for strategy in _modifier_strategies:
-			if strategy.has_method("modify_incoming_damage"):
-				modified_damage = strategy.modify_incoming_damage(modified_damage, damage_type)
-	
-	return modified_damage
-	
-func heal(amount: float, source: Node = null) -> float:
-	if _is_dead or amount <= 0 or current_health >= max_health:
-		return 0.0
-	
-	var actual_heal = amount
-	
-	# Apply healing modifiers from strategies
-	if not _modifier_strategies.is_empty():
-		for strategy in _modifier_strategies:
-			if strategy.has_method("modify_incoming_healing"):
-				actual_heal = strategy.modify_incoming_healing(actual_heal)
-	
-	# Apply healing
-	var old_health = current_health
-	current_health = min(current_health + actual_heal, max_health)
-	
-	# Calculate actual health gained
-	var health_gained = current_health - old_health
-	
-	# Only emit signals if healing was actually applied
-	if health_gained > 0:
-		_health_percent = current_health / max_health
-		healed.emit(health_gained, source)
-		health_changed.emit(current_health, max_health)
-		
-		if debug_mode:
-			print("[HealthComponent] Healed %.1f, health: %.1f/%.1f" % [health_gained, current_health, max_health])
-	
-	return health_gained
-	
-func set_max_health(new_max: float, adjust_current: bool = true) -> void:
-	if new_max <= 0:
-		return
-	
-	var old_max = max_health
-	max_health = max(1.0, new_max)
-	
-	if adjust_current:
-		var ratio = current_health / old_max
-		current_health = max_health * ratio
+	# Initialize shield
+	if has_shield:
+		current_shield = max_shield
 	else:
-		current_health = min(current_health, max_health)
+		current_shield = 0
 	
-	_health_percent = current_health / max_health
-	health_changed.emit(current_health, max_health)
+	if debug_health:
+		print("HealthComponent: Initialized with ", current_health, " health and ", current_shield, " shield")
 	
-func _die() -> void:
-	if _is_dead:
+	# Connect to damage strategy signals if available
+	_connect_to_strategies()
+
+func _process(delta: float) -> void:
+	_game_time += delta
+	
+	# Shield recharge logic
+	if has_shield and current_shield < max_shield and _game_time - shield_depleted_timestamp > shield_recharge_delay:
+		_recharge_shield(delta)
+
+func _recharge_shield(delta: float) -> void:
+	var old_shield = current_shield
+	current_shield = min(max_shield, current_shield + shield_recharge_rate * delta)
+	
+	# Emit signal if shield recharged from 0
+	if old_shield <= 0 and current_shield > 0:
+		_shield_recharging = false
+		shield_recharged.emit()
+		
+		if debug_health:
+			print("HealthComponent: Shield recharged")
+
+# Main method to apply damage to the entity
+func apply_damage(amount: float, type: String = "impact", source = null) -> bool:
+	if invincible:
+		return false
+	
+	# Check hit immunity
+	if hit_immunity_time > 0 and _game_time - hit_immunity_timestamp < hit_immunity_time:
+		return false
+	
+	# Process damage modifiers from registered strategies
+	amount = _process_damage_modifiers(amount, type, source)
+	
+	if amount <= 0:
+		return false
+	
+	# Apply damage resistance
+	var damage_type_id = _get_damage_type_id(type)
+	if damage_resistance.has(damage_type_id):
+		amount *= (1.0 - damage_resistance[damage_type_id])
+	
+	# Apply armor damage reduction if any
+	if armor > 0:
+		amount = max(1.0, amount - armor)
+	
+	var original_amount = amount
+	var shield_damage = 0.0
+	
+	# Handle shield damage first if available
+	if has_shield and current_shield > 0:
+		shield_damage = min(current_shield, amount * shield_efficiency)
+		current_shield -= shield_damage
+		amount -= shield_damage / shield_efficiency
+		
+		# Emit shield damaged signal
+		if shield_damage > 0:
+			shield_damaged.emit(shield_damage, type, source)
+		
+		# Check if shield was depleted
+		if current_shield <= 0:
+			_shield_recharging = true
+			shield_depleted_timestamp = _game_time
+			shield_depleted.emit()
+			
+			if debug_health:
+				print("HealthComponent: Shield depleted")
+	
+	# Apply remaining damage to health
+	if amount > 0:
+		# Set hit immunity timestamp
+		hit_immunity_timestamp = _game_time
+		
+		# Apply damage to health
+		current_health -= amount
+		damaged.emit(amount, type, source)
+		health_changed.emit(current_health, max_health)
+		
+		if print_damage_taken:
+			var shield_text = ""
+			if shield_damage > 0:
+				shield_text = " (Shield absorbed: " + str(shield_damage) + ")"
+			print("Damage taken: ", amount, shield_text, " from ", type)
+		
+		# Spawn hit effect if provided
+		if hit_effect_scene:
+			_spawn_hit_effect()
+		
+		# Handle death if health depleted
+		if current_health <= 0 and not is_dead:
+			current_health = 0
+			health_depleted.emit()
+			_handle_death()
+	
+	return true
+
+# Heal the entity
+func heal(amount: float) -> bool:
+	if amount <= 0 or is_dead:
+		return false
+	
+	var old_health = current_health
+	current_health = min(max_health, current_health + amount)
+	
+	if current_health > old_health:
+		healed.emit(current_health - old_health)
+		health_changed.emit(current_health, max_health)
+		return true
+	
+	return false
+
+# Restore shield
+func restore_shield(amount: float) -> bool:
+	if amount <= 0 or not has_shield:
+		return false
+	
+	var old_shield = current_shield
+	current_shield = min(max_shield, current_shield + amount)
+	
+	return current_shield > old_shield
+
+# Kill immediately
+func kill() -> void:
+	if is_dead:
 		return
 	
-	_is_dead = true
 	current_health = 0
-	_health_percent = 0
+	health_depleted.emit()
+	_handle_death()
+
+# Handle death logic
+func _handle_death() -> void:
+	if is_dead:
+		return
+	
+	is_dead = true
+	killed.emit()
 	died.emit()
 	
-	if debug_mode:
-		print("[HealthComponent] Died")
+	# Spawn death effect if provided
+	if death_effect_scene:
+		_spawn_death_effect()
+	
+	# Destroy parent if configured to do so
+	if destroy_parent_on_death and _parent and is_instance_valid(_parent):
+		# Use call_deferred to avoid issues during signal processing
+		_parent.call_deferred("queue_free")
 
-# This now uses a more efficient time check to avoid excessive processing
-func process_component(delta: float) -> void:
-	if not auto_recovery or _is_dead or current_health >= max_health:
-		return
-	
-	# Only process if needed - throttle recovery checks
-	_cached_recovery_time += delta
-	if _cached_recovery_time < 0.1:
-		return
-	
-	var current_time = Time.get_ticks_msec() / 1000.0
-	if current_time - last_damage_time >= recovery_delay:
-		heal(recovery_rate * _cached_recovery_time, null)
-		
-	_cached_recovery_time = 0
-	
-# Fast accessors for frequent operations
-func is_dead() -> bool:
-	return _is_dead
-	
+# Get health percentage (0-1)
 func get_health_percent() -> float:
-	return _health_percent
-	
-func is_critical() -> bool:
-	return _health_percent <= critical_health_percentage
-	
-func add_modifier_strategy(strategy) -> void:
-	if not _modifier_strategies.has(strategy):
-		_modifier_strategies.append(strategy)
-		
-func remove_modifier_strategy(strategy) -> void:
-	_modifier_strategies.erase(strategy)
+	return current_health / max_health
 
-# Kill entity immediately
-func kill() -> void:
-	if _is_dead:
-		return
-		
-	current_health = 0
-	_health_percent = 0
-	_die()
+# Get shield percentage (0-1)
+func get_shield_percent() -> float:
+	return current_shield / max_shield if has_shield and max_shield > 0 else 0.0
 
-# Resurrect entity
-func resurrect(health_percentage: float = 1.0) -> void:
-	if not _is_dead:
-		return
-		
-	_is_dead = false
-	current_health = max_health * clamp(health_percentage, 0.01, 1.0)
-	_health_percent = current_health / max_health
+# Reset health to starting values
+func reset_health() -> void:
+	is_dead = false
+	current_health = max_health * starting_health_percent
+	current_shield = max_shield if has_shield else 0.0
 	health_changed.emit(current_health, max_health)
+
+# Add a damage modification strategy
+func add_strategy(strategy) -> void:
+	if not strategy in _registered_strategies:
+		_registered_strategies.append(strategy)
+		
+		# Connect to strategy signals if it has them
+		if "property_name" in strategy and strategy.has_signal("strategy_enabled"):
+			strategy.connect("strategy_enabled", _on_strategy_enabled)
+			strategy.connect("strategy_disabled", _on_strategy_disabled)
+
+# Remove a damage modification strategy
+func remove_strategy(strategy) -> void:
+	var index = _registered_strategies.find(strategy)
+	if index >= 0:
+		_registered_strategies.remove_at(index)
+		
+		# Disconnect signals
+		if "property_name" in strategy and strategy.is_connected("strategy_enabled", _on_strategy_enabled):
+			strategy.disconnect("strategy_enabled", _on_strategy_enabled)
+			strategy.disconnect("strategy_disabled", _on_strategy_disabled)
+
+# Process damage modifiers from registered strategies
+func _process_damage_modifiers(amount: float, type: String, source) -> float:
+	var modified_amount = amount
+	
+	for strategy in _registered_strategies:
+		if strategy.has_method("process_damage"):
+			modified_amount = strategy.process_damage(modified_amount, type, source)
+	
+	return modified_amount
+
+# Connect to any damage strategy components
+func _connect_to_strategies() -> void:
+	# Look for strategy components in parent
+	if _parent:
+		for child in _parent.get_children():
+			if child.has_method("process_damage") or (child.has_signal("strategy_enabled") and child.has_signal("strategy_disabled")):
+				add_strategy(child)
+
+# Handle strategy enable/disable events
+func _on_strategy_enabled(strategy_name: String, property_name: String, value) -> void:
+	if property_name in self:
+		var old_value = get(property_name)
+		set(property_name, value)
+		
+		if debug_health:
+			print("HealthComponent: Property ", property_name, " changed from ", old_value, " to ", value, " by strategy ", strategy_name)
+
+func _on_strategy_disabled(strategy_name: String, property_name: String) -> void:
+	# Reset property to default if needed
+	pass
+
+# Spawn hit effect
+func _spawn_hit_effect() -> void:
+	if not hit_effect_scene or not _parent or not is_instance_valid(_parent):
+		return
+	
+	var effect = hit_effect_scene.instantiate()
+	_parent.get_parent().add_child(effect)
+	
+	if effect is Node2D and _parent is Node2D:
+		effect.global_position = _parent.global_position
+
+# Spawn death effect
+func _spawn_death_effect() -> void:
+	if not death_effect_scene or not _parent or not is_instance_valid(_parent):
+		return
+	
+	var effect = death_effect_scene.instantiate()
+	_parent.get_parent().add_child(effect)
+	
+	if effect is Node2D and _parent is Node2D:
+		effect.global_position = _parent.global_position
+
+# Helper to convert damage type string to enum
+func _get_damage_type_id(type: String) -> int:
+	match type.to_lower():
+		"impact": return DamageType.IMPACT
+		"explosive": return DamageType.EXPLOSIVE
+		"energy": return DamageType.ENERGY
+		"fire": return DamageType.FIRE
+		"projectile": return DamageType.PROJECTILE
+		"collision": return DamageType.COLLISION
+		_: return DamageType.IMPACT  # Default

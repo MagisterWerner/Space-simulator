@@ -29,7 +29,7 @@ func enter(params: Dictionary = {}) -> void:
 		# Heal the ship
 		var health = ship.get_node_or_null("HealthComponent") as HealthComponent
 		if health:
-			health.heal(health.max_health, null)
+			health.heal(health.max_health)
 	
 	# Transition to idle after respawning
 	state_machine.transition_to("idle")

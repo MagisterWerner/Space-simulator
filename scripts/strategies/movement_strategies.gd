@@ -1,79 +1,90 @@
-# movement_strategies.gd
+# scripts/strategies/movement_strategies.gd
 extends Resource
-class_name MovementStrategies
+
+# Base Movement Strategy class
+class MovementStrategy extends Strategy:
+	func _init() -> void:
+		target_component_type = "MovementComponent"
+	
+	func can_apply_to(component) -> bool:
+		return component != null and component.get_class() == "MovementComponent"
 
 # Enhanced Thrusters Strategy
-class EnhancedThrustersStrategy extends Strategy:
-	@export var thrust_multiplier: float = 1.5
-	
+class EnhancedThrustersStrategy extends MovementStrategy:
 	func _init() -> void:
+		super._init()
 		strategy_name = "Enhanced Thrusters"
-		description = "Increases thrust force by 50%"
-		rarity = "Uncommon"
-		price = 150
+		description = "Increases engine power by 40%"
+		price = 400
+		affected_properties = ["engine_power"]
 	
-	func modify_thrust(base_thrust: float) -> float:
-		return base_thrust * thrust_multiplier
+	func _modify_component() -> void:
+		if target_component:
+			target_component.engine_power *= 1.4
+	
+	func _restore_component() -> void:
+		if target_component:
+			target_component.engine_power /= 1.4
+	
+	func get_property_value():
+		return 1.4
 
 # Maneuverability Strategy
-class ManeuverabilityStrategy extends Strategy:
-	@export var rotation_speed_multiplier: float = 1.75
-	
+class ManeuverabilityStrategy extends MovementStrategy:
 	func _init() -> void:
+		super._init()
 		strategy_name = "Enhanced Maneuverability"
-		description = "Increases rotation speed by 75%"
-		rarity = "Uncommon"
-		price = 180
+		description = "Increases turning speed by 30%"
+		price = 350
+		affected_properties = ["turning_speed"]
 	
-	func modify_rotation(base_rotation: float) -> float:
-		return base_rotation * rotation_speed_multiplier
+	func _modify_component() -> void:
+		if target_component:
+			target_component.turning_speed *= 1.3
+	
+	func _restore_component() -> void:
+		if target_component:
+			target_component.turning_speed /= 1.3
+	
+	func get_property_value():
+		return 1.3
 
 # Afterburner Strategy
-class AfterburnerStrategy extends Strategy:
-	@export var boost_multiplier_increase: float = 1.0
-	@export var boost_duration_multiplier: float = 1.5
-	
+class AfterburnerStrategy extends MovementStrategy:
 	func _init() -> void:
+		super._init()
 		strategy_name = "Afterburner"
-		description = "Increases boost strength and duration"
-		rarity = "Rare"
-		price = 350
+		description = "Temporarily boosts maximum speed by 50%"
+		price = 500
+		affected_properties = ["max_speed"]
 	
-	func apply_to_component(component: Component) -> void:
-		super.apply_to_component(component)
-		
-		if component is MovementComponent:
-			var movement = component as MovementComponent
-			movement.boost_multiplier += boost_multiplier_increase
-			movement.boost_duration *= boost_duration_multiplier
+	func _modify_component() -> void:
+		if target_component:
+			target_component.max_speed *= 1.5
 	
-	func remove_from_component() -> void:
-		if owner_component is MovementComponent:
-			var movement = owner_component as MovementComponent
-			movement.boost_multiplier -= boost_multiplier_increase
-			movement.boost_duration /= boost_duration_multiplier
-		super.remove_from_component()
+	func _restore_component() -> void:
+		if target_component:
+			target_component.max_speed /= 1.5
+	
+	func get_property_value():
+		return 1.5
 
 # Inertial Dampeners Strategy
-class InertialDampenersStrategy extends Strategy:
-	@export var dampening_factor_improvement: float = 0.05
-	
+class InertialDampenersStrategy extends MovementStrategy:
 	func _init() -> void:
+		super._init()
 		strategy_name = "Inertial Dampeners"
-		description = "Improves handling by reducing drift"
-		rarity = "Rare"
-		price = 250
+		description = "Reduces inertia for better handling"
+		price = 450
+		affected_properties = ["inertia_modifier"]
 	
-	func apply_to_component(component: Component) -> void:
-		super.apply_to_component(component)
-		
-		if component is MovementComponent:
-			var movement = component as MovementComponent
-			# Lower dampening factor means less drift
-			movement.dampening_factor -= dampening_factor_improvement
+	func _modify_component() -> void:
+		if target_component:
+			target_component.inertia_modifier = 0.5
 	
-	func remove_from_component() -> void:
-		if owner_component is MovementComponent:
-			var movement = owner_component as MovementComponent
-			movement.dampening_factor += dampening_factor_improvement
-		super.remove_from_component()
+	func _restore_component() -> void:
+		if target_component:
+			target_component.inertia_modifier = 1.0
+	
+	func get_property_value():
+		return 0.5
