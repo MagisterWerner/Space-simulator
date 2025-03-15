@@ -11,7 +11,8 @@ var entities = {
 	"asteroid": {},
 	"asteroid_field": {},
 	"planet": {},
-	"moon": {}
+	"moon": {},
+	"station": {}
 }
 
 # Entity counter for generating unique IDs
@@ -21,6 +22,7 @@ var entity_counter = 0
 var player_ship_scene = null
 var enemy_ship_scenes = []
 var asteroid_scenes = []
+var station_scenes = []
 var planet_scenes = {}  # By planet type
 var moon_scenes = {}    # By moon type
 
@@ -56,6 +58,9 @@ func _initialize_scenes():
 	
 	# Load asteroid scenes
 	_load_asteroid_scenes()
+	
+	# Load station scenes
+	_load_station_scenes()
 	
 	_scenes_initialized = true
 	
@@ -102,6 +107,29 @@ func _load_asteroid_scenes():
 	
 	if ResourceLoader.exists(asteroid_field_path):
 		asteroid_scenes.append(load(asteroid_field_path))
+
+# Load available station scenes
+func _load_station_scenes():
+	var station_path = "res://scenes/world/station.tscn"
+	var trading_station_path = "res://scenes/world/trading_station.tscn"
+	var military_station_path = "res://scenes/world/military_station.tscn"
+	var research_station_path = "res://scenes/world/research_station.tscn"
+	var mining_station_path = "res://scenes/world/mining_station.tscn"
+	
+	if ResourceLoader.exists(station_path):
+		station_scenes.append(load(station_path))
+	
+	if ResourceLoader.exists(trading_station_path):
+		station_scenes.append(load(trading_station_path))
+		
+	if ResourceLoader.exists(military_station_path):
+		station_scenes.append(load(military_station_path))
+		
+	if ResourceLoader.exists(research_station_path):
+		station_scenes.append(load(research_station_path))
+		
+	if ResourceLoader.exists(mining_station_path):
+		station_scenes.append(load(mining_station_path))
 
 # Register an entity with the manager
 func register_entity(entity, entity_type = "generic"):
@@ -222,6 +250,8 @@ func spawn_entity_from_data(entity_data, parent_node = null):
 		return spawn_asteroid_from_data(entity_data, parent_node)
 	elif entity_data is AsteroidFieldData:
 		return spawn_asteroid_field_from_data(entity_data, parent_node)
+	elif entity_data is StationData:
+		return spawn_station_from_data(entity_data, parent_node)
 	else:
 		push_error("EntityManager: Unknown entity data type")
 		return null
@@ -435,6 +465,52 @@ func spawn_asteroid_field_from_data(field_data, parent_node = null):
 	register_entity_with_data(field, field_data)
 	
 	return field
+
+# Spawn station from data
+func spawn_station_from_data(station_data, parent_node = null):
+	if station_scenes.is_empty():
+		push_error("EntityManager: No station scene available")
+		return null
+	
+	# Use appropriate station scene based on type if available
+	var station_scene = station_scenes[0]  # Default to first
+	
+	if station_scenes.size() > station_data.station_type + 1:
+		station_scene = station_scenes[station_data.station_type + 1]
+	
+	var station = station_scene.instantiate()
+	
+	# Add to parent or to scene
+	if parent_node and is_instance_valid(parent_node):
+		parent_node.add_child(station)
+	else:
+		add_child(station)
+	
+	# Set position
+	station.global_position = station_data.position
+	
+	# Configure station
+	if station.has_method("initialize"):
+		station.initialize(station_data.seed_value)
+	
+	# Set basic properties
+	if has_property(station, "station_type"):
+		station.station_type = station_data.station_type
+	
+	if has_property(station, "station_name"):
+		station.station_name = station_data.station_name
+	
+	if has_property(station, "level"):
+		station.level = station_data.level
+	
+	# Set name if available
+	if station_data.station_name:
+		station.name = station_data.station_name
+	
+	# Register entity with data
+	register_entity_with_data(station, station_data)
+	
+	return station
 
 # --- Query Methods ---
 

@@ -239,6 +239,10 @@ func _preload_cell(cell: Vector2i) -> void:
 	var asteroid_fields = world_data.get_asteroid_fields_in_cell(cell)
 	cell_entities.append_array(asteroid_fields)
 	
+	# Check for stations
+	var stations = world_data.get_stations_in_cell(cell)
+	cell_entities.append_array(stations)
+	
 	# Store entity data
 	loaded_cells[cell].entity_data = cell_entities
 	loaded_cells[cell].initialized = true
@@ -263,6 +267,9 @@ func _apply_pre_generated_content(cell: Vector2i, content: Dictionary) -> void:
 	
 	if content.has("asteroid_fields"):
 		cell_content.entity_data.append_array(content.asteroid_fields)
+		
+	if content.has("stations"):
+		cell_content.entity_data.append_array(content.stations)
 	
 	# Also store generic entities if present
 	if content.has("entities"):
@@ -458,6 +465,12 @@ func _update_world_data_from_entities() -> void:
 						data.angular_velocity = entity.angular_velocity
 						if "rotation" in entity:
 							data.properties["rotation"] = entity.rotation
+					elif data is StationData:
+						# Update station data if it has changed
+						if entity.has_method("get_market_data"):
+							var market_data = entity.get_market_data()
+							data.sells_resources = market_data.get("sells", {})
+							data.buys_resources = market_data.get("buys", {})
 	
 	# Update player start position
 	if _entity_manager and _entity_manager.has_method("get_player_ship"):
