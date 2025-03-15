@@ -1,233 +1,219 @@
 # scripts/managers/content_registry.gd
-# Central cache for all generated content
 extends Node
 class_name ContentRegistry
 
 signal content_loaded
-signal content_cache_updated(content_type)
-signal texture_cache_updated
+signal content_updated(content_type)
 
-# World data reference
-var world_data: WorldData = null
+# Registry for different content types
+var _world_content = {}  # Grid cell -> cell content
+var _asteroid_patterns = []
+var _planet_textures = {}
+var _moon_textures = {}
+var _upgrade_strategies = {}
+var _stations = {}
+var _cached_assets = {}
 
-# Texture caches
-var texture_cache: Dictionary = {
-	"planets": {
+# Loading state
+var _loaded = false
+var _debug_mode = false
+var _game_settings = null
+var _seed_value = 0
+
+# Pattern and texture generators
+var _pattern_generator = null
+var _texture_generator = null
+
+func _ready() -> void:
+	# Find game settings
+	var main_scene = get_tree().current_scene
+	_game_settings = main_scene.get_node_or_null("GameSettings")
+	if _game_settings:
+		_debug_mode = _game_settings.debug_mode
+		_seed_value = _game_settings.get_seed()
+		
+		# Connect to seed changes
+		if _game_settings.has_signal("seed_changed") and not _game_settings.is_connected("seed_changed", _on_seed_changed):
+			_game_settings.connect("seed_changed", _on_seed_changed)
+	
+	# Connect to SeedManager
+	if has_node("/root/SeedManager"):
+		if SeedManager.has_signal("seed_changed") and not SeedManager.is_connected("seed_changed", _on_seed_changed):
+			SeedManager.connect("seed_changed", _on_seed_changed)
+		_seed_value = SeedManager.get_seed()
+	
+	# Initialize generators - don't add as child since they extend RefCounted
+	_pattern_generator = FragmentPatternGenerator.new(_seed_value)
+	
+	call_deferred("_initialize_registry")
+
+func _initialize_registry() -> void:
+	if _loaded:
+		return
+		
+	if _debug_mode:
+		print("ContentRegistry: Initializing content registry")
+	
+	# Generate asteroid fragment patterns
+	_generate_asteroid_patterns()
+	
+	# Pre-generate textures
+	_pre_generate_textures()
+	
+	# Prepare upgrade strategies
+	_initialize_upgrade_strategies()
+	
+	_loaded = true
+	content_loaded.emit()
+
+func _on_seed_changed(new_seed: int) -> void:
+	_seed_value = new_seed
+	
+	# Regenerate all procedural content
+	_pattern_generator = FragmentPatternGenerator.new(new_seed)
+	
+	# Clear and rebuild registries
+	_asteroid_patterns.clear()
+	_planet_textures.clear()
+	_moon_textures.clear()
+	
+	# Regenerate content
+	_generate_asteroid_patterns()
+	_pre_generate_textures()
+	
+	# Signal update
+	content_updated.emit("all")
+
+# Generate asteroid fragment patterns
+func _generate_asteroid_patterns() -> void:
+	_asteroid_patterns = _pattern_generator.generate_pattern_collection(_seed_value)
+	
+	if _debug_mode:
+		print("ContentRegistry: Generated " + str(_asteroid_patterns.size()) + " asteroid patterns")
+	
+	content_updated.emit("asteroid_patterns")
+
+# Pre-generate textures
+func _pre_generate_textures() -> void:
+	# Note: In a full implementation, we'd generate and cache actual textures here
+	# For now, we'll just set up the structure for later integration
+	
+	_planet_textures = {
 		"terran": {},
 		"gaseous": {}
-	},
-	"moons": {
+	}
+	
+	_moon_textures = {
 		"rocky": {},
 		"icy": {},
 		"volcanic": {}
-	},
-	"asteroids": {},
-	"atmospheres": {}
-}
-
-# Fragment pattern cache
-var fragment_patterns: Dictionary = {}
-
-# Entity template cache for faster instantiation
-var entity_templates: Dictionary = {}
-
-# Generation status tracking
-var _generation_status: Dictionary = {
-	"initialized": false,
-	"generating": false,
-	"progress": 0.0
-}
-
-# Generator services - these produce only data, not entities
-var _generators: Dictionary = {}
-
-# Background worker for async generation
-var _background_worker: BackgroundGenerationWorker = null
-
-# Debug flag
-var _debug_mode: bool = false
-
-# Initialize the registry
-func initialize(world_seed: int, debug: bool = false) -> void:
-	_debug_mode = debug
+	}
 	
 	if _debug_mode:
-		print("ContentRegistry: Initializing with seed ", world_seed)
+		print("ContentRegistry: Prepared texture registry")
 	
-	# Create world data if needed
-	if not world_data:
-		world_data = WorldData.new()
-		world_data.seed_value = world_seed
-		world_data.seed_hash = SeedManager.get_seed_hash()
-		world_data.generation_timestamp = Time.get_unix_time_from_system()
-	
-	# Initialize generators
-	_initialize_generators(world_seed)
-	
-	# Setup background worker
-	_background_worker = BackgroundGenerationWorker.new()
-	add_child(_background_worker)
-	_background_worker.initialize(world_data, _generators)
-	
-	# Connect signals
-	_background_worker.connect("cell_generated", _on_cell_generated)
-	_background_worker.connect("generation_completed", _on_generation_completed)
-	_background_worker.connect("generation_progress", _on_generation_progress)
-	
-	_generation_status.initialized = true
-	content_loaded.emit()
+	content_updated.emit("textures")
 
-# Initialize all generators
-func _initialize_generators(seed_value: int) -> void:
-	# Create generators for different content types
-	if ResourceLoader.exists("res://scripts/generators/planet_data_generator.gd"):
-		var PlanetGeneratorClass = load("res://scripts/generators/planet_data_generator.gd")
-		_generators["planet"] = PlanetGeneratorClass.new(seed_value)
+# Initialize upgrade strategies
+func _initialize_upgrade_strategies() -> void:
+	# Load strategy scripts
+	var weapon_strategies_script = load("res://scripts/strategies/weapon_strategies.gd")
+	var shield_strategies_script = load("res://scripts/strategies/shield_strategies.gd")
+	var movement_strategies_script = load("res://scripts/strategies/movement_strategies.gd")
 	
-	if ResourceLoader.exists("res://scripts/generators/asteroid_data_generator.gd"):
-		var AsteroidGeneratorClass = load("res://scripts/generators/asteroid_data_generator.gd")
-		_generators["asteroid"] = AsteroidGeneratorClass.new(seed_value)
+	_upgrade_strategies = {
+		"weapon": [],
+		"shield": [],
+		"movement": []
+	}
 	
-	if ResourceLoader.exists("res://scripts/generators/fragment_pattern_generator.gd"):
-		var FragmentGeneratorClass = load("res://scripts/generators/fragment_pattern_generator.gd")
-		_generators["fragment"] = FragmentGeneratorClass.new(seed_value)
-		
-		# Generate fragment patterns
-		fragment_patterns = _generators["fragment"].generate_pattern_collection(seed_value)
+	# Create instances of weapon strategies
+	if weapon_strategies_script:
+		_upgrade_strategies.weapon.append_array([
+			weapon_strategies_script.DoubleDamageStrategy.new(),
+			weapon_strategies_script.RapidFireStrategy.new(),
+			weapon_strategies_script.PiercingShotStrategy.new(),
+			weapon_strategies_script.SpreadShotStrategy.new()
+		])
+	
+	# Create instances of shield strategies
+	if shield_strategies_script:
+		_upgrade_strategies.shield.append_array([
+			shield_strategies_script.ReinforcedShieldStrategy.new(),
+			shield_strategies_script.FastRechargeStrategy.new(),
+			shield_strategies_script.ReflectiveShieldStrategy.new(),
+			shield_strategies_script.AbsorbentShieldStrategy.new()
+		])
+	
+	# Create instances of movement strategies
+	if movement_strategies_script:
+		_upgrade_strategies.movement.append_array([
+			movement_strategies_script.EnhancedThrustersStrategy.new(),
+			movement_strategies_script.ManeuverabilityStrategy.new(),
+			movement_strategies_script.AfterburnerStrategy.new(),
+			movement_strategies_script.InertialDampenersStrategy.new()
+		])
+	
+	content_updated.emit("upgrade_strategies")
 
-# Start background generation for a set of cells
-func start_background_generation(cells_to_generate: Array[Vector2i], priority_cells: Array[Vector2i] = []) -> void:
-	if not _generation_status.initialized:
-		push_error("ContentRegistry: Not initialized, cannot start generation")
-		return
-	
-	if _generation_status.generating:
-		if _debug_mode:
-			print("ContentRegistry: Generation already in progress")
-		return
-	
-	_generation_status.generating = true
-	_generation_status.progress = 0.0
-	
-	# Start the background worker
-	_background_worker.start_generation(cells_to_generate, priority_cells)
+# Register world cell content (planets, asteroid fields, stations)
+func register_world_cell_content(cell: Vector2i, content_data: Dictionary) -> void:
+	_world_content[cell] = content_data
+	content_updated.emit("world_content")
 
-# Get content for a specific cell
-func get_cell_content(cell: Vector2i) -> Array:
-	if not world_data:
-		return []
+# Cache an asset in memory
+func cache_asset(asset_type: String, asset_id: String, asset) -> void:
+	if not _cached_assets.has(asset_type):
+		_cached_assets[asset_type] = {}
 	
-	# If cell not generated, trigger generation
-	if not world_data.is_cell_generated(cell):
-		# Add to queue but don't wait
-		world_data.generation_queue.append(cell)
-		return []
-	
-	return world_data.get_entities_in_cell(cell)
+	_cached_assets[asset_type][asset_id] = asset
 
-# Get a specific entity by ID
-func get_entity(entity_id: int) -> EntityData:
-	if not world_data:
+# Get cached asset
+func get_cached_asset(asset_type: String, asset_id: String):
+	if not _cached_assets.has(asset_type):
 		return null
 	
-	return world_data.get_entity_by_id(entity_id)
+	return _cached_assets[asset_type].get(asset_id)
 
-# Get planet texture - centralized to ensure caching
-func get_planet_texture(planet_data: PlanetData) -> Texture2D:
-	var category_name = "gaseous" if planet_data.is_gaseous else "terran"
-	var cache_key = str(planet_data.seed_value) + "_" + str(planet_data.planet_theme)
-	
-	# Check cache first
-	if texture_cache.planets[category_name].has(cache_key):
-		return texture_cache.planets[category_name][cache_key]
-	
-	# Not in cache, generate it
-	var texture: Texture2D = null
-	
-	if _generators.has("planet"):
-		# Delegate to generator to create texture only
-		texture = _generators["planet"].generate_planet_texture(planet_data)
-		
-		# Cache the result
-		texture_cache.planets[category_name][cache_key] = texture
-		texture_cache_updated.emit()
-	
-	return texture
+# Clear asset cache for a specific type
+func clear_asset_cache(asset_type: String) -> void:
+	if _cached_assets.has(asset_type):
+		_cached_assets[asset_type].clear()
 
-# Get asteroid texture with caching
-func get_asteroid_texture(asteroid_data: AsteroidData) -> Texture2D:
-	var cache_key = str(asteroid_data.texture_seed) + "_" + str(asteroid_data.variant)
-	
-	# Check cache first
-	if texture_cache.asteroids.has(cache_key):
-		return texture_cache.asteroids[cache_key]
-	
-	# Not in cache, generate it
-	var texture: Texture2D = null
-	
-	if _generators.has("asteroid"):
-		# Delegate to generator to create texture only
-		texture = _generators["asteroid"].generate_asteroid_texture(asteroid_data)
-		
-		# Cache the result
-		texture_cache.asteroids[cache_key] = texture
-		texture_cache_updated.emit()
-	
-	return texture
-
-# Get fragment pattern for asteroid
-func get_fragment_pattern(asteroid_data: AsteroidData) -> FragmentPatternData:
-	# Skip if small (doesn't fragment)
-	if asteroid_data.size_category == AsteroidData.SizeCategory.SMALL:
-		return null
-	
-	# Convert size to string for lookup
-	var size_string = "medium"
-	if asteroid_data.size_category == AsteroidData.SizeCategory.LARGE:
-		size_string = "large"
-	
-	# Find matching patterns
+# Get asteroid fragment pattern for an asteroid type and variant
+func get_asteroid_pattern(size_category: String, variant_id: int) -> FragmentPatternData:
+	# Filter patterns for this size
 	var matching_patterns = []
-	for pattern in fragment_patterns.values():
-		if pattern.source_size == size_string:
+	for pattern in _asteroid_patterns:
+		if pattern.source_size == size_category:
 			matching_patterns.append(pattern)
 	
-	# No patterns found
+	# If no matching patterns, return null
 	if matching_patterns.is_empty():
 		return null
 	
-	# Use variant to select pattern
-	var index = asteroid_data.variant % matching_patterns.size()
+	# Select pattern based on variant
+	var index = variant_id % matching_patterns.size()
 	return matching_patterns[index]
 
-# Event handlers
-func _on_cell_generated(cell: Vector2i) -> void:
-	if _debug_mode:
-		print("ContentRegistry: Cell generated: ", cell)
+# Get upgrade strategies for a component type
+func get_upgrade_strategies(component_type: String) -> Array:
+	return _upgrade_strategies.get(component_type, [])
+
+# Get content for a world cell
+func get_world_cell_content(cell: Vector2i) -> Dictionary:
+	return _world_content.get(cell, {})
+
+# Get all asteroid patterns
+func get_all_asteroid_patterns() -> Array:
+	return _asteroid_patterns
+
+# Apply global content setting
+func apply_content_settings(settings: Dictionary) -> void:
+	# Update content based on settings
+	if settings.has("asteroid_patterns_per_size"):
+		var patterns_per_size = settings.asteroid_patterns_per_size
+		_asteroid_patterns = _pattern_generator.generate_pattern_collection(_seed_value, patterns_per_size)
+		content_updated.emit("asteroid_patterns")
 	
-	content_cache_updated.emit("cell")
-
-func _on_generation_completed() -> void:
-	_generation_status.generating = false
-	_generation_status.progress = 1.0
-	
-	if _debug_mode:
-		print("ContentRegistry: Background generation completed")
-
-func _on_generation_progress(progress: float) -> void:
-	_generation_status.progress = progress
-
-# Get generation status
-func get_generation_status() -> Dictionary:
-	return _generation_status
-
-# Clear all caches
-func clear_caches() -> void:
-	texture_cache.planets.terran.clear()
-	texture_cache.planets.gaseous.clear()
-	texture_cache.moons.rocky.clear()
-	texture_cache.moons.icy.clear()
-	texture_cache.moons.volcanic.clear()
-	texture_cache.asteroids.clear()
-	texture_cache.atmospheres.clear()
-	texture_cache_updated.emit()
+	# Add other settings as needed
