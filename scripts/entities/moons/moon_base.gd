@@ -18,11 +18,9 @@ var moon_name: String
 var use_texture_cache: bool = true
 var is_gaseous: bool = false
 var moon_type: int = MoonType.ROCKY  # Default type
-var entity_id: int = 0
 
 # Visual indicator properties
 var orbit_color: Color = Color(1, 1, 1, 0.5)
-var indicator_color: Color = Color(1, 1, 1, 0.8)
 var orbit_indicator_size: float = 4.0
 
 # Orbital parameters
@@ -89,53 +87,15 @@ func _on_seed_changed(_new_seed: int) -> void:
 		
 		# Regenerate moon texture
 		_generate_moon_texture()
+		
+		# Optional log - could be removed in production
+		if parent_planet and parent_planet.debug_planet_generation:
+			print("Moon %s: Updated seed to %d" % [moon_name, seed_value])
 
-# Setup from MoonData method
-func setup_from_data(moon_data: MoonData) -> void:
-	# Set properties from moon data
-	entity_id = moon_data.entity_id
-	seed_value = moon_data.seed_value
-	moon_name = moon_data.moon_name
-	pixel_size = moon_data.pixel_size
-	is_gaseous = moon_data.is_gaseous
-	moon_type = moon_data.moon_type
-	
-	# Set orbit parameters
-	distance = moon_data.distance
-	base_angle = moon_data.base_angle
-	orbit_speed = moon_data.orbit_speed
-	orbit_deviation = moon_data.orbit_deviation
-	phase_offset = moon_data.phase_offset
-	orbital_inclination = moon_data.orbital_inclination
-	orbit_vertical_offset = moon_data.orbit_vertical_offset
-	
-	# Set visual properties
-	orbit_color = moon_data.orbit_color
-	indicator_color = moon_data.indicator_color
-	orbit_indicator_size = moon_data.orbit_indicator_size
-	
-	# Generate texture
-	_generate_moon_texture()
-	
-	# Store parameters for later reference
-	_init_params = {
-		"entity_id": entity_id,
-		"seed_value": seed_value,
-		"moon_name": moon_name,
-		"pixel_size": pixel_size,
-		"is_gaseous": is_gaseous,
-		"moon_type": moon_type,
-		"distance": distance,
-		"base_angle": base_angle,
-		"orbit_speed": orbit_speed,
-		"orbit_deviation": orbit_deviation,
-		"phase_offset": phase_offset,
-		"orbital_inclination": orbital_inclination,
-		"orbit_vertical_offset": orbit_vertical_offset
-	}
-
-# Legacy initialize method for backward compatibility
 func initialize(params: Dictionary) -> void:
+	# Store initialization parameters
+	_init_params = params.duplicate()
+	
 	# Extract parameters
 	seed_value = params.seed_value
 	parent_planet = params.parent_planet
@@ -160,9 +120,6 @@ func initialize(params: Dictionary) -> void:
 	
 	# Set orbit color
 	_set_orbit_color()
-	
-	# Store params for later reference
-	_init_params = params.duplicate()
 
 # Generate texture with appropriate type
 func _generate_moon_texture() -> void:
