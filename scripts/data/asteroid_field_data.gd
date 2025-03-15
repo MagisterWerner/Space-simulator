@@ -36,9 +36,9 @@ func generate_asteroid_distribution(rng: RandomNumberGenerator) -> void:
 	medium_asteroid_chance = rng.randf_range(0.45, 0.55)
 	large_asteroid_chance = 1.0 - small_asteroid_chance - medium_asteroid_chance
 
-# Override to implement a proper copy
-func duplicate() -> AsteroidFieldData:
-	var copy = super.duplicate() as AsteroidFieldData
+# Override clone to implement a proper deep copy
+func clone() -> AsteroidFieldData:
+	var copy = super.clone() as AsteroidFieldData
 	copy.field_radius = field_radius
 	copy.asteroid_count = asteroid_count
 	copy.min_asteroids = min_asteroids
@@ -55,6 +55,6 @@ func duplicate() -> AsteroidFieldData:
 	# Deep copy asteroids array
 	copy.asteroids = []
 	for asteroid in asteroids:
-		copy.asteroids.append(asteroid.duplicate())
+		copy.asteroids.append(asteroid.clone())
 	
 	return copy

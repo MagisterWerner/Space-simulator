@@ -72,9 +72,9 @@ func generate_resources(rng: RandomNumberGenerator) -> void:
 			resource_prices[ResourceManager.ResourceType.FUEL] = rng.randf_range(0.9, 1.1)
 			resource_quantities[ResourceManager.ResourceType.FUEL] = rng.randi_range(100, 300)
 
-# Override to implement a proper copy
-func duplicate() -> StationData:
-	var copy = super.duplicate() as StationData
+# Override clone to implement a proper copy
+func clone() -> StationData:
+	var copy = super.clone() as StationData
 	copy.station_type = station_type
 	copy.rotation_speed = rotation_speed
 	copy.docking_slots = docking_slots

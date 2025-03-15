@@ -32,9 +32,13 @@ var moons: Array[MoonData] = []
 var resource_multipliers: Dictionary = {}
 var resource_availability: Dictionary = {}
 
-# Override to implement a deeper copy
-func duplicate() -> PlanetData:
-	var copy = super.duplicate() as PlanetData
+func _init() -> void:
+	super._init()
+	entity_type = "planet"
+
+# Override clone to implement a deeper copy
+func clone() -> PlanetData:
+	var copy = super.clone() as PlanetData
 	copy.planet_category = planet_category
 	copy.planet_theme = planet_theme
 	copy.pixel_size = pixel_size
@@ -46,7 +50,7 @@ func duplicate() -> PlanetData:
 	# Deep copy moons array
 	copy.moons = []
 	for moon in moons:
-		copy.moons.append(moon.duplicate())
+		copy.moons.append(moon.clone())
 	
 	# Deep copy resource data
 	copy.resource_multipliers = resource_multipliers.duplicate()

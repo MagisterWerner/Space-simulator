@@ -32,9 +32,9 @@ func get_physics_properties() -> Dictionary:
 		"mass": mass
 	}
 
-# Override to implement a proper copy
-func duplicate() -> AsteroidData:
-	var copy = super.duplicate() as AsteroidData
+# Override clone to implement a proper deep copy
+func clone() -> AsteroidData:
+	var copy = super.clone() as AsteroidData
 	copy.size_category = size_category
 	copy.numeric_size = numeric_size
 	copy.points_value = points_value

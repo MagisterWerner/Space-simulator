@@ -116,6 +116,32 @@ func generate_entity_id() -> int:
 			
 	return highest_id + 1
 
+# Deep clone function
+func clone() -> WorldData:
+	var copy = get_script().new()
+	copy.world_id = world_id
+	copy.seed_value = seed_value
+	copy.seed_hash = seed_hash
+	copy.grid_size = grid_size
+	copy.grid_cell_size = grid_cell_size
+	copy.player_start_position = player_start_position
+	copy.player_start_cell = player_start_cell
+	copy.player_credits = player_credits
+	copy.player_starting_fuel = player_starting_fuel
+	copy.creation_timestamp = creation_timestamp
+	copy.generation_time_ms = generation_time_ms
+	
+	# Clone entity collections
+	for entity in entities:
+		var entity_clone = entity.clone()
+		copy.add_entity(entity_clone)
+		
+		# Set references correctly
+		if entity is PlanetData and entity == player_start_planet:
+			copy.player_start_planet = entity_clone
+	
+	return copy
+
 # Save world data to a file
 func save_to_file(filepath: String = "") -> bool:
 	if filepath.is_empty():

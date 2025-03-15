@@ -70,7 +70,7 @@ func generate_circular_pattern(count: int, min_distance: float, max_distance: fl
 	fragment_count = fragments.size()
 
 # Clone this pattern
-func duplicate() -> FragmentPatternData:
+func clone() -> FragmentPatternData:
 	var copy = get_script().new()
 	copy.pattern_id = pattern_id
 	copy.pattern_seed = pattern_seed

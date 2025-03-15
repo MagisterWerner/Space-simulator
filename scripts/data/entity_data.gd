@@ -22,8 +22,8 @@ func _init() -> void:
 	# Set creation timestamp for debugging
 	creation_timestamp = Time.get_ticks_msec()
 
-# Clone/deep copy function
-func duplicate() -> EntityData:
+# Clone/deep copy function - use this instead of duplicate
+func clone() -> EntityData:
 	var copy = get_script().new()
 	copy.entity_id = entity_id
 	copy.seed_value = seed_value
@@ -36,7 +36,7 @@ func duplicate() -> EntityData:
 	copy.creation_timestamp = creation_timestamp
 	return copy
 
-func to_string() -> String:
+func get_summary() -> String:
 	return "EntityData[id=%d, type=%s, pos=%s, cell=%s]" % [
 		entity_id,
 		entity_type,

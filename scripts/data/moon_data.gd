@@ -22,9 +22,13 @@ var orbit_vertical_offset: float = 0.0
 var orbit_color: Color = Color.WHITE
 var is_gaseous: bool = false
 
-# Override to implement a deeper copy
-func duplicate() -> MoonData:
-	var copy = super.duplicate() as MoonData
+func _init() -> void:
+	super._init()
+	entity_type = "moon"
+
+# Override clone to implement a deeper copy
+func clone() -> MoonData:
+	var copy = super.clone() as MoonData
 	copy.moon_type = moon_type
 	copy.pixel_size = pixel_size
 	copy.parent_planet_id = parent_planet_id
