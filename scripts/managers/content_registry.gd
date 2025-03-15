@@ -42,9 +42,8 @@ func _ready() -> void:
 			SeedManager.connect("seed_changed", _on_seed_changed)
 		_seed_value = SeedManager.get_seed()
 	
-	# Initialize generators
+	# Initialize generators - don't add as child since they extend RefCounted
 	_pattern_generator = FragmentPatternGenerator.new(_seed_value)
-	add_child(_pattern_generator)
 	
 	call_deferred("_initialize_registry")
 
@@ -162,11 +161,6 @@ func register_world_cell_content(cell: Vector2i, content_data: Dictionary) -> vo
 	_world_content[cell] = content_data
 	content_updated.emit("world_content")
 
-# Register station
-func register_station(station_data: StationData) -> void:
-	_stations[station_data.entity_id] = station_data
-	content_updated.emit("stations")
-
 # Cache an asset in memory
 func cache_asset(asset_type: String, asset_id: String, asset) -> void:
 	if not _cached_assets.has(asset_type):
@@ -209,10 +203,6 @@ func get_upgrade_strategies(component_type: String) -> Array:
 # Get content for a world cell
 func get_world_cell_content(cell: Vector2i) -> Dictionary:
 	return _world_content.get(cell, {})
-
-# Get station data
-func get_station_data(station_id: int) -> StationData:
-	return _stations.get(station_id)
 
 # Get all asteroid patterns
 func get_all_asteroid_patterns() -> Array:

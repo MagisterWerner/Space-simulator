@@ -169,7 +169,10 @@ func _create_effect(effect_type: String) -> Node:
 # Get an effect from a pool and play it at the specified position
 func play_effect(effect_type: String, position: Vector2, rotation: float = 0.0, scale: float = 1.0) -> Node:
 	if not _initialized:
-		await initialize()
+		# Wait for initialization to complete
+		if not _initializing:
+			initialize()
+		await pools_initialized
 	
 	# Make sure pool exists
 	if not _effect_pools.has(effect_type):
@@ -291,13 +294,13 @@ func clear_active_effects() -> void:
 # Convenience methods for common effects
 func explosion(position: Vector2, size: String = "medium", rotation: float = 0.0, scale: float = 1.0) -> Node:
 	var effect_type = size + "_explosion"
-	return play_effect(effect_type, position, rotation, scale)
+	return await play_effect(effect_type, position, rotation, scale)
 
 func impact(position: Vector2, rotation: float = 0.0, scale: float = 1.0) -> Node:
-	return play_effect("impact_effect", position, rotation, scale)
+	return await play_effect("impact_effect", position, rotation, scale)
 
 func shield_hit(position: Vector2, rotation: float = 0.0, scale: float = 1.0) -> Node:
-	return play_effect("shield_hit", position, rotation, scale)
+	return await play_effect("shield_hit", position, rotation, scale)
 
 # Debug logging
 func _log_pool_stats() -> void:

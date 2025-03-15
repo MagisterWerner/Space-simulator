@@ -35,8 +35,8 @@ func add_fragment(index: int, position: Vector2, velocity: Vector2, rotation: fl
 		sizes[index] = size
 		scale_factors[index] = scale
 
-# Override duplicate to ensure proper copying
-func duplicate(subresources: bool = false) -> Resource:
+# Create a deep copy - custom method that doesn't override native methods
+func clone() -> FragmentPatternData:
 	var copy = get_script().new(pattern_id, source_size, fragment_count)
 	
 	# Copy the arrays

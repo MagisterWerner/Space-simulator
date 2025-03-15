@@ -40,11 +40,15 @@ func _ready() -> void:
 
 func _create_generators() -> void:
 	# Create data generators for use by this manager
-	planet_generator = PlanetDataGenerator.new()
-	add_child(planet_generator)
+	if ResourceLoader.exists("res://scripts/generators/planet_data_generator.gd"):
+		var PlanetDataGeneratorClass = load("res://scripts/generators/planet_data_generator.gd")
+		planet_generator = PlanetDataGeneratorClass.new()
+		add_child(planet_generator)
 	
-	asteroid_generator = AsteroidDataGenerator.new()
-	add_child(asteroid_generator)
+	if ResourceLoader.exists("res://scripts/generators/asteroid_data_generator.gd"):
+		var AsteroidDataGeneratorClass = load("res://scripts/generators/asteroid_data_generator.gd")
+		asteroid_generator = AsteroidDataGeneratorClass.new()
+		add_child(asteroid_generator)
 
 func _initialize_spawners() -> void:
 	# Create spawners
@@ -182,17 +186,35 @@ func _generate_planet_at_cell(cell: Vector2i, is_gaseous: bool, theme_id: int) -
 	var seed_value = _get_deterministic_seed(cell)
 	
 	# Create planet data using the generator
-	var planet_data = planet_generator.generate_planet(entity_id, position, seed_value, theme_id, false)
-	
-	# Override gaseous flag if specified
-	if is_gaseous != planet_data.is_gaseous:
+	if planet_generator and planet_generator.has_method("generate_planet"):
+		var planet_data = planet_generator.generate_planet(entity_id, position, seed_value, theme_id, false)
+		
+		# Override gaseous flag if specified
+		if is_gaseous != planet_data.is_gaseous:
+			planet_data.is_gaseous = is_gaseous
+			planet_data.planet_category = PlanetData.PlanetCategory.GASEOUS if is_gaseous else PlanetData.PlanetCategory.TERRAN
+		
+		# Set grid cell
+		planet_data.grid_cell = cell
+		
+		return planet_data
+	else:
+		# Fallback if generator not available
+		var planet_data = PlanetData.new(entity_id, position, seed_value)
 		planet_data.is_gaseous = is_gaseous
 		planet_data.planet_category = PlanetData.PlanetCategory.GASEOUS if is_gaseous else PlanetData.PlanetCategory.TERRAN
-	
-	# Set grid cell
-	planet_data.grid_cell = cell
-	
-	return planet_data
+		planet_data.grid_cell = cell
+		
+		if theme_id >= 0:
+			planet_data.planet_theme = theme_id
+		else:
+			# Random theme based on category
+			if is_gaseous:
+				planet_data.planet_theme = 7 + (seed_value % 4)  # 7-10 (Jupiter to Neptune)
+			else:
+				planet_data.planet_theme = seed_value % 7  # 0-6 (Arid to Ocean)
+				
+		return planet_data
 
 # Generate asteroid field data for a cell
 func _generate_asteroid_field_at_cell(cell: Vector2i) -> AsteroidFieldData:
@@ -206,15 +228,22 @@ func _generate_asteroid_field_at_cell(cell: Vector2i) -> AsteroidFieldData:
 	var seed_value = _get_deterministic_seed(cell, 5000)  # Offset for asteroid fields
 	
 	# Create and configure field data
-	var field_data = asteroid_generator.generate_asteroid_field(entity_id, position, seed_value)
-	
-	# Set grid cell
-	field_data.grid_cell = cell
-	
-	# Generate asteroids for the field
-	asteroid_generator.populate_asteroid_field(field_data, null)
-	
-	return field_data
+	if asteroid_generator and asteroid_generator.has_method("generate_asteroid_field"):
+		var field_data = asteroid_generator.generate_asteroid_field(entity_id, position, seed_value)
+		
+		# Set grid cell
+		field_data.grid_cell = cell
+		
+		# Generate asteroids for the field
+		if asteroid_generator.has_method("populate_asteroid_field"):
+			asteroid_generator.populate_asteroid_field(field_data, null)
+		
+		return field_data
+	else:
+		# Fallback if generator not available
+		var field_data = AsteroidFieldData.new(entity_id, position, seed_value)
+		field_data.grid_cell = cell
+		return field_data
 
 # Get a deterministic entity ID for a cell
 func _get_deterministic_entity_id(cell: Vector2i) -> int:

@@ -73,7 +73,8 @@ func generate_for_size(seed_value: int, source_size: String, pattern_id: int) ->
 			if i == 0:
 				result_size = "medium"
 			else:
-				result_size = _rng.randf() < 0.7 ? "medium" : "small"
+				# Fix the ternary operator syntax
+				result_size = "medium" if _rng.randf() < 0.7 else "small"
 		else:  # medium source
 			result_size = "small"
 		
