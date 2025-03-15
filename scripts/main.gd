@@ -20,6 +20,8 @@ func _ready() -> void:
 	AudioManager.preload_sfx("explosion_debris", "res://assets/audio/explosion_debris.wav")
 	
 	screen_size = get_viewport_rect().size
+	var world_generator_adapter = WorldGeneratorAdapter.new()
+	add_child(world_generator_adapter)
 	
 	# Wait for game settings to initialize if needed
 	if game_settings and not game_settings.is_connected("settings_initialized", _on_game_settings_initialized):
