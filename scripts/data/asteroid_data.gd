@@ -70,9 +70,9 @@ func get_size_name() -> String:
 		SizeCategory.LARGE: return "large"
 		_: return "unknown"
 
-# Create a deep copy - custom method that doesn't override native methods
-func clone() -> AsteroidData:
-	var copy = super.clone() as AsteroidData
+# Override duplicate for proper copying
+func duplicate() -> AsteroidData:
+	var copy = super.duplicate() as AsteroidData
 	copy.size_category = size_category
 	copy.variant = variant
 	copy.scale_factor = scale_factor

@@ -35,25 +35,6 @@ func add_fragment(index: int, position: Vector2, velocity: Vector2, rotation: fl
 		sizes[index] = size
 		scale_factors[index] = scale
 
-# Override duplicate to ensure proper copying
-func duplicate(subresources: bool = false) -> Resource:
-	var copy = get_script().new(pattern_id, source_size, fragment_count)
-	
-	# Copy the arrays
-	for i in range(fragment_count):
-		if i < positions.size():
-			copy.positions[i] = positions[i]
-		if i < velocities.size():
-			copy.velocities[i] = velocities[i]
-		if i < rotations.size():
-			copy.rotations[i] = rotations[i]
-		if i < sizes.size():
-			copy.sizes[i] = sizes[i]
-		if i < scale_factors.size():
-			copy.scale_factors[i] = scale_factors[i]
-			
-	return copy
-
 # Generate a deterministic fragment pattern for an asteroid size
 static func generate_for_size(seed_value: int, source_size: String, pattern_id: int) -> FragmentPatternData:
 	var rng = RandomNumberGenerator.new()
